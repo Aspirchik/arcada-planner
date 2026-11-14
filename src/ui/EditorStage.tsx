@@ -15,6 +15,7 @@ import type { Palette } from '../theme';
 import { WallsLayerContent, AlongText, formatMeters } from './WallsLayer';
 import { DimensionLine, DimensionsLayerContent, SnapMarker } from './DimensionsLayer';
 import { FurnitureLabels, TextNotes, TextSelection, measureNote } from './AnnotationsLayer';
+import { GapsLayerContent } from './GapsLayer';
 import { snapTargets, snapToTargets, constrain45 } from '../geometry/snap';
 import type { Pt } from '../geometry/hit';
 import type { WallNode, Wall, FurnitureItem, Dimension, TextNote } from '../types';
@@ -92,6 +93,8 @@ export function EditorStage() {
   const snapSize      = useStore(s => s.snapSize);
   const wallLabels    = usePrefs(s => s.wallLabels);
   const showNames     = usePrefs(s => s.showNames);
+  const showGaps      = usePrefs(s => s.gaps);
+  const gapWarn       = usePrefs(s => s.gapWarn);
   const lang          = usePrefs(s => s.lang);
   const textEdit      = useStore(s => s.textEdit);
   const palette       = usePalette();
@@ -789,6 +792,12 @@ export function EditorStage() {
         {sortByZ(floor.furniture).map(item => (
           <FurnitureVisual key={item.id} item={item} palette={palette} onImageLoaded={onImageLoaded} />
         ))}
+
+        {/* Free space around the selected item */}
+        {selectedItem && showGaps && (
+          <GapsLayerContent item={selectedItem} furniture={floor.furniture} geom={wallGeom} palette={palette}
+            px={1 / scale} warnBelow={gapWarn} unit={t('unit.cm')} />
+        )}
 
         {/* Labels and text notes */}
         <FurnitureLabels furniture={floor.furniture} palette={palette} showNames={showNames} lang={lang} />

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import {
   MousePointer2, Eraser, Minus, Grid3X3,
   Tag, ChevronUp, ChevronDown, Trash2, Printer,
-  Save, FolderOpen, HelpCircle, Languages, Sun, Moon, Monitor, Ruler, Type, CaseSensitive,
+  Save, FolderOpen, HelpCircle, Languages, Sun, Moon, Monitor, Ruler, Type, CaseSensitive, ArrowLeftRight,
 } from 'lucide-react';
 import { useStore, ProjectError } from '../store';
 import { usePrefs, LANGS, type WallLabelMode, type Lang, type ThemePref } from '../prefs';
@@ -45,6 +45,7 @@ export function Toolbar() {
   const lang = usePrefs(s => s.lang);
   const theme = usePrefs(s => s.theme);
   const showNames = usePrefs(s => s.showNames);
+  const showGaps = usePrefs(s => s.gaps);
   const setPref = usePrefs(s => s.set);
   const t = useT();
   const [showHelp, setShowHelp] = useState(false);
@@ -132,6 +133,11 @@ export function Toolbar() {
             onClick={() => setPref('showNames', !showNames)}>
             <CaseSensitive size={20} />
             <span>{t('names.label')}</span>
+          </button>
+          <button title={t('gaps.title')} className={'tool-btn' + (showGaps ? ' active' : '')}
+            onClick={() => setPref('gaps', !showGaps)}>
+            <ArrowLeftRight size={20} />
+            <span>{t('gaps.label')}</span>
           </button>
         </div>
 
