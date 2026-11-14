@@ -81,7 +81,8 @@
         { "name": "Desk pedestal - wood",     "width": 0.4, "height": 0.55, "imagePath": "pedestal-wood" },
         { "name": "Chest of drawers - metal", "width": 0.8, "height": 0.45, "imagePath": "dresser-metal" },
         { "name": "Chest of drawers - wood",  "width": 1.0, "height": 0.5,  "imagePath": "dresser-wood" },
-        { "name": "Safe - metal",             "width": 0.5, "height": 0.5,  "imagePath": "safe-metal" }
+        { "name": "Safe - metal",             "width": 0.5, "height": 0.5,  "imagePath": "safe-metal" },
+        { "name": "Shelves - metal",          "width": 0.9, "height": 0.45, "imagePath": "shelves-metal" }
       ]
     },
     {
