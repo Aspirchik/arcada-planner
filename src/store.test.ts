@@ -302,6 +302,40 @@ describe('wiring mode and trays', () => {
   });
 });
 
+describe('both layers, colours and wiring settings', () => {
+  it('an object can be on both plans; colours and settings are saved', () => {
+    const f = st().addFurniture(chair, 0, 0);
+    st().select(f);
+    st().setLayer(f, 'both');
+    st().setMode('wiring');
+    st().setLayer(f, 'both');
+    st().updateFurniture(f, { color: '#d0021b' });
+    const t = st().addTray([{ x: 0, y: 0 }, { x: 100, y: 0 }]);
+    expect(floor().trays[0].width).toBe(10);
+    st().updateTray(t, { color: '#188038' });
+    st().setWiring({ cableWidth: 5, planDim: 50, cableLabels: false });
+    expect(st().dirty).toBe(true);
+    st().addCable([{ x: 0, y: 0 }, { x: 100, y: 0 }], '#000');
+    st().updateCable(floor().cables[0].id, { width: 9 });
+    st().resetCableWidths();
+    expect(floor().cables[0].width).toBeUndefined();
+
+    const json = st().save();
+    useStore.setState(initial, true);
+    st().load(json);
+    expect(floor().furniture[0]).toMatchObject({ layer: 'both', color: '#d0021b' });
+    expect(floor().trays[0].color).toBe('#188038');
+    expect(st().wiring).toMatchObject({ cableWidth: 5, planDim: 50, cableLabels: false, cableText: 11 });
+  });
+
+  it('bad wiring settings and colours fall back to defaults', () => {
+    const p = parseProject(JSON.stringify({ floors: [{ nodes: [], walls: [], furniture: [{ id: 1, path: 'a', x: 0, y: 0, w: 1, h: 1, color: 'red;x' }] }], wiring: { cableWidth: -1, planDim: 'x' } }));
+    expect(p.floors[0].furniture[0].color).toBeUndefined();
+    expect(p.wiring.cableWidth).toBe(3);
+    expect(p.wiring.planDim).toBe(30);
+  });
+});
+
 describe('parseProject', () => {
   it('rejects broken files with a readable message', () => {
     expect(() => parseProject('not json')).toThrow(/JSON/);

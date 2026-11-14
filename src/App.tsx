@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Trash2, BringToFront, SendToBack, Bold, Pencil, Type, Square, Image as ImageIcon, FlipHorizontal2, FlipVertical2, Ruler, Layers } from 'lucide-react';
+import { Trash2, BringToFront, SendToBack, Bold, Pencil, Type, Square, Image as ImageIcon, FlipHorizontal2, FlipVertical2, Ruler, Layers, Palette as PaletteIcon } from 'lucide-react';
 import { EditorStage } from './ui/EditorStage';
 import { Toolbar } from './ui/Toolbar';
 import { FurniturePanel } from './ui/FurniturePanel';
@@ -7,14 +7,15 @@ import { PrintView } from './ui/PrintView';
 import { TextEditor } from './ui/TextEditor';
 import { measureNote } from './ui/AnnotationsLayer';
 import { rectCorners } from './geometry/hit';
-import { useStore, parseProject, isProjectEmpty, DEFAULT_CABLE_WIDTH } from './store';
+import { useStore, parseProject, isProjectEmpty } from './store';
+import { onLayer } from './layers';
 import { cablesInTray, cableRoute, pathLength } from './geometry/cable';
 import { formatMeters } from './geometry/wallLabels';
 import { setNextCableColor } from './ui/EditorStage';
 import { usePrefs } from './prefs';
 import { useT, HTML_LANG, type TKey } from './i18n';
 import { wallThickness } from './geometry/walls';
-import type { LabelPos } from './types';
+import type { LabelPos, Layer } from './types';
 import { useIsDark } from './theme';
 import { projectErrorText } from './ui/Toolbar';
 import { METER, AUTOSAVE_KEY } from './constants';
@@ -159,14 +160,31 @@ function TriSelect({ value, label, title, onChange }: { value: Tri | ''; label: 
 
 const triOf = (v: 'on' | 'off' | undefined): Tri => v ?? 'global';
 
-/** Moves an object between the main plan and the wiring layer */
-function LayerButton({ id, layer }: { id: number; layer?: 'wiring' }) {
+/** Which plan shows the object: main plan, wiring layer or both */
+function LayerButton({ id, layer }: { id: number; layer?: Layer }) {
   const t = useT();
   return (
-    <button className={'sel-btn' + (layer ? ' active' : '')} title={layer ? t('layer.toPlan') : t('layer.toWiring')}
-      onClick={() => useStore.getState().setLayer(id, layer ? undefined : 'wiring')}>
-      <Layers size={14} />
-    </button>
+    <label title={t('layer.title')}><Layers size={13} />
+      <select className="sel-select" value={layer ?? 'plan'}
+        onChange={e => useStore.getState().setLayer(id, e.target.value === 'plan' ? undefined : e.target.value as Layer)}>
+        <option value="plan">{t('layer.plan')}</option>
+        <option value="wiring">{t('layer.wiring')}</option>
+        <option value="both">{t('layer.both')}</option>
+      </select>
+    </label>
+  );
+}
+
+const OBJECT_COLORS: (string | null)[] = [null, '#d0021b', '#1a73e8', '#188038', '#e8710a', '#f9ab00', '#8e24aa', '#00897b', '#5f6368'];
+
+/** Object colour: swatches with "as drawn" first */
+function ObjectColor({ value, onChange }: { value: string | null | undefined; onChange: (c: string | undefined) => void }) {
+  const t = useT();
+  return (
+    <span className="sel-color" title={t('obj.color')}>
+      <PaletteIcon size={13} />
+      <ColorSwatches value={value} title={t('obj.color')} colors={OBJECT_COLORS} onChange={c => onChange(c ?? undefined)} />
+    </span>
   );
 }
 const fromTri = (v: Tri) => (v === 'global' ? undefined : v);
@@ -213,6 +231,8 @@ function SelectionPanel() {
               onClick={() => st.updateFurnitureMany(selection, { simple: true })}><Square size={14} /></button>
             <button className="sel-btn" title={t('sel.detailed')}
               onClick={() => st.updateFurnitureMany(selection, { simple: undefined })}><ImageIcon size={14} /></button>
+            <ObjectColor value={(() => { const v = new Set(items.map(i => i.color ?? null)); return v.size === 1 ? [...v][0] : undefined; })()}
+              onChange={c => st.updateFurnitureMany(selection, { color: c })} />
           </>
           );
         })()}
@@ -273,13 +293,14 @@ function SelectionPanel() {
   // ── Tray ──
   const tray = floor.trays.find(x => x.id === selectedId);
   if (tray) {
-    const inside = cablesInTray(tray, floor.cables.filter(c => c.layer === 'wiring'));
+    const inside = cablesInTray(tray, floor.cables.filter(c => onLayer(c, 'wiring')));
     return (
       <div className="selection-panel" style={at(tray.points, 460)}>
         <TextField key={`tl${tray.id}`} value={tray.label ?? ''} placeholder={t('sel.label')}
           onCommit={v => st.updateTray(tray.id, { label: v.trim() || undefined })} />
         <label>{t('tray.width')} <NumField key={`tw${tray.id}`} value={tray.width} min={1}
           onCommit={v => st.updateTray(tray.id, { width: v })} /> {t('unit.cm')}</label>
+        <ObjectColor value={tray.color} onChange={c => st.updateTray(tray.id, { color: c })} />
         <button className="sel-delete" title={t('sel.delete')} onClick={st.deleteSelected}><Trash2 size={14} /></button>
         <div className="sel-break" />
         <div className="tray-list">
@@ -311,7 +332,7 @@ function SelectionPanel() {
         <div className="sel-break" />
         <ColorSwatches value={cable.color} title={t('text.color')} colors={CABLE_COLORS}
           onChange={c => { if (c) { setNextCableColor(c); st.updateCable(cable.id, { color: c }); } }} />
-        <label>{t('cable.width')} <NumField key={`cw${cable.id}`} value={cable.width ?? DEFAULT_CABLE_WIDTH} min={0.5}
+        <label>{t('cable.width')} <NumField key={`cw${cable.id}`} value={cable.width ?? st.wiring.cableWidth} min={0.5}
           onCommit={v => st.updateCable(cable.id, { width: v })} /> {t('unit.cm')}</label>
         <button className={'sel-btn' + (cable.showLength ? ' active' : '')} title={t('cable.showLength')}
           onClick={() => st.updateCable(cable.id, { showLength: cable.showLength ? undefined : true })}><Ruler size={14} /></button>
@@ -358,6 +379,7 @@ function SelectionPanel() {
         onClick={() => st.flipFurniture(item.id, 'x')}><FlipHorizontal2 size={14} /></button>
       <button className={'sel-btn' + (item.flipY ? ' active' : '')} title={item.path === 'door' ? t('door.swing') : t('sel.flipY')}
         onClick={() => st.flipFurniture(item.id, 'y')}><FlipVertical2 size={14} /></button>
+      <ObjectColor value={item.color} onChange={c => st.updateFurniture(item.id, { color: c })} />
       <LayerButton id={item.id} layer={item.layer} />
       <button className="sel-btn" title={t('sel.front')} onClick={() => st.bringToFront(item.id)}>
         <BringToFront size={14} />

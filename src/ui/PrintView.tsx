@@ -9,7 +9,8 @@ import { WallsLayerContent } from './WallsLayer';
 import { getSprite, spriteSettled } from './images';
 import { DimensionsLayerContent } from './DimensionsLayer';
 import { CablesLayerContent, TraysLayerContent } from './CablesLayer';
-import { layerView, type LayerView } from '../layers';
+import { layerPasses, styleCables, type LayerView } from '../layers';
+import { spriteKey } from '../color';
 import { labelObstacles } from '../geometry/cable';
 import { FurnitureLabels, TextNotes, SimpleFurniture, measureNote } from './AnnotationsLayer';
 import { useT } from '../i18n';
@@ -23,9 +24,9 @@ const PAD = 60;
 /** True once every sprite on the floor has loaded (or failed — those print as grey boxes) */
 function useFloorImages(floor: FloorState): boolean {
   const [, bump] = useState(0);
-  const paths = [...new Set(floor.furniture.filter(f => !f.simple).map(f => f.path))];
-  for (const p of paths) getSprite(p, false, () => bump(c => c + 1));
-  return paths.every(p => spriteSettled(p, false));
+  const items = [...new Map(floor.furniture.filter(f => !f.simple).map(f => [spriteKey(f), f] as const)).values()];
+  for (const f of items) getSprite(f.path, false, () => bump(c => c + 1), f.color);
+  return items.every(f => spriteSettled(f.path, false, f.color));
 }
 
 function floorBounds(floor: FloorState): { minX: number; minY: number; maxX: number; maxY: number } | null {
@@ -85,6 +86,7 @@ function PrintFloor({ floor, index }: { floor: FloorState; index: number }) {
   const t = useT();
   const geom = useMemo(() => computeWallGeometry(floor.nodes, floor.walls), [floor.nodes, floor.walls]);
   const wiring = useStore(s => s.mode) === 'wiring';
+  const ws = useStore(s => s.wiring);
 
   if (!bounds) {
     return (
@@ -95,6 +97,7 @@ function PrintFloor({ floor, index }: { floor: FloorState; index: number }) {
     );
   }
 
+  const passes = layerPasses(floor, wiring ? 'wiring' : 'plan');
   const contentW = bounds.maxX - bounds.minX;
   const contentH = bounds.maxY - bounds.minY;
   const drawW = PAGE_W - PAD * 2;
@@ -107,7 +110,7 @@ function PrintFloor({ floor, index }: { floor: FloorState; index: number }) {
     <Group>
       {ready && sortByZ(v.furniture).map(f => {
         if (f.simple) return <SimpleFurniture key={f.id} item={f} palette={LIGHT} />;
-        const img = getSprite(f.path, false, () => {});
+        const img = getSprite(f.path, false, () => {}, f.color);
         return (
           <Group key={f.id} x={f.x} y={f.y} rotation={f.rot}>
             {img ? <KImage image={img} width={f.w} height={f.h}
@@ -115,8 +118,9 @@ function PrintFloor({ floor, index }: { floor: FloorState; index: number }) {
           </Group>
         );
       })}
-      <TraysLayerContent trays={v.trays} palette={LIGHT} />
-      <CablesLayerContent cables={v.cables} palette={LIGHT} unitM={t('unit.m')} avoid={labelObstacles(geom, wallLabels, floor.furniture)} />
+      <TraysLayerContent trays={v.trays} palette={LIGHT} textSize={ws.trayText} />
+      <CablesLayerContent cables={styleCables(v.cables, ws)} palette={LIGHT} unitM={t('unit.m')} avoid={labelObstacles(geom, wallLabels, floor.furniture)}
+        labelSize={ws.cableText} showLabels={ws.cableLabels} />
       {ready && <FurnitureLabels furniture={v.furniture} palette={LIGHT} showNames={showNames} lang={lang} sizesPos={sizesPos} />}
       <TextNotes texts={v.texts} palette={LIGHT} />
       <DimensionsLayerContent dims={v.dimensions} palette={LIGHT} unit={t('unit.m')} px={1 / scaleVal} />
@@ -131,12 +135,12 @@ function PrintFloor({ floor, index }: { floor: FloorState; index: number }) {
       </h2>
       <Stage width={PAGE_W} height={PAGE_H - 40} x={offsetX} y={offsetY - 40} scaleX={scaleVal} scaleY={scaleVal}>
         <Layer listening={false}>
-          {/* Walls (print is always light) */}
-          <WallsLayerContent geom={geom} palette={LIGHT} labels={wallLabels} unit={t('unit.m')} />
-
-          {/* Main plan (dimmed when printing in Wiring mode), then the wiring layer */}
-          <Group opacity={wiring ? 0.3 : 1}>{layerContent(layerView(floor, 'main'))}</Group>
-          {wiring && layerContent(layerView(floor, 'wiring'))}
+          {/* Walls and the main plan (print is always light; dimmed when printing in Wiring mode), then the wiring layer */}
+          <Group opacity={passes.dim ? ws.planDim / 100 : 1}>
+            <WallsLayerContent geom={geom} palette={LIGHT} labels={wallLabels} unit={t('unit.m')} />
+            {layerContent(passes.main)}
+          </Group>
+          {passes.wiring && layerContent(passes.wiring)}
         </Layer>
       </Stage>
     </div>

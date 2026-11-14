@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { darkSvg } from './images';
+import { darkSvg, colorSvg } from './images';
 
 describe('darkSvg', () => {
   it('turns white fill dark and black lines light, keeping other content', () => {
@@ -24,5 +24,14 @@ describe('darkSvg', () => {
   it('inverts embedded raster images with a filter', () => {
     expect(darkSvg('<svg><image href="data:x"/></svg>')).toContain('<style>image{filter:invert(0.83)}</style></svg>');
     expect(darkSvg('<svg><path/></svg>')).not.toContain('filter');
+  });
+});
+
+describe('colorSvg', () => {
+  it('paints lines in the object colour, fills a light tint, keeps real colours', () => {
+    const out = colorSvg('<svg><path fill="#ffffff" stroke="#000000"/><circle fill="#d0021b"/></svg>', '#1a73e8', false);
+    expect(out).toContain('stroke="#1a73e8"');
+    expect(out).not.toContain('fill="#ffffff"');
+    expect(out).toContain('fill="#d0021b"');
   });
 });

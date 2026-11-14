@@ -243,6 +243,12 @@ body { overflow: hidden; font-family: system-ui, sans-serif; background: var(--o
 .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; }
 .help-box button:disabled { opacity: 0.6; cursor: default; }
 .export-box { max-width: 520px; }
+.wset-field { display: flex; align-items: center; gap: 6px; }
+.wset-field input { width: 64px; }
+.wset-small { font-size: 12px; padding: 4px 8px; white-space: nowrap; }
+.wset-hint { margin: -6px 0 10px; font-size: 12px; }
+.export-row.wset-check { justify-content: flex-start; cursor: pointer; }
+.sel-color { display: inline-flex; align-items: center; gap: 4px; color: var(--text-2); }
 .export-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; font-size: 14px; color: var(--text-1); }
 .export-hint { font-size: 12px; margin-top: 6px; }
 .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }

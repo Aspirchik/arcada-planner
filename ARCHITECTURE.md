@@ -293,9 +293,12 @@ Files use `.arcada` extension (JSON content). Current format version **2.1.0** (
 
 ## Wiring mode and layers (`src/layers.ts`)
 
-- Furniture, texts, dimensions and cables have an optional `layer: 'wiring'`; trays always belong to the wiring layer. `layerView(floor, 'main' | 'wiring')` splits a floor.
+- Furniture, texts, dimensions and cables have an optional `layer: 'wiring' | 'both'`; trays always belong to the wiring layer. `onLayer()` tells whether an object is on a layer; `layerView(floor, 'main' | 'wiring', own?)` splits a floor (`own` leaves out 'both' objects).
+- `layerPasses(floor, choice)` gives the passes for print / export so 'both' objects are drawn once.
 - `store.mode` is `'plan'` or `'wiring'`. New objects get `layer: 'wiring'` while in Wiring mode (`curLayer()` in the store); `setLayer()` moves an object.
-- `EditorStage` edits only the current layer (`act`); in Wiring mode the main plan (`base`) is drawn under it at 30 % opacity and walls / nodes are not interactive.
+- `EditorStage` edits only the current layer (`act`, including 'both' objects); in Wiring mode the main plan (`base`) is drawn under it at `wiring.planDim` % opacity and walls / nodes are not interactive.
+- `store.wiring` (`WiringSettings`, saved in the file as `wiring`): default cable width, label sizes, label / length display, new tray width, plan brightness. `styleCables()` applies them before drawing.
+- Object colour: `color` on furniture and trays. Sprites are recoloured by `colorSvg()` (greys → shades of the colour); the sprite cache and export key is `spriteKey()` (path + colour).
 - Trays (`Tray`: points, width, label) are drawn by `TraysLayerContent`; `cablesInTray()` lists cables with ≥ 20 cm inside a tray band. Cables snap to tray centre lines.
 - Export: `layers` = `plan` (main only), `all`, `wiring` (main drawn with `fadePalette()` colours, wiring on top).
 

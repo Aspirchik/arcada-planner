@@ -13,8 +13,26 @@ export interface Wall {
   thickness?: number;
 }
 
-/** Second plan layer, shown and edited only in Wiring mode (missing = main plan) */
-export type Layer = 'wiring';
+/** Plan layer: missing = main plan only, 'wiring' = Wiring mode only, 'both' = shown and editable in both */
+export type Layer = 'wiring' | 'both';
+
+/** Project-wide settings of Wiring mode */
+export interface WiringSettings {
+  /** Width of cables that have no own width, cm */
+  cableWidth: number;
+  /** Letter height of cable labels, cm */
+  cableText: number;
+  /** Show cable labels (name, route, length) */
+  cableLabels: boolean;
+  /** Show the length on every cable */
+  cableLengths: boolean;
+  /** Width of new trays, cm */
+  trayWidth: number;
+  /** Letter height of tray labels, cm */
+  trayText: number;
+  /** How strongly the main plan shows in Wiring mode, % (100 = not dimmed) */
+  planDim: number;
+}
 
 /** Where a label sits on an item: centre, sides or corners */
 export type LabelPos = 'c' | 't' | 'b' | 'l' | 'r' | 'tl' | 'tr' | 'bl' | 'br';
@@ -49,6 +67,8 @@ export interface FurnitureItem {
   flipX?: boolean;
   /** Mirror the picture top ↕ bottom (doors: opens to the other side of the wall) */
   flipY?: boolean;
+  /** Object colour (lines of the picture, outline of the simple view); missing = as drawn */
+  color?: string;
   layer?: Layer;
 }
 
@@ -102,6 +122,8 @@ export interface Tray {
   /** Tray width in cm */
   width: number;
   label?: string;
+  /** Edge and label colour; missing = theme colour */
+  color?: string;
 }
 
 export interface FloorState {

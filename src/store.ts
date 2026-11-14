@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { Tool, METER } from './constants';
-import type { FurnitureItem, FloorState, CatalogItem, Dimension, TextNote, Wall, LabelPos, Cable, Tray, Layer } from './types';
+import type { FurnitureItem, FloorState, CatalogItem, Dimension, TextNote, Wall, LabelPos, Cable, Tray, Layer, WiringSettings } from './types';
+import { DEFAULT_WIRING, onLayer } from './layers';
 import { translate, type TKey, type TParams } from './i18n';
 
 const HISTORY_LIMIT = 50;
@@ -14,7 +15,32 @@ export const DEFAULT_TRAY_WIDTH = 10;
 
 export type EditMode = 'plan' | 'wiring';
 
-const layerOf = (o: object) => ((o as { layer?: unknown }).layer === 'wiring' ? { layer: 'wiring' as Layer } : {});
+const layerOf = (o: object) => {
+  const l = (o as { layer?: unknown }).layer;
+  return l === 'wiring' || l === 'both' ? { layer: l as Layer } : {};
+};
+const colorOf = (o: object) => {
+  const c = (o as { color?: unknown }).color;
+  return typeof c === 'string' && /^#[0-9a-f]{3}([0-9a-f]{3})?$/i.test(c) ? { color: c } : {};
+};
+
+/** Wiring settings from a file; missing or invalid values take the defaults */
+export function parseWiring(raw: unknown): WiringSettings {
+  const w = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  const num = (k: keyof WiringSettings, min: number, max: number) => {
+    const v = w[k];
+    return isNum(v) && v >= min && v <= max ? v : DEFAULT_WIRING[k] as number;
+  };
+  return {
+    cableWidth: num('cableWidth', 0.5, 50),
+    cableText: num('cableText', 2, 100),
+    cableLabels: typeof w.cableLabels === 'boolean' ? w.cableLabels : DEFAULT_WIRING.cableLabels,
+    cableLengths: typeof w.cableLengths === 'boolean' ? w.cableLengths : DEFAULT_WIRING.cableLengths,
+    trayWidth: num('trayWidth', 1, 200),
+    trayText: num('trayText', 2, 100),
+    planDim: num('planDim', 5, 100),
+  };
+}
 /** Share of the door picture height taken by the frame band along its top edge (door.svg: 25 of 133) */
 export const DOOR_FRAME_RATIO = 25 / 133;
 
@@ -40,6 +66,7 @@ export interface ParsedProject {
   floors: FloorState[];
   nextId: number;
   createdAt: string | null;
+  wiring: WiringSettings;
 }
 
 /** Error with a translation key, so the UI can show it in the current language */
@@ -99,6 +126,7 @@ export function parseProject(json: string): ParsedProject {
       ...(it.sizeMode === 'on' || it.sizeMode === 'off' ? { sizeMode: it.sizeMode as 'on' | 'off' } : {}),
       ...layerOf(it),
       ...(it.flipY === true ? { flipY: true } : {}),
+      ...colorOf(it),
     }));
 
     const dimensions = (Array.isArray(f.dimensions) ? f.dimensions : []).filter((dm): dm is Dimension =>
@@ -139,6 +167,7 @@ export function parseProject(json: string): ParsedProject {
         .map(p => ({ x: p.x, y: p.y })),
       width: isNum(t.width) && t.width > 0 ? t.width : DEFAULT_TRAY_WIDTH,
       ...(typeof t.label === 'string' && t.label ? { label: t.label } : {}),
+      ...colorOf(t),
     })).filter(t => t.points.length >= 2);
 
     for (const o of [...nodes, ...walls, ...furniture, ...dimensions, ...texts, ...cables, ...trays]) maxId = Math.max(maxId, o.id);
@@ -147,7 +176,7 @@ export function parseProject(json: string): ParsedProject {
 
   const nextId = Math.max(isNum(d.nextId) ? d.nextId : 1, maxId + 1);
   const createdAt = typeof d.createdAt === 'string' ? d.createdAt : null;
-  return { floors, nextId, createdAt };
+  return { floors, nextId, createdAt, wiring: parseWiring(d.wiring) };
 }
 
 export function isProjectEmpty(floors: FloorState[]): boolean {
@@ -178,6 +207,8 @@ interface Store {
   dirty: boolean;
   /** Plan or Wiring mode: in Wiring mode the main plan is dimmed and new objects go to the wiring layer */
   mode: EditMode;
+  /** Project-wide Wiring mode settings (saved in the file) */
+  wiring: WiringSettings;
   /** Text note being edited in place: existing note (id) or a new one at (x, y) */
   textEdit: { id: number | null; x: number; y: number } | null;
 
@@ -193,6 +224,9 @@ interface Store {
   setMode(mode: EditMode): void;
   /** Moves an object (furniture, text, dimension, cable) to the main plan or the wiring layer */
   setLayer(id: number, layer: Layer | undefined): void;
+  setWiring(changes: Partial<WiringSettings>): void;
+  /** Drops the own width of every cable on the floor, so the global width applies */
+  resetCableWidths(): void;
 
   /** Starts a gesture: all changes until endGesture() become a single undo step */
   beginGesture(): void;
@@ -334,6 +368,7 @@ export const useStore = create<Store>((set, get) => {
     dirty: false,
     textEdit: null,
     mode: 'plan',
+    wiring: DEFAULT_WIRING,
 
     setTool: (tool) => set({ tool, wallStartId: null, selectedId: null, selection: [] }),
     setSnapSize: (snapSize) => set({ snapSize }),
@@ -356,7 +391,16 @@ export const useStore = create<Store>((set, get) => {
         dimensions: f.dimensions.map(o => o.id === id ? { ...o, ...L } : o),
         cables: f.cables.map(o => o.id === id ? { ...o, ...L } : o),
       }));
-      set(sel([]));
+      // Moved out of the layer being edited: drop it from the selection
+      const st = get();
+      const o = [...st.floors[st.fi].furniture, ...st.floors[st.fi].texts, ...st.floors[st.fi].dimensions, ...st.floors[st.fi].cables].find(x => x.id === id);
+      if (o && !onLayer(o, st.mode === 'wiring' ? 'wiring' : 'main')) set(sel([]));
+    },
+    setWiring: (changes) => set(s => ({ wiring: { ...s.wiring, ...changes }, dirty: true })),
+    resetCableWidths() {
+      upFloor(f => (f.cables.some(c => c.width !== undefined)
+        ? { ...f, cables: f.cables.map(c => (c.width === undefined ? c : { ...c, width: undefined })) }
+        : f));
     },
 
     beginGesture,
@@ -574,7 +618,7 @@ export const useStore = create<Store>((set, get) => {
       upFloor(f => ({ ...f, cables: f.cables.filter(c => c.id !== id) }));
     },
 
-    addTray(points, width = DEFAULT_TRAY_WIDTH) {
+    addTray(points, width = get().wiring.trayWidth) {
       const id = newId();
       upFloor(f => ({ ...f, trays: [...f.trays, { id, points: points.map(p => ({ x: p.x, y: p.y })), width }] }));
       return id;
@@ -710,11 +754,11 @@ export const useStore = create<Store>((set, get) => {
     },
 
     save() {
-      const { floors, nextId, fileCreatedAt } = get();
+      const { floors, nextId, fileCreatedAt, wiring } = get();
       const now = new Date().toISOString();
       const created = fileCreatedAt ?? now;
       if (!fileCreatedAt) set({ fileCreatedAt: created });
-      return JSON.stringify({ version: FILE_VERSION, createdAt: created, lastModified: now, floors, nextId });
+      return JSON.stringify({ version: FILE_VERSION, createdAt: created, lastModified: now, floors, nextId, wiring });
     },
 
     markSaved: () => set({ dirty: false }),
@@ -731,6 +775,7 @@ export const useStore = create<Store>((set, get) => {
         selection: [],
         wallStartId: null,
         fileCreatedAt: p.createdAt,
+        wiring: p.wiring,
         dirty: false,
       });
     },

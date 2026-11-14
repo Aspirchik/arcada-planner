@@ -2,16 +2,17 @@
  * Builds a vector SVG of one floor (pure — no DOM), used for PDF and PNG export.
  * Units inside the SVG are world units (1 = 1 cm), exactly like the editor.
  */
-import type { FloorState, FurnitureItem, LabelPos, TextNote } from '../types';
+import type { FloorState, FurnitureItem, LabelPos, TextNote, WiringSettings } from '../types';
 import type { Palette } from '../theme';
 import type { WallLabelMode, SizesPos, Lang } from '../prefs';
 import { computeWallGeometry, type FloorWallGeom } from '../geometry/walls';
 import { rectCorners, type Pt } from '../geometry/hit';
 import { wallLabelSpecs, formatMeters, LABEL_SIZE } from '../geometry/wallLabels';
 import { sortByZ } from '../helpers';
-import { layerView, type LayerView, type LayerChoice } from '../layers';
+import { layerPasses, styleCables, DEFAULT_WIRING, type LayerView, type LayerChoice } from '../layers';
+import { mixHex, spriteKey } from '../color';
 import { furnitureLabel, sizesCorner } from '../labels';
-import { cableLabel, layoutCables, placeCableLabels, labelObstacles } from '../geometry/cable';
+import { cableLabel, layoutCables, placeCableLabels, labelObstacles, midAlong } from '../geometry/cable';
 
 export const EXPORT_FONT = 'Roboto';
 const LINE_HEIGHT = 1.2;
@@ -41,6 +42,8 @@ export interface PlanSvgOptions {
   css?: string;
   /** Layers to output (default: everything) */
   layers?: LayerChoice;
+  /** Wiring mode settings: cable width and labels, tray labels, how strongly the plan shows under the wiring */
+  wiring?: WiringSettings;
   /** Pixel size written to the root element (PNG); the viewBox stays in cm */
   pixelWidth?: number;
   pixelHeight?: number;
@@ -51,19 +54,12 @@ export interface Bounds { minX: number; minY: number; maxX: number; maxY: number
 // ── Small helpers ───────────────────────────────────────────────
 /** Mixes a #rrggbb colour towards `to` (amount = how much of the original stays) */
 export function fadeHex(hex: string, to: string, amount = 0.3): string {
-  const parse = (h: string) => {
-    let x = h.replace('#', '');
-    if (x.length === 3) x = x.split('').map(c => c + c).join('');
-    return [0, 2, 4].map(i => parseInt(x.slice(i, i + 2), 16));
-  };
-  if (!/^#[0-9a-f]{3}([0-9a-f]{3})?$/i.test(hex) || !/^#[0-9a-f]{3}([0-9a-f]{3})?$/i.test(to)) return hex;
-  const a = parse(hex), b = parse(to);
-  return '#' + a.map((v, i) => Math.round(v * amount + b[i] * (1 - amount)).toString(16).padStart(2, '0')).join('');
+  return mixHex(hex, to, amount);
 }
 
-function fadePalette(p: Palette): Palette {
+function fadePalette(p: Palette, amount: number): Palette {
   const out = { ...p } as Record<string, unknown>;
-  for (const [k, v] of Object.entries(p)) if (typeof v === 'string' && k !== 'paper') out[k] = fadeHex(v, p.paper);
+  for (const [k, v] of Object.entries(p)) if (typeof v === 'string' && k !== 'paper') out[k] = fadeHex(v, p.paper, amount);
   return out as unknown as Palette;
 }
 
@@ -275,40 +271,52 @@ export function buildPlanSvg(floor: FloorState, sprites: Map<string, SpriteDef>,
   };
 
   // Objects of one layer: furniture, cables, labels, texts, rulers
+  const ws = opts.wiring ?? DEFAULT_WIRING;
+  const dimBy = ws.planDim / 100;
   const objects = (v: LayerView, pal: Palette, faded: boolean): string => {
+    const fade = (c: string) => (faded ? fadeHex(c, pal.paper, dimBy) : c);
     const out: string[] = [];
     for (const it of sortByZ(v.furniture)) {
       const tr = `translate(${f(it.x)} ${f(it.y)}) rotate(${f(it.rot)})`;
-      const sp = it.simple ? undefined : sprites.get(it.path);
+      const sp = it.simple ? undefined : sprites.get(spriteKey(it));
       if (!sp) {
-        const stroke = it.simple ? pal.wallStroke : pal.placeholderStroke;
-        out.push(`<g transform="${tr}"><rect width="${f(it.w)}" height="${f(it.h)}" fill="${it.simple ? pal.paper : pal.placeholderFill}" stroke="${stroke}" stroke-width="1.5"/></g>`);
+        const stroke = it.simple ? (it.color ? fade(it.color) : pal.wallStroke) : pal.placeholderStroke;
+        const fill = it.simple ? (it.color ? mixHex(fade(it.color), pal.paper, 0.14) : pal.paper) : pal.placeholderFill;
+        out.push(`<g transform="${tr}"><rect width="${f(it.w)}" height="${f(it.h)}" fill="${fill}" stroke="${stroke}" stroke-width="1.5"/></g>`);
         continue;
       }
       const flip = it.flipX || it.flipY
         ? ` transform="translate(${f(it.flipX ? it.w : 0)} ${f(it.flipY ? it.h : 0)}) scale(${it.flipX ? -1 : 1} ${it.flipY ? -1 : 1})"`
         : '';
-      out.push(`<g transform="${tr}"${faded ? ' opacity="0.3"' : ''}><g${flip}><svg x="0" y="0" width="${f(it.w)}" height="${f(it.h)}" viewBox="${sp.viewBox}" preserveAspectRatio="none" overflow="hidden"${sp.fill ? ` fill="${sp.fill}"` : ''}>${sp.body}</svg></g></g>`);
+      out.push(`<g transform="${tr}"${faded ? ` opacity="${f(dimBy)}"` : ''}><g${flip}><svg x="0" y="0" width="${f(it.w)}" height="${f(it.h)}" viewBox="${sp.viewBox}" preserveAspectRatio="none" overflow="hidden"${sp.fill ? ` fill="${sp.fill}"` : ''}>${sp.body}</svg></g></g>`);
     }
     // Cable trays
     for (const t of v.trays) {
       const tp = pts(t.points);
-      out.push(`<polyline points="${tp}" fill="none" stroke="${pal.trayStroke}" stroke-width="${f(t.width + 2)}" stroke-linejoin="miter"/>`);
-      out.push(`<polyline points="${tp}" fill="none" stroke="${pal.trayFill}" stroke-width="${f(t.width)}" stroke-linejoin="miter"/>`);
+      const edge = t.color ?? pal.trayStroke;
+      out.push(`<polyline points="${tp}" fill="none" stroke="${edge}" stroke-width="${f(t.width + 2)}" stroke-linejoin="miter"/>`);
+      out.push(`<polyline points="${tp}" fill="none" stroke="${t.color ? mixHex(t.color, pal.paper, 0.18) : pal.trayFill}" stroke-width="${f(t.width)}" stroke-linejoin="miter"/>`);
+    }
+    for (const t of v.trays) {
+      if (!t.label) continue;
+      const mid = midAlong(t.points);
+      out.push(alongText(mid.p, mid.angle, t.label, ws.trayText, t.color ?? pal.trayStroke, pal.paper));
     }
     // Cables (above furniture): shared runs side by side, labels kept apart
-    const cablePaths = layoutCables(v.cables);
-    const cableTexts = new Map(v.cables.map(c => [c.id, cableLabel(c, opts.unitM)] as [number, string]).filter(([, l]) => !!l));
-    const cableSpots = placeCableLabels(v.cables, cablePaths, cableTexts, LABEL_SIZE, t => measure(t, LABEL_SIZE, false),
+    const cables = styleCables(v.cables, ws);
+    const size = ws.cableText;
+    const cablePaths = layoutCables(cables);
+    const cableTexts = new Map(ws.cableLabels ? cables.map(c => [c.id, cableLabel(c, opts.unitM)] as [number, string]).filter(([, l]) => !!l) : []);
+    const cableSpots = placeCableLabels(cables, cablePaths, cableTexts, size, t => measure(t, size, false),
       labelObstacles(geom, opts.wallLabels, floor.furniture));
-    for (const c of v.cables) {
+    for (const c of cables) {
       const path = cablePaths.get(c.id) ?? c.points;
       if (path.length < 2) continue;
-      out.push(`<polyline points="${pts(path)}" fill="none" stroke="${faded ? fadeHex(c.color, pal.paper) : c.color}" stroke-width="${f(c.width ?? 3)}" stroke-linecap="round" stroke-linejoin="round"/>`);
+      out.push(`<polyline points="${pts(path)}" fill="none" stroke="${fade(c.color)}" stroke-width="${f(c.width ?? ws.cableWidth)}" stroke-linecap="round" stroke-linejoin="round"/>`);
     }
-    for (const c of v.cables) {
+    for (const c of cables) {
       const label = cableTexts.get(c.id), at = cableSpots.get(c.id);
-      if (label && at) out.push(alongText(at.p, at.angle, label, LABEL_SIZE, faded ? fadeHex(c.color, pal.paper) : c.color, pal.paper));
+      if (label && at) out.push(alongText(at.p, at.angle, label, size, fade(c.color), pal.paper));
     }
     // Furniture labels and sizes
     const lo = { palette: pal, showNames: opts.showNames, sizesPos: opts.sizesPos, lang: opts.lang, measure };
@@ -326,10 +334,10 @@ export function buildPlanSvg(floor: FloorState, sprites: Map<string, SpriteDef>,
 
   const layers = opts.layers ?? 'all';
   // A dimmed plan is drawn in colours mixed with the paper (opacity on groups is not reliable in PDF)
-  const dim = layers === 'wiring';
-  const mainPal = dim ? fadePalette(p) : p;
-  parts.push(walls(mainPal), objects(layerView(floor, 'main'), mainPal, dim));
-  if (layers !== 'plan') parts.push(objects(layerView(floor, 'wiring'), p, false));
+  const passes = layerPasses(floor, layers);
+  const mainPal = passes.dim ? fadePalette(p, dimBy) : p;
+  parts.push(walls(mainPal), objects(passes.main, mainPal, passes.dim));
+  if (passes.wiring) parts.push(objects(passes.wiring, p, false));
 
   const size = opts.pixelWidth && opts.pixelHeight ? ` width="${Math.round(opts.pixelWidth)}" height="${Math.round(opts.pixelHeight)}"` : ` width="${f(W)}" height="${f(Hh)}"`;
   const defs = opts.css ? `<defs><style>${opts.css}</style></defs>` : '';

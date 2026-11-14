@@ -1,10 +1,12 @@
 /** Browser side of the export: fonts, sprites, PNG rendering and vector PDF */
 import type { FloorState } from '../types';
 import { buildPlanSvg, prepareSprite, EXPORT_FONT, type SpriteDef, type Measure, type ExportArea } from './planSvg';
-import { darkSvg, spriteUrl } from '../ui/images';
+import { spriteSvg, spriteUrl } from '../ui/images';
+import { spriteKey } from '../color';
 import { DARK, LIGHT } from '../theme';
 import type { WallLabelMode, SizesPos, Lang } from '../prefs';
 import type { LayerChoice } from '../layers';
+import type { WiringSettings } from '../types';
 
 export type ExportFormat = 'pdf' | 'png';
 export type PdfPage = 'a4' | 'a3' | 'scale50';
@@ -19,7 +21,7 @@ export interface ExportRequest {
   pxPerCm: number;
   pdfPage: PdfPage;
   layers: LayerChoice;
-  view: { wallLabels: WallLabelMode; showNames: boolean; sizesPos: SizesPos; lang: Lang };
+  view: { wallLabels: WallLabelMode; showNames: boolean; sizesPos: SizesPos; lang: Lang; wiring?: WiringSettings };
   text: { unitM: string; floorTitle: (n: number) => string; scale: string };
 }
 
@@ -61,15 +63,13 @@ const measure: Measure = (text, size, bold) => {
 
 // ── Sprites ─────────────────────────────────────────────────────
 async function loadSprites(floors: FloorState[], dark: boolean): Promise<Map<string, SpriteDef>> {
-  const paths = [...new Set(floors.flatMap(f => f.furniture.filter(it => !it.simple).map(it => it.path)))];
+  const items = new Map(floors.flatMap(f => f.furniture.filter(it => !it.simple)).map(it => [spriteKey(it), it] as const));
   const map = new Map<string, SpriteDef>();
-  await Promise.all(paths.map(async (path, i) => {
+  await Promise.all([...items].map(async ([key, it], i) => {
     try {
-      const res = await fetch(spriteUrl(path));
+      const res = await fetch(spriteUrl(it.path));
       if (!res.ok) return;
-      let text = await res.text();
-      if (dark) text = darkSvg(text);
-      map.set(path, prepareSprite(text, `sp${i}`));
+      map.set(key, prepareSprite(spriteSvg(await res.text(), dark, it.color), `sp${i}`));
     } catch { /* missing sprite → placeholder rectangle */ }
   }));
   return map;

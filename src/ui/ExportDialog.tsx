@@ -54,7 +54,7 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
       const list = c.allFloors ? floors.map((floor, index) => ({ index, floor })) : [{ index: fi, floor: floors[fi] }];
       const n = await runExport({
         format: c.format, area: c.area, dark: c.dark, floors: list, pxPerCm: c.pxPerCm, pdfPage: c.pdfPage, layers: c.layers,
-        view: { wallLabels: prefs.wallLabels, showNames: prefs.showNames, sizesPos: prefs.sizesPos, lang: prefs.lang },
+        view: { wallLabels: prefs.wallLabels, showNames: prefs.showNames, sizesPos: prefs.sizesPos, lang: prefs.lang, wiring: useStore.getState().wiring },
         text: { unitM: t('unit.m'), floorTitle: n => t('floor.title', { n }), scale: t('export.scale') },
       });
       if (n === 0) alert(t('export.empty'));

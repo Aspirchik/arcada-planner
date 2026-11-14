@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useMemo } from 'react';
 import { Stage, Layer, Rect, Line, Image as KImage, Circle, Group } from 'react-konva';
 import type Konva from 'konva';
 import type { KonvaEventObject } from 'konva/lib/Node';
-import { useStore, DEFAULT_Z, DEFAULT_CABLE_COLOR, DEFAULT_TRAY_WIDTH } from '../store';
+import { useStore, DEFAULT_Z, DEFAULT_CABLE_COLOR } from '../store';
 import { Tool, WORLD, AUTOSAVE_KEY } from '../constants';
 import { localToWorld, worldToLocal, sortByZ } from '../helpers';
 import { dist, pointInRotatedRect, distToSegment, type Pt } from '../geometry/hit';
@@ -21,7 +21,7 @@ import { CablesLayerContent, CableLine, CableHandles, TraysLayerContent } from '
 import { hitSegment, hitVertex, dedupePoints, labelObstacles, layoutCables, distToPath, cablesInTray, cableRoute, pathLength } from '../geometry/cable';
 import { SimpleFurniture } from './AnnotationsLayer';
 import type { WallNode, Wall, FurnitureItem, Dimension, TextNote, Cable, Tray } from '../types';
-import { layerView } from '../layers';
+import { layerView, styleCables } from '../layers';
 
 const TOOLBAR_W = 80;
 const PANEL_W = 260;
@@ -151,10 +151,18 @@ export function EditorStage() {
   const wallGeom      = useMemo(() => computeWallGeometry(floor.nodes, floor.walls), [floor.nodes, floor.walls]);
   const mode          = useStore(s => s.mode);
   const wiring        = mode === 'wiring';
-  /** Objects of the layer being edited: main plan, or the wiring layer in Wiring mode */
-  const act = useMemo(() => layerView(floor, wiring ? 'wiring' : 'main'), [floor, wiring]);
+  const ws            = useStore(s => s.wiring);
+  /** Objects of the layer being edited: main plan, or the wiring layer in Wiring mode (with objects shown on both) */
+  const act = useMemo(() => {
+    const v = layerView(floor, wiring ? 'wiring' : 'main');
+    return { ...v, cables: styleCables(v.cables, ws) };
+  }, [floor, wiring, ws]);
   /** In Wiring mode: the main plan, drawn dimmed and not editable */
-  const base = useMemo(() => (wiring ? layerView(floor, 'main') : null), [floor, wiring]);
+  const base = useMemo(() => {
+    if (!wiring) return null;
+    const v = layerView(floor, 'main', true);
+    return { ...v, cables: styleCables(v.cables, ws) };
+  }, [floor, wiring, ws]);
   const cablePaths = useMemo(() => layoutCables(act.cables), [act.cables]);
   const [hoverTray, setHoverTray] = useState<{ id: number; x: number; y: number } | null>(null);
   const cableAvoid    = useMemo(() => labelObstacles(wallGeom, wallLabels, floor.furniture), [wallGeom, wallLabels, floor.furniture]);
@@ -1085,7 +1093,7 @@ export function EditorStage() {
 
       {/* All shapes */}
       <Layer listening={false}>
-        <Group opacity={wiring ? 0.3 : 1}>
+        <Group opacity={wiring ? ws.planDim / 100 : 1}>
         {/* Walls */}
         <WallsLayerContent geom={wallGeom} palette={palette} labels={wallLabels} unit={t('unit.m')} />
         {selectedWall && (
@@ -1110,7 +1118,8 @@ export function EditorStage() {
             {sortByZ(base.furniture).map(item => (
               <FurnitureVisual key={item.id} item={item} palette={palette} onImageLoaded={onImageLoaded} />
             ))}
-            <CablesLayerContent cables={base.cables} palette={palette} unitM={t('unit.m')} avoid={cableAvoid} />
+            <CablesLayerContent cables={base.cables} palette={palette} unitM={t('unit.m')} avoid={cableAvoid}
+              labelSize={ws.cableText} showLabels={ws.cableLabels} />
             <FurnitureLabels furniture={base.furniture} palette={palette} showNames={showNames} lang={lang} sizesPos={sizesPos} />
             <TextNotes texts={base.texts} palette={palette} />
             <DimensionsLayerContent dims={base.dimensions} palette={palette} unit={t('unit.m')} px={px} />
@@ -1119,7 +1128,7 @@ export function EditorStage() {
         </Group>
 
         {/* Cable trays (wiring layer) */}
-        <TraysLayerContent trays={act.trays} palette={palette} highlightId={hoveredTray?.id ?? selectedTray?.id} />
+        <TraysLayerContent trays={act.trays} palette={palette} highlightId={hoveredTray?.id ?? selectedTray?.id} textSize={ws.trayText} />
         {selectedTray && <CableHandles cable={{ id: selectedTray.id, points: selectedTray.points, color: palette.accent }} palette={palette} px={px} />}
 
         {/* Wall preview */}
@@ -1140,11 +1149,12 @@ export function EditorStage() {
 
         {/* Cables (above furniture) */}
         <CablesLayerContent cables={act.cables} palette={palette} unitM={t('unit.m')} avoid={cableAvoid}
+          labelSize={ws.cableText} showLabels={ws.cableLabels}
           highlight={trayCables ? new Set(trayCables.map(c => c.id)) : undefined} />
         {cableDraft && (
           <CableLine points={cablePreview ? [...cableDraft, cablePreview] : cableDraft}
             color={tool === Tool.Tray ? palette.accent : nextCableColor}
-            width={tool === Tool.Tray ? DEFAULT_TRAY_WIDTH : undefined} palette={palette} dashed />
+            width={tool === Tool.Tray ? ws.trayWidth : ws.cableWidth} palette={palette} dashed />
         )}
         {cableDraft && cableDraft.map((q, i) => <Circle key={`cd${i}`} x={q.x} y={q.y} radius={4 * px} fill={nextCableColor} />)}
         {selectedCable && <CableHandles cable={selectedCable} shown={cablePaths.get(selectedCable.id)} palette={palette} px={px} />}
@@ -1247,7 +1257,7 @@ function SelectionHandles({ item, scale, palette }: { item: FurnitureItem; scale
 // ── Purely visual furniture ───────────────────────────────────
 function FurnitureVisual({ item, palette, onImageLoaded }: { item: FurnitureItem; palette: Palette; onImageLoaded: () => void }) {
   if (item.simple) return <SimpleFurniture item={item} palette={palette} />;
-  const img = getSprite(item.path, palette.dark, onImageLoaded);
+  const img = getSprite(item.path, palette.dark, onImageLoaded, item.color);
 
   return (
     <Group x={item.x} y={item.y} rotation={item.rot}>

@@ -1,3 +1,5 @@
+import { mixHex, isGrey, lightness } from '../color';
+
 /**
  * Furniture sprite loading with a shared cache.
  * In the dark theme the SVG source is recoloured (light lines on a dark fill)
@@ -31,22 +33,43 @@ function darkHex(hex: string): string {
   return '#' + hex2(darkChannel(r)) + hex2(darkChannel(g)) + hex2(darkChannel(b));
 }
 
-/** Recolours an SVG document for the dark theme */
-export function darkSvg(svg: string): string {
+/** Replaces every colour of an SVG document (hex, white, black) through `map` */
+function recolor(svg: string, map: (hex: string) => string): string {
   // Unstyled shapes default to black fill: make that explicit on the root so it gets recoloured too
   let out = svg.replace(/<svg\b([^>]*)>/i, (m, attrs: string) => (/\sfill\s*=/.test(attrs) ? m : `<svg${attrs} fill="#000000">`));
   // Colours only — not element references such as href="#id" or url(#id)
-  out = out.replace(/(?<!href=["'])(?<!url\()#([0-9a-f]{6}|[0-9a-f]{3})(?![0-9a-z_-])/gi, m => darkHex(m));
-  out = out.replace(/(["':\s])(white|black)(?=[\s"';}])/gi, (_m, pre: string, name: string) => pre + darkHex(name.toLowerCase() === 'white' ? '#ffffff' : '#000000'));
-  // Embedded raster pictures can't be recoloured by text: invert them with a filter (white → ~#2b, black → ~#d4)
-  if (/<image\b/i.test(out)) out = out.replace(/<\/svg>\s*$/i, '<style>image{filter:invert(0.83)}</style></svg>');
+  out = out.replace(/(?<!href=["'])(?<!url\()#([0-9a-f]{6}|[0-9a-f]{3})(?![0-9a-z_-])/gi, m => map(m));
+  out = out.replace(/(["':\s])(white|black)(?=[\s"';}])/gi, (_m, pre: string, name: string) => pre + map(name.toLowerCase() === 'white' ? '#ffffff' : '#000000'));
   return out;
 }
 
-async function loadDark(src: string): Promise<string> {
+/** Embedded raster pictures can't be recoloured by text: invert them with a filter (white → ~#2b, black → ~#d4) */
+const invertImages = (svg: string) => (/<image\b/i.test(svg) ? svg.replace(/<\/svg>\s*$/i, '<style>image{filter:invert(0.83)}</style></svg>') : svg);
+
+/** Recolours an SVG document for the dark theme */
+export function darkSvg(svg: string): string {
+  return invertImages(recolor(svg, darkHex));
+}
+
+/**
+ * Paints a sprite in the object colour: dark lines become the colour, white fills a light tint of it
+ * (a dark tint in the dark theme). Real colours (e.g. a red emergency socket) stay as they are.
+ */
+export function colorSvg(svg: string, color: string, dark: boolean): string {
+  const fill = mixHex(color, dark ? '#2c2c2c' : '#ffffff', 0.14);
+  const out = recolor(svg, hex => (isGrey(hex) ? mixHex(color, fill, 1 - lightness(hex)) : hex));
+  return dark ? invertImages(out) : out;
+}
+
+/** Sprite source for the theme and object colour */
+export function spriteSvg(svg: string, dark: boolean, color?: string): string {
+  return color ? colorSvg(svg, color, dark) : dark ? darkSvg(svg) : svg;
+}
+
+async function loadRecolored(src: string, dark: boolean, color?: string): Promise<string> {
   const res = await fetch(src);
   if (!res.ok) throw new Error(String(res.status));
-  const text = darkSvg(await res.text());
+  const text = spriteSvg(await res.text(), dark, color);
   return URL.createObjectURL(new Blob([text], { type: 'image/svg+xml' }));
 }
 
@@ -54,9 +77,9 @@ async function loadDark(src: string): Promise<string> {
  * Returns the loaded image, or null while loading / if it failed (callers draw a placeholder).
  * `onLoad` is called once the image becomes available.
  */
-export function getSprite(path: string, dark: boolean, onLoad: () => void): HTMLImageElement | null {
+export function getSprite(path: string, dark: boolean, onLoad: () => void, color?: string): HTMLImageElement | null {
   const src = spriteUrl(path);
-  const key = (dark ? 'dark:' : 'light:') + src;
+  const key = (dark ? 'dark:' : 'light:') + src + (color ? '|' + color : '');
   const hit = cache.get(key);
   if (hit) return hit;
   if (failed.has(key)) return null;
@@ -77,13 +100,13 @@ export function getSprite(path: string, dark: boolean, onLoad: () => void): HTML
     el.onerror = () => finish(null);
     el.src = url;
   };
-  if (dark) loadDark(src).then(start, () => finish(null));
+  if (dark || color) loadRecolored(src, dark, color).then(start, () => finish(null));
   else start(src);
   return null;
 }
 
 /** Whether the sprite has finished loading (successfully or not) */
-export function spriteSettled(path: string, dark: boolean): boolean {
-  const key = (dark ? 'dark:' : 'light:') + spriteUrl(path);
+export function spriteSettled(path: string, dark: boolean, color?: string): boolean {
+  const key = (dark ? 'dark:' : 'light:') + spriteUrl(path) + (color ? '|' + color : '');
   return cache.has(key) || failed.has(key);
 }

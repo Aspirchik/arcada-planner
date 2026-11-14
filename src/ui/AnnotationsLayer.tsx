@@ -1,4 +1,5 @@
 /** Furniture labels and free text notes, shared by the editor and the print view */
+import { mixHex } from '../color';
 import { Text, Group, Rect } from 'react-konva';
 import type { FurnitureItem, TextNote, LabelPos } from '../types';
 import type { Palette } from '../theme';
@@ -92,7 +93,8 @@ export function FurnitureLabels({ furniture, palette, showNames, lang, sizesPos 
 export function SimpleFurniture({ item, palette }: { item: FurnitureItem; palette: Palette }) {
   return (
     <Group x={item.x} y={item.y} rotation={item.rot}>
-      <Rect width={item.w} height={item.h} fill={palette.paper} stroke={palette.wallStroke} strokeWidth={1.5} />
+      <Rect width={item.w} height={item.h} fill={item.color ? mixHex(item.color, palette.paper, 0.14) : palette.paper}
+        stroke={item.color ?? palette.wallStroke} strokeWidth={1.5} />
     </Group>
   );
 }
