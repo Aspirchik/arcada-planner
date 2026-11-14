@@ -34,19 +34,21 @@ export function CableLine({ points, color, width = DEFAULT_CABLE_WIDTH, label, l
 }
 
 /** All cables: shared runs drawn side by side, labels placed so they don't cover each other */
-export function CablesLayerContent({ cables, palette, unitM, avoid, highlight, labelSize = LABEL_SIZE, showLabels = true }: {
+export function CablesLayerContent({ cables, palette, unitM, avoid, highlight, labelSize = LABEL_SIZE, showLabels = true, groupOrder }: {
   cables: Cable[]; palette: Palette; unitM: string; avoid?: Box[];
+  /** Cable groups in lane order (first = outer side of a bundle) */
+  groupOrder?: number[];
   /** Letter height of the labels and whether they are shown (global wiring settings) */
   labelSize?: number; showLabels?: boolean;
   /** When set (hovering a tray), only these cables are shown at full strength */
   highlight?: Set<number>;
 }) {
   const { paths, places, labels } = useMemo(() => {
-    const paths = layoutCables(cables);
+    const paths = layoutCables(cables, groupOrder);
     const labels = new Map(showLabels ? cables.map(c => [c.id, cableLabel(c, unitM)] as [number, string]).filter(([, l]) => !!l) : []);
     const places = placeCableLabels(cables, paths, labels, labelSize, t => t.length * labelSize * 0.55, avoid);
     return { paths, places, labels };
-  }, [cables, unitM, avoid, labelSize, showLabels]);
+  }, [cables, unitM, avoid, labelSize, showLabels, groupOrder]);
   return (
     <Group>
       {cables.map(c => (

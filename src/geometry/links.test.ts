@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { itemAt, linkTo, linkPoint, relink, syncLinks } from './links';
-import { tidyCables, orthogonal, simplify, unstair } from './tidy';
+import { tidyCables, orthogonal, simplify, unstair, routeViaTrays } from './tidy';
 import type { Cable, FloorState, FurnitureItem } from '../types';
 
 const item = (id: number, x: number, y: number, w: number, h: number, rot = 0): FurnitureItem => ({ id, path: 'p', x, y, w, h, rot, zi: 100 });
@@ -62,5 +62,26 @@ describe('tidy cables', () => {
     const c: Cable = { id: 1, color: '#000', points: [{ x: 0, y: 0 }, { x: 0, y: 92 }, { x: 300, y: 92 }, { x: 300, y: 200 }] };
     const out = tidyCables([c], [{ id: 5, points: [{ x: -50, y: 100 }, { x: 350, y: 100 }], width: 10 }]).get(1)!;
     expect(out.some((q, i) => i > 0 && out[i - 1].y === 100 && q.y === 100 && Math.abs(q.x - out[i - 1].x) > 100)).toBe(true);
+  });
+
+  it('routes a cable through the trays when they are near: lead in, along the trays (across a junction), lead out', () => {
+    // L-shaped tray network along two walls; the cable was drawn straight through the room
+    const trays = [
+      { id: 1, points: [{ x: 0, y: 0 }, { x: 500, y: 0 }], width: 20 },
+      { id: 2, points: [{ x: 0, y: 0 }, { x: 0, y: 400 }], width: 20 },
+    ];
+    const r = routeViaTrays({ x: -20, y: 300 }, { x: 400, y: 15 }, trays)!;
+    expect(r[0]).toEqual({ x: -20, y: 300 });
+    expect(r[r.length - 1]).toEqual({ x: 400, y: 15 });
+    expect(r).toContainEqual({ x: 0, y: 0 });
+    expect(r.every((p, i) => i === 0 || p.x === r[i - 1].x || p.y === r[i - 1].y)).toBe(true);
+    // far from every tray: no routing
+    expect(routeViaTrays({ x: 2000, y: 2000 }, { x: 400, y: 15 }, trays)).toBeNull();
+    // tidy uses it; a continuation branches off its parent's new path
+    const a: Cable = { id: 1, color: '#000', points: [{ x: -20, y: 300 }, { x: 200, y: 300 }, { x: 200, y: 15 }] };
+    const b: Cable = { id: 2, color: '#000', parent: 1, points: [{ x: 200, y: 200 }, { x: 400, y: 200 }, { x: 400, y: 15 }] };
+    const out = tidyCables([a, b], trays);
+    expect(out.get(1)).toContainEqual({ x: 0, y: 0 });
+    expect(out.get(2)![0].y).toBe(0);
   });
 });

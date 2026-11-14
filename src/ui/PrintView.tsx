@@ -88,6 +88,8 @@ function PrintFloor({ floor, index }: { floor: FloorState; index: number }) {
   const geom = useMemo(() => computeWallGeometry(floor.nodes, floor.walls), [floor.nodes, floor.walls]);
   const wiring = useStore(s => s.mode) === 'wiring';
   const ws = useStore(s => s.wiring);
+  const commonGroups = useStore(s => s.commonGroups);
+  const groupOrder = [...floor.groups, ...commonGroups].map(g => g.id);
 
   if (!bounds) {
     return (
@@ -121,7 +123,7 @@ function PrintFloor({ floor, index }: { floor: FloorState; index: number }) {
       })}
       <TraysLayerContent trays={v.trays} palette={LIGHT} textSize={ws.trayText} />
       <CablesLayerContent cables={styleCables(v.cables, ws, itemNamer(floor.furniture, lang))} palette={LIGHT} unitM={t('unit.m')} avoid={labelObstacles(geom, wallLabels, floor.furniture)}
-        labelSize={ws.cableText} showLabels={ws.cableLabels} />
+        labelSize={ws.cableText} showLabels={ws.cableLabels} groupOrder={groupOrder} />
       {ready && <FurnitureLabels furniture={v.furniture} palette={LIGHT} showNames={showNames} lang={lang} sizesPos={sizesPos} />}
       <TextNotes texts={v.texts} palette={LIGHT} />
       <DimensionsLayerContent dims={v.dimensions} palette={LIGHT} unit={t('unit.m')} px={1 / scaleVal} />

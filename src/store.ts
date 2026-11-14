@@ -175,7 +175,12 @@ export function parseProject(json: string): ParsedProject {
       ...(Array.isArray(c.groups) && c.groups.some(isNum) ? { groups: c.groups.filter(isNum) } : {}),
       ...(isNum(c.parent) && c.parent !== c.id ? { parent: c.parent } : {}),
       ...layerOf(c),
-    })).filter(c => c.points.length >= 2);
+    })).filter(c => c.points.length >= 2)
+      // Ends lying on an item are connected to it (also for cables drawn before connections existed)
+      .map(c => {
+        const { fromLink, toLink } = relink(c, furniture);
+        return { ...c, ...(fromLink && c.parent === undefined ? { fromLink } : {}), ...(toLink ? { toLink } : {}) };
+      });
 
     const trays = (Array.isArray(f.trays) ? f.trays : []).filter((t): t is Record<string, unknown> & { id: number; points: unknown[] } =>
       !!t && isNum(t.id) && Array.isArray(t.points)
@@ -262,6 +267,8 @@ interface Store {
   /** Adds the cable to the group or takes it out */
   toggleCableGroup(cableId: number, groupId: number): void;
   toggleLit(groupId: number): void;
+  /** Moves a group up (-1) or down (+1) in its list: the order of groups in a bundle (first = along the wall) */
+  moveGroup(id: number, by: -1 | 1): void;
   /** Lays out the cables of the current layer neatly (right angles, shared runs, onto trays); one undo step */
   tidyCables(): void;
 
@@ -521,6 +528,17 @@ export const useStore = create<Store>((set, get) => {
           return { ...c, groups: groups.length ? groups : undefined };
         }) };
       });
+    },
+    moveGroup(id, by) {
+      const move = (list: CableGroup[]) => {
+        const i = list.findIndex(g => g.id === id), j = i + by;
+        if (i < 0 || j < 0 || j >= list.length) return list;
+        const next = [...list];
+        [next[i], next[j]] = [next[j], next[i]];
+        return next;
+      };
+      if (get().commonGroups.some(g => g.id === id)) set(s => ({ commonGroups: move(s.commonGroups), dirty: true }));
+      else upFloor(f => { const groups = move(f.groups); return groups === f.groups ? f : { ...f, groups }; });
     },
     toggleLit: (groupId) => set(s => ({ litGroups: s.litGroups.includes(groupId) ? s.litGroups.filter(g => g !== groupId) : [...s.litGroups, groupId] })),
 

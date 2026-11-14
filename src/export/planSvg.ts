@@ -44,6 +44,8 @@ export interface PlanSvgOptions {
   layers?: LayerChoice;
   /** Wiring mode settings: cable width and labels, tray labels, how strongly the plan shows under the wiring */
   wiring?: WiringSettings;
+  /** Ids of the project's common cable groups (after the floor's own groups in lane order) */
+  commonGroups?: number[];
   /** Pixel size written to the root element (PNG); the viewBox stays in cm */
   pixelWidth?: number;
   pixelHeight?: number;
@@ -305,7 +307,7 @@ export function buildPlanSvg(floor: FloorState, sprites: Map<string, SpriteDef>,
     // Cables (above furniture): shared runs side by side, labels kept apart
     const cables = styleCables(v.cables, ws, itemNamer(floor.furniture, opts.lang));
     const size = ws.cableText;
-    const cablePaths = layoutCables(cables);
+    const cablePaths = layoutCables(cables, [...(floor.groups ?? []).map(g => g.id), ...(opts.commonGroups ?? [])]);
     const cableTexts = new Map(ws.cableLabels ? cables.map(c => [c.id, cableLabel(c, opts.unitM)] as [number, string]).filter(([, l]) => !!l) : []);
     const cableSpots = placeCableLabels(cables, cablePaths, cableTexts, size, t => measure(t, size, false),
       labelObstacles(geom, opts.wallLabels, floor.furniture));

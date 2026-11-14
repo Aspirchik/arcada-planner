@@ -176,7 +176,9 @@ export function EditorStage() {
   }, [floor, wiring, ws, nameOf]);
   /** Cables of the highlighted groups (others are dimmed), or null */
   const litCables = useMemo(() => (litGroups.length ? cablesInGroups(act.cables, litGroups) : null), [act.cables, litGroups]);
-  const cablePaths = useMemo(() => layoutCables(act.cables), [act.cables]);
+  const commonGroups  = useStore(s => s.commonGroups);
+  const groupOrder    = useMemo(() => [...floor.groups, ...commonGroups].map(g => g.id), [floor.groups, commonGroups]);
+  const cablePaths = useMemo(() => layoutCables(act.cables, groupOrder), [act.cables, groupOrder]);
   const [hoverTray, setHoverTray] = useState<{ id: number; x: number; y: number } | null>(null);
   const cableAvoid    = useMemo(() => labelObstacles(wallGeom, wallLabels, floor.furniture), [wallGeom, wallLabels, floor.furniture]);
 
@@ -1172,7 +1174,7 @@ export function EditorStage() {
               <FurnitureVisual key={item.id} item={item} palette={palette} onImageLoaded={onImageLoaded} />
             ))}
             <CablesLayerContent cables={base.cables} palette={palette} unitM={t('unit.m')} avoid={cableAvoid}
-              labelSize={ws.cableText} showLabels={ws.cableLabels} />
+              labelSize={ws.cableText} showLabels={ws.cableLabels} groupOrder={groupOrder} />
             <FurnitureLabels furniture={base.furniture} palette={palette} showNames={showNames} lang={lang} sizesPos={sizesPos} />
             <TextNotes texts={base.texts} palette={palette} />
             <DimensionsLayerContent dims={base.dimensions} palette={palette} unit={t('unit.m')} px={px} />
@@ -1202,7 +1204,7 @@ export function EditorStage() {
 
         {/* Cables (above furniture) */}
         <CablesLayerContent cables={act.cables} palette={palette} unitM={t('unit.m')} avoid={cableAvoid}
-          labelSize={ws.cableText} showLabels={ws.cableLabels}
+          labelSize={ws.cableText} showLabels={ws.cableLabels} groupOrder={groupOrder}
           highlight={trayHits ? trayHits.ids : litCables ?? undefined} />
         {cableDraft && (
           <CableLine points={cablePreview ? [...cableDraft, cablePreview] : cableDraft}

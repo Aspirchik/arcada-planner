@@ -3,25 +3,9 @@
  * The chain is labelled once — from the start through every consumer in order along the run. (pure)
  */
 import type { Cable } from '../types';
-import type { Pt } from './hit';
-import { pathLength } from './cable';
+import { pathLength, projectOnPath } from './cable';
 
-/** Nearest point of a polyline to p, and the distance along the polyline to it */
-export function projectOnPath(points: Pt[], p: Pt): { p: Pt; along: number; dist: number } {
-  let best = { p: points[0] ?? p, along: 0, dist: Infinity };
-  let acc = 0;
-  for (let i = 1; i < points.length; i++) {
-    const a = points[i - 1], b = points[i];
-    const dx = b.x - a.x, dy = b.y - a.y;
-    const len2 = dx * dx + dy * dy;
-    const t = len2 === 0 ? 0 : Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / len2));
-    const q = { x: a.x + dx * t, y: a.y + dy * t };
-    const d = Math.hypot(q.x - p.x, q.y - p.y);
-    if (d < best.dist) best = { p: q, along: acc + Math.sqrt(len2) * t, dist: d };
-    acc += Math.sqrt(len2);
-  }
-  return best;
-}
+export { projectOnPath };
 
 /** Root of every cable's chain (a cable without a known parent is its own root; cycles are cut) */
 export function chainRoots(cables: Cable[]): Map<number, number> {

@@ -21,7 +21,7 @@ export interface ExportRequest {
   pxPerCm: number;
   pdfPage: PdfPage;
   layers: LayerChoice;
-  view: { wallLabels: WallLabelMode; showNames: boolean; sizesPos: SizesPos; lang: Lang; wiring?: WiringSettings };
+  view: { wallLabels: WallLabelMode; showNames: boolean; sizesPos: SizesPos; lang: Lang; wiring?: WiringSettings; commonGroups?: number[] };
   text: { unitM: string; floorTitle: (n: number) => string; scale: string };
 }
 

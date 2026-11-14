@@ -314,6 +314,9 @@ body { overflow: hidden; font-family: system-ui, sans-serif; background: var(--o
 .grp-row { display: flex; align-items: center; gap: 6px; padding: 2px 0; }
 .grp-name { flex: 1; min-width: 0; font-size: 12px; padding: 3px 6px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); color: var(--text-1); }
 .grp-count { min-width: 18px; text-align: right; color: var(--text-3); }
+.grp-order { display: flex; flex-direction: column; }
+.grp-order button { border: none; background: none; padding: 0; line-height: 0; color: var(--text-2); cursor: pointer; }
+.grp-order button:disabled { opacity: 0.3; cursor: default; }
 .grp-empty { color: var(--text-3); font-style: italic; }
 .grp-hint { color: var(--text-3); font-size: 11px; margin-top: 4px; }
 .grp-chips { display: flex; flex-wrap: wrap; gap: 4px; }

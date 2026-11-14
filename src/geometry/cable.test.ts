@@ -11,18 +11,66 @@ describe('cable bundling', () => {
     expect(layoutCables([c]).get(1)).toEqual(c.points);
   });
 
-  it('cables on the same run are drawn side by side, each in its own lane', () => {
+  it('cables on the same run are drawn side by side, each in its own lane, with leads to their real ends', () => {
     const a = cable(1, [[0, 0], [200, 0]]);
     const b = cable(2, [[50, 0], [300, 0], [300, 100]]);
     const c = cable(3, [[300, 0], [100, 0]]); // opposite direction, same run
     const m = layoutCables([a, b, c]);
-    const ys = [m.get(1)![0].y, m.get(2)![0].y, m.get(3)![0].y];
-    // three distinct, evenly spaced lanes (3 cm cable + 1.5 cm gap), centred on the run
+    // lane = y of the second point (the first is the lead from the real end)
+    const ys = [m.get(1)![1].y, m.get(2)![1].y, m.get(3)![1].y];
     expect(new Set(ys.map(y => Math.round(y * 10))).size).toBe(3);
     expect(ys.reduce((s, y) => s + y, 0)).toBeCloseTo(0);
-    expect(Math.abs(ys[0] - ys[1])).toBeCloseTo(4.5);
-    // the vertical part of b is alone and stays on its line
-    expect(m.get(2)![m.get(2)!.length - 1]).toEqual({ x: 300 + (m.get(2)![1].x - 300), y: 100 });
+    expect(Math.abs(ys[0] - ys[1]) % 4.5).toBeCloseTo(0);
+    // ends are where the cable really ends
+    expect(m.get(1)![0]).toEqual({ x: 0, y: 0 });
+    expect(m.get(1)![m.get(1)!.length - 1]).toEqual({ x: 200, y: 0 });
+    expect(m.get(2)![m.get(2)!.length - 1]).toEqual({ x: 300, y: 100 });
+  });
+
+  it('a cable keeps its lane when others leave the bundle; the one turning off first is on that side', () => {
+    // three cables from the left along y = 0, dropping down (+y) at x = 100, 200 and 300
+    const a = cable(1, [[0, 0], [100, 0], [100, 100]]);
+    const b = cable(2, [[0, 0], [200, 0], [200, 100]]);
+    const c = cable(3, [[0, 0], [300, 0], [300, 100]]);
+    const m = layoutCables([c, b, a]);
+    const lane = (id: number) => m.get(id)![1].y;
+    expect(new Set([lane(1), lane(2), lane(3)]).size).toBe(3);
+    // first to leave is lowest (on the side it turns to), so nobody crosses
+    expect(lane(1)).toBeGreaterThan(lane(2));
+    expect(lane(2)).toBeGreaterThan(lane(3));
+    // c stays in one lane all the way to x = 300 although a and b have left
+    expect(m.get(3)!.filter(p => p.y < 1 && p.y > -10 && p.x > 1 && p.x < 299).every(p => Math.abs(p.y - lane(3)) < 0.01)).toBe(true);
+  });
+
+  it('a chain keeps one lane past its consumers', () => {
+    // red chain: entry → drop at 100, continued → drop at 200; a second cable runs to 300
+    const red1 = cable(1, [[0, 0], [100, 0], [100, 100]]);
+    const red2: Cable = { ...cable(2, [[100, 0], [200, 0], [200, 100]]), parent: 1 };
+    const other = cable(3, [[0, 0], [300, 0], [300, 100]]);
+    const m = layoutCables([red1, red2, other]);
+    expect(m.get(1)![1].y).toBeCloseTo(m.get(2)!.find(p => p.x > 150 && p.x < 199)?.y ?? m.get(2)![1].y);
+    expect(m.get(1)![1].y).not.toBeCloseTo(m.get(3)![1].y);
+  });
+
+  it('groups lie together in list order, the first one on the outer side', () => {
+    // a bundle along the top (y = 0) of a drawing whose middle is below it
+    const mk = (id: number, x: number, groups?: number[]): Cable => ({ ...cable(id, [[0, 0], [x, 0], [x, 300]]), ...(groups ? { groups } : {}) });
+    const m = layoutCables([mk(1, 100, [8]), mk(2, 150, [7]), mk(3, 200, [8]), mk(4, 250)], [7, 8]);
+    const lane = (id: number) => m.get(id)![1].y;
+    // group 7 outermost (top), then group 8, then the cable without a group
+    expect(lane(2)).toBeLessThan(lane(1));
+    expect(lane(2)).toBeLessThan(lane(3));
+    expect(Math.max(lane(1), lane(3))).toBeLessThan(lane(4));
+  });
+
+  it('a continuation starts on the drawn line of its parent', () => {
+    const trunk = cable(1, [[0, 0], [400, 0]]);
+    const other = cable(2, [[0, 0], [400, 0]]);
+    const branch: Cable = { ...cable(3, [[200, 0], [200, 100]]), parent: 1 };
+    const m = layoutCables([trunk, other, branch]);
+    const trunkLane = m.get(1)![1].y;
+    expect(trunkLane).not.toBe(0);
+    expect(m.get(3)![0]).toEqual({ x: 200, y: trunkLane });
   });
 
   it('cables that only cross are not bundled', () => {
@@ -32,14 +80,16 @@ describe('cable bundling', () => {
 });
 
 describe('cable labels', () => {
-  it('a second label on the same run moves away from the first', () => {
+  it('a second label on the same run does not cover the first', () => {
     const a = cable(1, [[0, 0], [400, 0]]);
     const b = cable(2, [[0, 0], [400, 0]]);
     const paths = layoutCables([a, b]);
     const labels = new Map([[1, 'LAN 1'], [2, 'LAN 2']]);
     const pos = placeCableLabels([a, b], paths, labels, 11, t => t.length * 6);
-    expect(Math.abs(pos.get(1)!.p.x - pos.get(2)!.p.x)).toBeGreaterThan(30);
-    expect(pathLength(paths.get(1)!)).toBeCloseTo(400);
+    // apart along the run, or on opposite sides of it
+    const p1 = pos.get(1)!.p, p2 = pos.get(2)!.p;
+    expect(Math.abs(p1.x - p2.x) > 30 || Math.abs(p1.y - p2.y) >= 11).toBe(true);
+    expect(pathLength(paths.get(1)!)).toBeCloseTo(400 + 2 * 2.25, 0);
   });
 });
 

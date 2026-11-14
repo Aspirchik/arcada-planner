@@ -1,6 +1,6 @@
 /** Cable groups (Wiring mode): local to this floor or common to all floors; each can be highlighted */
 import { useEffect, useState } from 'react';
-import { Lightbulb, LightbulbOff, Trash2, Plus, X } from 'lucide-react';
+import { Lightbulb, LightbulbOff, Trash2, Plus, X, ChevronUp, ChevronDown } from 'lucide-react';
 import { useStore } from '../store';
 import { useT } from '../i18n';
 import type { CableGroup } from '../types';
@@ -37,7 +37,7 @@ export function GroupsPanel({ onClose }: { onClose: () => void }) {
         <button className="sel-btn" title={t('groups.add')} onClick={() => st.addGroup(scope, nextName())}><Plus size={14} /></button>
       </div>
       {groups.length === 0 && <div className="grp-empty">{t('groups.empty')}</div>}
-      {groups.map(g => {
+      {groups.map((g, i) => {
         const on = lit.includes(g.id);
         return (
           <div key={g.id} className={'grp-row' + (on ? ' lit' : '')}>
@@ -46,6 +46,10 @@ export function GroupsPanel({ onClose }: { onClose: () => void }) {
             </button>
             <NameField group={g} />
             <span className="grp-count" title={t('groups.countTitle')}>{count(g.id)}</span>
+            <span className="grp-order">
+              <button title={t('groups.up')} disabled={i === 0} onClick={() => st.moveGroup(g.id, -1)}><ChevronUp size={12} /></button>
+              <button title={t('groups.down')} disabled={i === groups.length - 1} onClick={() => st.moveGroup(g.id, 1)}><ChevronDown size={12} /></button>
+            </span>
             <button className="sel-btn" title={t('groups.delete')}
               onClick={() => { if (confirm(t('groups.deleteConfirm', { name: g.name }))) st.deleteGroup(g.id); }}><Trash2 size={14} /></button>
           </div>

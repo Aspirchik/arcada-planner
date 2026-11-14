@@ -115,25 +115,112 @@ function sameRun(s1: Seg, s2: Seg): boolean {
   return Math.min(s1.t1, s2.t1) - Math.max(s1.t0, s2.t0) > MIN_OVERLAP;
 }
 
+/** Nearest point of a polyline to p, and the distance along the polyline to it */
+export function projectOnPath(points: Pt[], p: Pt): { p: Pt; along: number; dist: number } {
+  let best = { p: points[0] ?? p, along: 0, dist: Infinity };
+  let acc = 0;
+  for (let i = 1; i < points.length; i++) {
+    const a = points[i - 1], b = points[i];
+    const dx = b.x - a.x, dy = b.y - a.y;
+    const len2 = dx * dx + dy * dy;
+    const t = len2 === 0 ? 0 : Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / len2));
+    const q = { x: a.x + dx * t, y: a.y + dy * t };
+    const d = Math.hypot(q.x - p.x, q.y - p.y);
+    if (d < best.dist) best = { p: q, along: acc + Math.sqrt(len2) * t, dist: d };
+    acc += Math.sqrt(len2);
+  }
+  return best;
+}
+
+const BIG = 1e6;
+
 /**
- * Display paths for all cables: where several cables share a run, each gets its own lane
- * (offset sideways, ordered as in the list), joined with clean corners. Cables alone keep their points.
+ * Display paths for all cables. Where several cables share a run (a "corridor": parallel segments on one line
+ * that overlap, directly or through each other), every cable keeps one lane along the whole corridor, so lanes
+ * don't jump when a cable leaves. Lanes are ordered so cables turning off to one side lie on that side and the
+ * one turning first is outermost — they leave the bundle without crossing it. Offset ends get a short straight
+ * lead back to the real end (the centre of a socket); a continuation starts on its parent's drawn line.
+ * With `groupOrder` (cable group ids, first = outermost), cables of one group lie together, the first group
+ * on the outer side of the bundle (away from the middle of the drawing, i.e. along the wall).
  */
-export function layoutCables(cables: Cable[]): Map<number, Pt[]> {
+export function layoutCables(cables: Cable[], groupOrder: number[] = []): Map<number, Pt[]> {
   const segs = segmentsOf(cables);
-  // Offset vector for every (cable, segment index)
-  const offsets = new Map<string, Pt>();
-  for (const s1 of segs) {
-    const group = new Set<number>([s1.cable]);
-    let maxW = s1.width;
-    for (const s2 of segs) {
-      if (s2.cable !== s1.cable && sameRun(s1, s2)) { group.add(s2.cable); maxW = Math.max(maxW, s2.width); }
+  // Middle of the drawing: the outer side of a bundle is the side away from it
+  const all = cables.flatMap(c => c.points);
+  const mid = all.length ? { x: all.reduce((s, p) => s + p.x, 0) / all.length, y: all.reduce((s, p) => s + p.y, 0) / all.length } : { x: 0, y: 0 };
+
+  // Corridors: union of overlapping parallel segments of different cables on the same line
+  const parent = segs.map((_, i) => i);
+  const find = (i: number): number => (parent[i] === i ? i : (parent[i] = find(parent[i])));
+  for (let i = 0; i < segs.length; i++)
+    for (let j = i + 1; j < segs.length; j++)
+      if (segs[i].cable !== segs[j].cable && sameRun(segs[i], segs[j])) parent[find(i)] = find(j);
+  const corridors = new Map<number, Seg[]>();
+  segs.forEach((sg, i) => {
+    const r = find(i);
+    corridors.set(r, [...(corridors.get(r) ?? []), sg]);
+  });
+
+  // Which side (along n) the path goes from a corridor end: +1 / -1, 0 when the cable ends there
+  const sideAt = (ci: number, pointIdx: number, otherIdx: number, n: Pt): number => {
+    const pts = cables[ci].points;
+    const q = pts[otherIdx];
+    if (!q) return 0;
+    const d = (q.x - pts[pointIdx].x) * n.x + (q.y - pts[pointIdx].y) * n.y;
+    return Math.abs(d) < 0.5 ? 0 : Math.sign(d);
+  };
+
+  // A chain (cable + its continuations) is one line: it keeps one lane
+  const idx = new Map(cables.map((c, i) => [c.id, i]));
+  const lineOf = (ci: number): number => {
+    let cur = ci;
+    const seen = new Set([ci]);
+    for (;;) {
+      const up = cables[cur].parent !== undefined ? idx.get(cables[cur].parent!) : undefined;
+      if (up === undefined || seen.has(up)) return cur;
+      seen.add(up);
+      cur = up;
     }
-    if (group.size < 2) continue;
-    const order = [...group].sort((x, y) => x - y);
-    const lane = order.indexOf(s1.cable) - (order.length - 1) / 2;
-    const o = lane * (maxW + GAP);
-    offsets.set(`${s1.cable}:${s1.index}`, { x: s1.n.x * o, y: s1.n.y * o });
+  };
+
+  const offsets = new Map<string, Pt>();
+  for (const list of corridors.values()) {
+    const lines = [...new Set(list.map(sg => lineOf(sg.cable)))];
+    if (lines.length < 2) continue;
+    const n = list[0].n;
+    const maxW = Math.max(...list.map(sg => sg.width));
+    const corrLo = Math.min(...list.map(sg => sg.t0)), corrHi = Math.max(...list.map(sg => sg.t1));
+    const score = new Map<number, number>();
+    for (const line of lines) {
+      const own = list.filter(sg => lineOf(sg.cable) === line);
+      const lo = Math.min(...own.map(sg => sg.t0)), hi = Math.max(...own.map(sg => sg.t1));
+      // Where the line turns off the corridor, and to which side
+      const exits: { t: number; side: number }[] = [];
+      for (const sg of own) {
+        const ta = sg.a.x * sg.u.x + sg.a.y * sg.u.y, tb = sg.b.x * sg.u.x + sg.b.y * sg.u.y;
+        const sa = sideAt(sg.cable, sg.index, sg.index - 1, n), sb = sideAt(sg.cable, sg.index + 1, sg.index + 2, n);
+        if (sa) exits.push({ t: ta, side: sa });
+        if (sb) exits.push({ t: tb, side: sb });
+      }
+      // The line comes in at the corridor end it shares with others (the common start, e.g. the entry point)
+      const fromLo = lo - corrLo <= 5 || corrHi - hi > 5;
+      const away = exits.filter(e => (fromLo ? e.t > lo + 0.5 : e.t < hi - 0.5));
+      const first = away.sort((a, b) => (fromLo ? a.t - b.t : b.t - a.t))[0];
+      // The first to turn off goes outermost on its side, so it leaves without crossing the others
+      score.set(line, first ? first.side * (BIG - (fromLo ? first.t - corrLo : corrHi - first.t)) : 0);
+    }
+    // Group rank of a line (a chain shares the groups of its first cable); no group = after all groups
+    const rank = (line: number) => {
+      const r = Math.min(...(cables[line].groups ?? []).map(g => groupOrder.indexOf(g)).filter(i => i >= 0));
+      return Number.isFinite(r) ? r : groupOrder.length;
+    };
+    const at = list[0].a;
+    const outerPlus = (at.x - mid.x) * n.x + (at.y - mid.y) * n.y > 0;
+    const order = lines.sort((x, y) => (outerPlus ? rank(y) - rank(x) : rank(x) - rank(y)) || score.get(x)! - score.get(y)! || x - y);
+    for (const sg of list) {
+      const o = (order.indexOf(lineOf(sg.cable)) - (order.length - 1) / 2) * (maxW + GAP);
+      offsets.set(`${sg.cable}:${sg.index}`, { x: n.x * o, y: n.y * o });
+    }
   }
 
   const result = new Map<number, Pt[]>();
@@ -161,22 +248,38 @@ export function layoutCables(cables: Cable[]): Map<number, Pt[]> {
       else out.push(q);
     }
     const last = pts.length - 1;
-    out.push({ x: pts[last].x + off(last - 1).x, y: pts[last].y + off(last - 1).y });
+    const end = { x: pts[last].x + off(last - 1).x, y: pts[last].y + off(last - 1).y };
+    out.push(end);
+    // Short straight leads from the lane to the real ends (e.g. the centre of a socket)
+    if (Math.hypot(end.x - pts[last].x, end.y - pts[last].y) > 0.01) out.push({ ...pts[last] });
+    if (cb.parent === undefined && Math.hypot(out[0].x - pts[0].x, out[0].y - pts[0].y) > 0.01) out.unshift({ ...pts[0] });
     result.set(cb.id, out);
   });
+
+  // Continuations start on the drawn line of their parent (which may be in a lane of a bundle)
+  const byId = new Map(cables.map(c => [c.id, c]));
+  for (const c of cables) {
+    if (c.parent === undefined) continue;
+    const up = byId.get(c.parent);
+    const path = result.get(c.id), upPath = up && result.get(up.id);
+    if (!up || !path || !upPath || projectOnPath(up.points, c.points[0]).dist > 1) continue;
+    const q = projectOnPath(upPath, path[0]).p;
+    if (Math.hypot(q.x - path[0].x, q.y - path[0].y) > 0.01) result.set(c.id, [q, ...path]);
+  }
   return result;
 }
 
 // ── Label placement without overlaps ──
 
-const FRACTIONS = [0.5, 0.35, 0.65, 0.2, 0.8, 0.1, 0.9];
+const FRACTIONS = [0.5, 0.3, 0.7, 0.15, 0.85];
 
 export interface Box { x0: number; y0: number; x1: number; y1: number }
 const overlap = (a: Box, b: Box) => Math.max(0, Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0)) * Math.max(0, Math.min(a.y1, b.y1) - Math.max(a.y0, b.y0));
 
 /**
- * Where to put each cable label: the first spot along the cable (middle first) that doesn't
- * cover a label already placed. `size` is the font size, `measure` the text width.
+ * Where to put each cable label: on a straight part long enough for the text (longest first, its middle first),
+ * on either side of the line, where it doesn't cover a label already placed or an obstacle.
+ * A chain's label may go on any of its cables. `size` is the font size, `measure` the text width.
  */
 export function placeCableLabels(
   cables: Cable[], paths: Map<number, Pt[]>, labels: Map<number, string>, size: number,
@@ -185,25 +288,49 @@ export function placeCableLabels(
 ): Map<number, { p: Pt; angle: number }> {
   const placed: Box[] = [...avoid];
   const out = new Map<number, { p: Pt; angle: number }>();
+  const byId = new Map(cables.map(c => [c.id, c]));
+  const rootOf = (c: Cable) => {
+    let cur = c;
+    const seen = new Set([c.id]);
+    while (cur.parent !== undefined && byId.has(cur.parent) && !seen.has(cur.parent)) { cur = byId.get(cur.parent)!; seen.add(cur.id); }
+    return cur.id;
+  };
   for (const c of cables) {
     const text = labels.get(c.id);
-    const path = paths.get(c.id) ?? c.points;
-    if (!text || path.length < 2) continue;
+    const own = paths.get(c.id) ?? c.points;
+    if (!text || own.length < 2) continue;
+    // Straight parts to choose from: this cable's, plus (for a chain's first cable) those of the whole chain
+    const polys = [own, ...(c.route !== undefined && c.route !== ''
+      ? cables.filter(k => k.id !== c.id && rootOf(k) === c.id).map(k => paths.get(k.id) ?? k.points) : [])];
+    const parts: { a: Pt; b: Pt; len: number }[] = [];
+    for (const poly of polys)
+      for (let i = 1; i < poly.length; i++) {
+        const len = Math.hypot(poly[i].x - poly[i - 1].x, poly[i].y - poly[i - 1].y);
+        if (len > 0.5) parts.push({ a: poly[i - 1], b: poly[i], len });
+      }
+    parts.sort((x, y) => y.len - x.len);
     const w = measure(text), h = size;
     const off = (c.width ?? 3) / 2 + size / 2 + 2;
     let best: { p: Pt; angle: number; box: Box; score: number } | null = null;
-    for (const f of FRACTIONS) {
-      const at = pointAlong(path, f);
-      const rad = at.angle * Math.PI / 180;
-      const ux = Math.cos(rad), uy = Math.sin(rad);
+    search: for (const part of parts) {
+      const ux = (part.b.x - part.a.x) / part.len, uy = (part.b.y - part.a.y) / part.len;
+      const angle = Math.atan2(uy, ux) * 180 / Math.PI;
       const nx = -uy, ny = ux;
-      const side = ny > 0 || (ny === 0 && nx > 0) ? -1 : 1;
-      const p = { x: at.p.x + nx * off * side, y: at.p.y + ny * off * side };
-      const hx = Math.abs(ux) * w / 2 + Math.abs(nx) * h / 2, hy = Math.abs(uy) * w / 2 + Math.abs(ny) * h / 2;
-      const box = { x0: p.x - hx, y0: p.y - hy, x1: p.x + hx, y1: p.y + hy };
-      const score = placed.reduce((s, b) => s + overlap(box, b), 0);
-      if (!best || score < best.score) best = { p, angle: at.angle, box, score };
-      if (score === 0) break;
+      const up = ny > 0 || (ny === 0 && nx > 0) ? -1 : 1;
+      const short = Math.max(0, w + 4 - part.len);
+      for (const f of FRACTIONS) {
+        // keep the text inside the straight part when it fits
+        const t = short > 0 ? part.len / 2 : Math.min(part.len - w / 2 - 2, Math.max(w / 2 + 2, part.len * f));
+        for (const side of [up, -up]) {
+          const p = { x: part.a.x + ux * t + nx * off * side, y: part.a.y + uy * t + ny * off * side };
+          const hx = Math.abs(ux) * w / 2 + Math.abs(nx) * h / 2, hy = Math.abs(uy) * w / 2 + Math.abs(ny) * h / 2;
+          const box = { x0: p.x - hx, y0: p.y - hy, x1: p.x + hx, y1: p.y + hy };
+          const score = placed.reduce((sum, bx) => sum + overlap(box, bx), 0) + short * 1000;
+          if (!best || score < best.score) best = { p, angle, box, score };
+          if (score === 0) break search;
+        }
+        if (short > 0) break;
+      }
     }
     if (best) { placed.push(best.box); out.set(c.id, { p: best.p, angle: best.angle }); }
   }
