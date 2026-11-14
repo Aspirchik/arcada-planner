@@ -9,8 +9,7 @@ import { computeWallGeometry, type FloorWallGeom } from '../geometry/walls';
 import { rectCorners, type Pt } from '../geometry/hit';
 import { wallLabelSpecs, formatMeters, LABEL_SIZE } from '../geometry/wallLabels';
 import { sortByZ } from '../helpers';
-import { catalogName } from '../i18n';
-import catalog from '../catalog.json';
+import { furnitureLabel, sizesCorner } from '../labels';
 
 export const EXPORT_FONT = 'Roboto';
 const LINE_HEIGHT = 1.2;
@@ -155,17 +154,6 @@ const MIRROR: Record<LabelPos, LabelPos> = { c: 'c', t: 'b', b: 't', l: 'r', r: 
 const H = (p: LabelPos) => (p === 'l' || p === 'tl' || p === 'bl' ? 'start' : p === 'r' || p === 'tr' || p === 'br' ? 'end' : 'middle');
 const V = (p: LabelPos) => (p === 't' || p === 'tl' || p === 'tr' ? 'top' : p === 'b' || p === 'bl' || p === 'br' ? 'bottom' : 'middle');
 
-const nameByPath = new Map<string, string>();
-for (const c of catalog.categories) for (const it of c.items) if (!nameByPath.has(it.imagePath)) nameByPath.set(it.imagePath, it.name);
-
-function itemLabel(item: FurnitureItem, showNames: boolean, lang: Lang): string {
-  const own = item.label?.trim();
-  if (own) return own;
-  if (!showNames) return '';
-  const name = item.name ?? nameByPath.get(item.path);
-  return name ? catalogName(lang, 'item', name) : '';
-}
-
 /** Lines of text placed in a box (inside the item's own frame) */
 function boxText(lines: string[], size: number, pos: LabelPos, x0: number, y0: number, w: number, h: number, fill: string, halo: string, bold: boolean): string {
   const lh = size * LINE_HEIGHT;
@@ -178,8 +166,9 @@ function boxText(lines: string[], size: number, pos: LabelPos, x0: number, y0: n
 }
 
 function furnitureLabels(item: FurnitureItem, o: Required<Pick<PlanSvgOptions, 'palette' | 'showNames' | 'sizesPos' | 'lang' | 'measure'>>): string {
-  const text = itemLabel(item, o.showNames, o.lang);
-  if (!text && o.sizesPos === 'off') return '';
+  const text = furnitureLabel(item, o.showNames, o.lang);
+  const corner = sizesCorner(item, o.sizesPos);
+  if (!text && corner === 'off') return '';
   const rot = ((item.rot % 360) + 360) % 360;
   const flip = rot > 90 && rot <= 270;
   const pos = (p: LabelPos) => (flip ? MIRROR[p] : p);
@@ -196,9 +185,9 @@ function furnitureLabels(item: FurnitureItem, o: Required<Pick<PlanSvgOptions, '
     const lines = wrapText(text, bw, size, bold, o.measure);
     inner += boxText(lines, size, pos(item.labelPos ?? 'c'), pad, pad, bw, bh, item.labelColor ?? o.palette.text, o.palette.textHalo, bold);
   }
-  if (o.sizesPos !== 'off') {
+  if (corner !== 'off') {
     const sz = Math.max(6, Math.min(11, Math.min(item.w, item.h) * 0.16));
-    inner += boxText([`${Math.round(item.w)}×${Math.round(item.h)}`], sz, pos(o.sizesPos), pad, pad, bw, bh, o.palette.wallLabel, o.palette.textHalo, false);
+    inner += boxText([`${Math.round(item.w)}×${Math.round(item.h)}`], sz, pos(corner), pad, pad, bw, bh, o.palette.wallLabel, o.palette.textHalo, false);
   }
   const flipT = flip ? ` transform="translate(${f(item.w)} ${f(item.h)}) rotate(180)"` : '';
   return `<g transform="translate(${f(item.x)} ${f(item.y)}) rotate(${f(item.rot)})"><g${flipT}>${inner}</g></g>`;

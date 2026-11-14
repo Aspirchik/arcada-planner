@@ -235,8 +235,10 @@ describe('simple view', () => {
     const before = undoLen();
     st().updateFurnitureMany([a, b], { simple: true });
     expect(undoLen()).toBe(before + 1);
+    st().updateFurnitureMany([a], { textMode: 'off', sizeMode: 'on' });
     st().load(st().save());
     expect(floor().furniture.every(f => f.simple)).toBe(true);
+    expect(floor().furniture[0]).toMatchObject({ textMode: 'off', sizeMode: 'on' });
   });
 });
 

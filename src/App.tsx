@@ -135,6 +135,26 @@ function ColorSwatches({ value, onChange, title }: { value: string | null | unde
   );
 }
 
+type Tri = 'global' | 'on' | 'off';
+
+/** Three-way switch: follow the toolbar (global) / always on / always off */
+function TriSelect({ value, label, title, onChange }: { value: Tri | ''; label: string; title: string; onChange: (v: Tri) => void }) {
+  const t = useT();
+  return (
+    <label title={title}>{label}
+      <select className="sel-select" value={value} onChange={e => onChange(e.target.value as Tri)}>
+        {value === '' && <option value="">—</option>}
+        <option value="global">{t('mode.global')}</option>
+        <option value="on">{t('mode.on')}</option>
+        <option value="off">{t('mode.off')}</option>
+      </select>
+    </label>
+  );
+}
+
+const triOf = (v: 'on' | 'off' | undefined): Tri => v ?? 'global';
+const fromTri = (v: Tri) => (v === 'global' ? undefined : v);
+
 function SelectionPanel() {
   const selectedId   = useStore(s => s.selectedId);
   const selection    = useStore(s => s.selection);
@@ -159,16 +179,27 @@ function SelectionPanel() {
     ];
     if (pts.length === 0) return null;
     return (
-      <div className="selection-panel" style={at(pts, 260)}>
+      <div className="selection-panel" style={at(pts, 520)}>
         <span className="sel-title">{t('sel.count', { n: selection.length })}</span>
-        {floor.furniture.some(f => selection.includes(f.id)) && (
+        {floor.furniture.some(f => selection.includes(f.id)) && (() => {
+          const items = floor.furniture.filter(f => selection.includes(f.id));
+          const common = (k: 'textMode' | 'sizeMode'): Tri | '' => {
+            const vals = new Set(items.map(it => triOf(it[k])));
+            return vals.size === 1 ? [...vals][0] : '';
+          };
+          return (
           <>
+            <TriSelect value={common('textMode')} label={t('sel.textMode')} title={t('sel.textModeTitle')}
+              onChange={v => st.updateFurnitureMany(selection, { textMode: fromTri(v) })} />
+            <TriSelect value={common('sizeMode')} label={t('sel.sizeMode')} title={t('sel.sizeModeTitle')}
+              onChange={v => st.updateFurnitureMany(selection, { sizeMode: fromTri(v) })} />
             <button className="sel-btn" title={t('sel.simple')}
               onClick={() => st.updateFurnitureMany(selection, { simple: true })}><Square size={14} /></button>
             <button className="sel-btn" title={t('sel.detailed')}
               onClick={() => st.updateFurnitureMany(selection, { simple: undefined })}><ImageIcon size={14} /></button>
           </>
-        )}
+          );
+        })()}
         <button className="sel-delete" title={t('sel.delete')} onClick={st.deleteSelected}><Trash2 size={14} /></button>
       </div>
     );
@@ -280,6 +311,10 @@ function SelectionPanel() {
         <Bold size={14} />
       </button>
       <ColorSwatches value={item.labelColor} title={t('text.color')} onChange={c => st.updateFurniture(item.id, { labelColor: c ?? undefined })} />
+      <TriSelect value={triOf(item.textMode)} label={t('sel.textMode')} title={t('sel.textModeTitle')}
+        onChange={v => st.updateFurniture(item.id, { textMode: fromTri(v) })} />
+      <TriSelect value={triOf(item.sizeMode)} label={t('sel.sizeMode')} title={t('sel.sizeModeTitle')}
+        onChange={v => st.updateFurniture(item.id, { sizeMode: fromTri(v) })} />
     </div>
   );
 }

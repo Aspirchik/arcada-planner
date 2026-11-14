@@ -88,6 +88,8 @@ export function parseProject(json: string): ParsedProject {
       ...(typeof it.labelColor === 'string' ? { labelColor: it.labelColor } : {}),
       ...(it.simple === true ? { simple: true } : {}),
       ...(it.flipX === true ? { flipX: true } : {}),
+      ...(it.textMode === 'on' || it.textMode === 'off' ? { textMode: it.textMode as 'on' | 'off' } : {}),
+      ...(it.sizeMode === 'on' || it.sizeMode === 'off' ? { sizeMode: it.sizeMode as 'on' | 'off' } : {}),
       ...(it.flipY === true ? { flipY: true } : {}),
     }));
 

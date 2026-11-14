@@ -38,6 +38,10 @@ export interface FurnitureItem {
   labelColor?: string | null;
   /** Draw as a plain rectangle instead of the detailed picture */
   simple?: boolean;
+  /** Text inside: missing = follow the toolbar ("Names"), 'on' = always, 'off' = never */
+  textMode?: 'on' | 'off';
+  /** Size (W×D) inside: missing = follow the toolbar ("Sizes"), 'on' = always, 'off' = never */
+  sizeMode?: 'on' | 'off';
   /** Mirror the picture left ↔ right (doors: hinges on the other side) */
   flipX?: boolean;
   /** Mirror the picture top ↕ bottom (doors: opens to the other side of the wall) */

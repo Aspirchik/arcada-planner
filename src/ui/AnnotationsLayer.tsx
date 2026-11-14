@@ -3,8 +3,7 @@ import { Text, Group, Rect } from 'react-konva';
 import type { FurnitureItem, TextNote, LabelPos } from '../types';
 import type { Palette } from '../theme';
 import type { Lang, SizesPos } from '../prefs';
-import { catalogName } from '../i18n';
-import catalog from '../catalog.json';
+import { furnitureLabel, sizesCorner } from '../labels';
 
 export const TEXT_FONT = 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
 export const TEXT_LINE_HEIGHT = 1.2;
@@ -25,17 +24,7 @@ export function measureNote(note: Pick<TextNote, 'text' | 'size' | 'bold'>): { w
   return { w: Math.max(w, note.size * 0.5), h: lines.length * note.size * TEXT_LINE_HEIGHT };
 }
 
-/** English catalog name for items saved before names were stored */
-const nameByPath = new Map<string, string>();
-for (const c of catalog.categories) for (const it of c.items) if (!nameByPath.has(it.imagePath)) nameByPath.set(it.imagePath, it.name);
-
-export function furnitureLabel(item: FurnitureItem, showNames: boolean, lang: Lang): string {
-  const own = item.label?.trim();
-  if (own) return own;
-  if (!showNames) return '';
-  const name = item.name ?? nameByPath.get(item.path);
-  return name ? catalogName(lang, 'item', name) : '';
-}
+export { furnitureLabel };
 
 const MIRROR: Record<LabelPos, LabelPos> = { c: 'c', t: 'b', b: 't', l: 'r', r: 'l', tl: 'br', tr: 'bl', bl: 'tr', br: 'tl' };
 const H_ALIGN = (p: LabelPos) => (p === 'l' || p === 'tl' || p === 'bl' ? 'left' : p === 'r' || p === 'tr' || p === 'br' ? 'right' : 'center');
@@ -56,7 +45,8 @@ export function FurnitureLabels({ furniture, palette, showNames, lang, sizesPos 
     <Group>
       {furniture.map(item => {
         const text = furnitureLabel(item, showNames, lang);
-        if (!text && sizesPos === 'off') return null;
+        const corner = sizesCorner(item, sizesPos);
+        if (!text && corner === 'off') return null;
         const rot = ((item.rot % 360) + 360) % 360;
         const flip = rot > 90 && rot <= 270;
         const pos = (p: LabelPos) => (flip ? MIRROR[p] : p);
@@ -82,11 +72,11 @@ export function FurnitureLabels({ furniture, palette, showNames, lang, sizesPos 
                   fill={item.labelColor ?? palette.text} stroke={palette.textHalo} strokeWidth={(size ?? 10) / 4}
                   fillAfterStrokeEnabled lineJoin="round" />
               )}
-              {sizesPos !== 'off' && (
+              {corner !== 'off' && (
                 <Text x={pad} y={pad} width={boxW} height={boxH}
                   text={`${Math.round(item.w)}×${Math.round(item.h)}`}
                   fontSize={sizeFont} fontFamily={TEXT_FONT}
-                  align={H_ALIGN(pos(sizesPos))} verticalAlign={V_ALIGN(pos(sizesPos))}
+                  align={H_ALIGN(pos(corner))} verticalAlign={V_ALIGN(pos(corner))}
                   fill={palette.wallLabel} stroke={palette.textHalo} strokeWidth={sizeFont / 4}
                   fillAfterStrokeEnabled lineJoin="round" />
               )}
