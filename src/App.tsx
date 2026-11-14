@@ -7,6 +7,7 @@ import { PrintView } from './ui/PrintView';
 import { useStore, parseProject, isProjectEmpty } from './store';
 import { usePrefs } from './prefs';
 import { useT, HTML_LANG } from './i18n';
+import { useIsDark } from './theme';
 import { projectErrorText } from './ui/Toolbar';
 import { METER, AUTOSAVE_KEY } from './constants';
 import './App.css';
@@ -162,6 +163,8 @@ function RestoreDialog() {
 export default function App() {
   const lang = usePrefs(s => s.lang);
   useEffect(() => { document.documentElement.lang = HTML_LANG[lang]; }, [lang]);
+  const dark = useIsDark();
+  useEffect(() => { document.documentElement.dataset.theme = dark ? 'dark' : 'light'; }, [dark]);
 
   // Warn before leaving only when there are unsaved changes
   useEffect(() => {

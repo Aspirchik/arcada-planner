@@ -2,12 +2,15 @@ import { useState } from 'react';
 import {
   MousePointer2, Eraser, Minus, Grid3X3,
   Tag, ChevronUp, ChevronDown, Trash2, Printer,
-  Save, FolderOpen, HelpCircle, Languages,
+  Save, FolderOpen, HelpCircle, Languages, Sun, Moon, Monitor,
 } from 'lucide-react';
 import { useStore, ProjectError } from '../store';
-import { usePrefs, LANGS, type WallLabelMode, type Lang } from '../prefs';
+import { usePrefs, LANGS, type WallLabelMode, type Lang, type ThemePref } from '../prefs';
 import { useT, t as tNow, LANG_NAMES, type TKey } from '../i18n';
 import { Tool, AUTOSAVE_KEY } from '../constants';
+
+/** Theme button cycles: Auto → Light → Dark → Auto */
+const NEXT_THEME: Record<ThemePref, ThemePref> = { system: 'light', light: 'dark', dark: 'system' };
 
 const HELP_KEYS = ['select', 'wall', 'split', 'exterior', 'lengths', 'measure', 'text', 'gaps', 'pan', 'snap', 'keys'] as const;
 
@@ -40,6 +43,7 @@ export function Toolbar() {
   const { tool, setTool, snapSize, setSnapSize, fi, changeFloor, removeFloor, save, load, markSaved } = useStore();
   const wallLabels = usePrefs(s => s.wallLabels);
   const lang = usePrefs(s => s.lang);
+  const theme = usePrefs(s => s.theme);
   const setPref = usePrefs(s => s.set);
   const t = useT();
   const [showHelp, setShowHelp] = useState(false);
@@ -134,6 +138,11 @@ export function Toolbar() {
               {LANGS.map(l => <option key={l} value={l}>{LANG_NAMES[l]}</option>)}
             </select>
           </div>
+          {actionBtn(
+            theme === 'light' ? <Sun size={20} /> : theme === 'dark' ? <Moon size={20} /> : <Monitor size={20} />,
+            `theme.${theme}` as TKey,
+            () => setPref('theme', NEXT_THEME[theme]),
+          )}
           {actionBtn(<Save size={20} />,       'action.save',  () => { saveToFile(save()); markSaved(); })}
           {actionBtn(<FolderOpen size={20} />, 'action.load',  () => loadFromFile(loadProject))}
           {actionBtn(<Printer size={20} />,    'action.print', () => window.print())}

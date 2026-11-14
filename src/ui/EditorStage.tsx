@@ -10,6 +10,8 @@ import { computeWallGeometry, wallThickness } from '../geometry/walls';
 import { usePrefs } from '../prefs';
 import { usePalette } from '../theme';
 import { useT } from '../i18n';
+import { getSprite } from './images';
+import type { Palette } from '../theme';
 import { WallsLayerContent, AlongText, formatMeters } from './WallsLayer';
 import type { WallNode, Wall, FurnitureItem } from '../types';
 
@@ -56,21 +58,6 @@ type DragState =
   | null;
 
 const WALL_DRAG_THRESHOLD = 8; // px in world coords — distinguishes tap from drag
-
-// ── Image cache (global, never GC'd per session) ─────────────
-const imgCache = new Map<string, HTMLImageElement>();
-const imgLoading = new Set<string>();
-function useImage(src: string, onLoad: () => void): HTMLImageElement | null {
-  const cached = imgCache.get(src);
-  if (cached) return cached;
-  if (!imgLoading.has(src)) {
-    imgLoading.add(src);
-    const el = new window.Image();
-    el.onload = () => { imgCache.set(src, el); imgLoading.delete(src); onLoad(); };
-    el.src = src;
-  }
-  return null;
-}
 
 // ── EditorStage ───────────────────────────────────────────────
 export function EditorStage() {
@@ -653,11 +640,11 @@ export function EditorStage() {
 
         {/* Furniture */}
         {sortByZ(floor.furniture).map(item => (
-          <FurnitureVisual key={item.id} item={item} onImageLoaded={onImageLoaded} />
+          <FurnitureVisual key={item.id} item={item} palette={palette} onImageLoaded={onImageLoaded} />
         ))}
 
         {/* Selection handles */}
-        {selectedItem && <SelectionHandles item={selectedItem} scale={scale} />}
+        {selectedItem && <SelectionHandles item={selectedItem} scale={scale} palette={palette} />}
       </Layer>
     </Stage>
   );
@@ -679,7 +666,7 @@ function PreviewLength({ a, b, scale, color, bg, unit }: { a: { x: number; y: nu
 }
 
 // ── Selection handles (purely visual) ─────────────────────────
-function SelectionHandles({ item, scale }: { item: FurnitureItem; scale: number }) {
+function SelectionHandles({ item, scale, palette }: { item: FurnitureItem; scale: number; palette: Palette }) {
   const hs = HANDLE_SIZE / scale;
   const rotDist = ROT_HANDLE_DIST / scale;
   const rotRadius = 5 / scale;
@@ -689,32 +676,32 @@ function SelectionHandles({ item, scale }: { item: FurnitureItem; scale: number 
     <Group x={item.x} y={item.y} rotation={item.rot}>
       {/* Selection border */}
       <Rect x={-2 / scale} y={-2 / scale} width={item.w + 4 / scale} height={item.h + 4 / scale}
-        stroke="#1a73e8" strokeWidth={lineWidth} dash={[6 / scale, 3 / scale]} />
+        stroke={palette.accent} strokeWidth={lineWidth} dash={[6 / scale, 3 / scale]} />
 
       {/* Resize handles */}
       {ANCHORS.map(a => (
         <Rect key={a.id}
           x={a.lx(item.w) - hs / 2} y={a.ly(item.h) - hs / 2}
           width={hs} height={hs}
-          fill="white" stroke="#1a73e8" strokeWidth={lineWidth} />
+          fill={palette.paper} stroke={palette.accent} strokeWidth={lineWidth} />
       ))}
 
       {/* Rotation handle line + circle */}
-      <Line points={[item.w / 2, 0, item.w / 2, -rotDist]} stroke="#1a73e8" strokeWidth={lineWidth} />
+      <Line points={[item.w / 2, 0, item.w / 2, -rotDist]} stroke={palette.accent} strokeWidth={lineWidth} />
       <Circle x={item.w / 2} y={-rotDist} radius={rotRadius}
-        fill="white" stroke="#1a73e8" strokeWidth={lineWidth} />
+        fill={palette.paper} stroke={palette.accent} strokeWidth={lineWidth} />
     </Group>
   );
 }
 
 // ── Purely visual furniture ───────────────────────────────────
-function FurnitureVisual({ item, onImageLoaded }: { item: FurnitureItem; onImageLoaded: () => void }) {
-  const img = useImage(`${import.meta.env.BASE_URL}assets/2d/${item.path}.svg`, onImageLoaded);
+function FurnitureVisual({ item, palette, onImageLoaded }: { item: FurnitureItem; palette: Palette; onImageLoaded: () => void }) {
+  const img = getSprite(item.path, palette.dark, onImageLoaded);
 
   return (
     <Group x={item.x} y={item.y} rotation={item.rot}>
       {img && <KImage image={img} width={item.w} height={item.h} />}
-      {!img && <Rect width={item.w} height={item.h} fill="#f0f0f0" stroke="#ccc" strokeWidth={1} dash={[4, 2]} />}
+      {!img && <Rect width={item.w} height={item.h} fill={palette.placeholderFill} stroke={palette.placeholderStroke} strokeWidth={1} dash={[4, 2]} />}
     </Group>
   );
 }

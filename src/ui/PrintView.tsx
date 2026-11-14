@@ -6,6 +6,7 @@ import { computeWallGeometry } from '../geometry/walls';
 import { usePrefs } from '../prefs';
 import { LIGHT } from '../theme';
 import { WallsLayerContent } from './WallsLayer';
+import { getSprite, spriteSettled } from './images';
 import { useT } from '../i18n';
 import type { FloorState } from '../types';
 import { useEffect, useMemo, useState } from 'react';
@@ -14,30 +15,12 @@ const PAGE_W = 794;  // A4 at 96dpi
 const PAGE_H = 1123;
 const PAD = 60;
 
-// Image cache for printing (global). Images that failed to load are remembered as failed
-// so printing never waits for them — they are drawn as grey placeholders.
-const printImgCache = new Map<string, HTMLImageElement>();
-const printImgFailed = new Set<string>();
-
+/** True once every sprite on the floor has loaded (or failed — those print as grey boxes) */
 function useFloorImages(floor: FloorState): boolean {
-  const [ready, setReady] = useState(false);
-  useEffect(() => {
-    const paths = [...new Set(floor.furniture.map(f => `${import.meta.env.BASE_URL}assets/2d/${f.path}.svg`))]
-      .filter(src => !printImgCache.has(src) && !printImgFailed.has(src));
-    if (paths.length === 0) { setReady(true); return; }
-    setReady(false);
-    let cancelled = false;
-    let done = 0;
-    const finish = () => { done++; if (done === paths.length && !cancelled) setReady(true); };
-    for (const src of paths) {
-      const el = new window.Image();
-      el.onload = () => { printImgCache.set(src, el); finish(); };
-      el.onerror = () => { printImgFailed.add(src); finish(); };
-      el.src = src;
-    }
-    return () => { cancelled = true; };
-  }, [floor]);
-  return ready;
+  const [, bump] = useState(0);
+  const paths = [...new Set(floor.furniture.map(f => f.path))];
+  for (const p of paths) getSprite(p, false, () => bump(c => c + 1));
+  return paths.every(p => spriteSettled(p, false));
 }
 
 function floorBounds(floor: FloorState): { minX: number; minY: number; maxX: number; maxY: number } | null {
@@ -110,7 +93,7 @@ function PrintFloor({ floor, index }: { floor: FloorState; index: number }) {
 
           {/* Furniture */}
           {ready && sortByZ(floor.furniture).map(f => {
-            const img = printImgCache.get(`${import.meta.env.BASE_URL}assets/2d/${f.path}.svg`);
+            const img = getSprite(f.path, false, () => {});
             return (
               <Group key={f.id} x={f.x} y={f.y} rotation={f.rot}>
                 {img ? <KImage image={img} width={f.w} height={f.h} /> : <Rect width={f.w} height={f.h} fill="#eee" stroke="#ccc" strokeWidth={1} />}
