@@ -13,7 +13,10 @@ import { useT } from '../i18n';
 import { getSprite } from './images';
 import type { Palette } from '../theme';
 import { WallsLayerContent, AlongText, formatMeters } from './WallsLayer';
-import type { WallNode, Wall, FurnitureItem } from '../types';
+import { DimensionLine, DimensionsLayerContent, SnapMarker } from './DimensionsLayer';
+import { snapTargets, snapToTargets, constrain45 } from '../geometry/snap';
+import type { Pt } from '../geometry/hit';
+import type { WallNode, Wall, FurnitureItem, Dimension } from '../types';
 
 const TOOLBAR_W = 80;
 const PANEL_W = 260;
@@ -24,6 +27,9 @@ const HANDLE_SIZE = 8;
 const HANDLE_HIT = 10;
 const ROT_HANDLE_DIST = 30;
 const MIN_SIZE = 10;
+const MEASURE_SNAP_PX = 12;
+const DIM_END_HIT_PX = 10;
+const DIM_LINE_HIT_PX = 6;
 
 // ── Grid helpers ──────────────────────────────────────────────
 const INTERVALS = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000];
@@ -55,6 +61,8 @@ type DragState =
   | { type: 'resize'; id: number; anchor: HandleAnchor; startItem: FurnitureItem }
   | { type: 'rotate'; id: number; centerX: number; centerY: number; startAngle: number; startRot: number }
   | { type: 'wall-draw'; startNodeId: number; startPt: { x: number; y: number }; moved: boolean }
+  | { type: 'measure'; start: Pt }
+  | { type: 'dim-end'; id: number; end: 1 | 2 }
   | null;
 
 const WALL_DRAG_THRESHOLD = 8; // px in world coords — distinguishes tap from drag
@@ -72,6 +80,9 @@ export function EditorStage() {
   const [scale, setScale] = useState(1);
   const [size,  setSize]  = useState({ w: window.innerWidth, h: window.innerHeight });
   const [previewPt, setPreviewPt] = useState<{ x: number; y: number } | null>(null);
+  const [measurePreview, setMeasurePreview] = useState<Omit<Dimension, 'id'> | null>(null);
+  const [snapMark, setSnapMark] = useState<Pt | null>(null);
+  const shiftRef = useRef(false);
   const [, forceRender] = useState(0);
 
   const store         = useStore();
@@ -132,7 +143,7 @@ export function EditorStage() {
         st.deleteFurniture(st.selectedId);
         st.select(null);
       }
-      if (e.code === 'Escape') { st.setWallStart(null); st.select(null); st.setTool(Tool.Select); }
+      if (e.code === 'Escape') { st.setWallStart(null); st.select(null); st.setTool(Tool.Select); setMeasurePreview(null); setSnapMark(null); }
     };
     document.addEventListener('keydown', fn);
     return () => document.removeEventListener('keydown', fn);
@@ -141,7 +152,7 @@ export function EditorStage() {
   // Safety net: pointer released outside the canvas — finish the gesture so undo keeps working
   useEffect(() => {
     const fn = () => {
-      if (dragRef.current) { dragRef.current = null; setPreviewPt(null); }
+      if (dragRef.current) { dragRef.current = null; setPreviewPt(null); setMeasurePreview(null); }
       useStore.getState().endGesture();
     };
     window.addEventListener('mouseup', fn);
@@ -224,6 +235,34 @@ export function EditorStage() {
     return null;
   }
 
+  // ── Ruler helpers ───────────────────────────────────────────
+  /** Snaps a ruler end to walls / furniture / other dimensions, else to the grid; Shift keeps 45° steps from `from` */
+  function measurePoint(pt: Pt, from?: Pt, excludeDimId?: number): { p: Pt; snapped: boolean } {
+    const target = snapToTargets(pt, snapTargets(floor, wallGeom, excludeDimId), MEASURE_SNAP_PX / scale);
+    let p = target ?? doSnap(pt.x, pt.y, snapSize);
+    if (from && shiftRef.current) p = constrain45(from, p);
+    return { p, snapped: !!target };
+  }
+
+  function hitDimEnd(wx: number, wy: number): { id: number; end: 1 | 2 } | null {
+    const thr = DIM_END_HIT_PX / scale;
+    for (let i = floor.dimensions.length - 1; i >= 0; i--) {
+      const d = floor.dimensions[i];
+      if (dist(wx, wy, d.x1, d.y1) < thr) return { id: d.id, end: 1 };
+      if (dist(wx, wy, d.x2, d.y2) < thr) return { id: d.id, end: 2 };
+    }
+    return null;
+  }
+
+  function hitDimension(wx: number, wy: number): Dimension | null {
+    const thr = DIM_LINE_HIT_PX / scale;
+    for (let i = floor.dimensions.length - 1; i >= 0; i--) {
+      const d = floor.dimensions[i];
+      if (distToSegment(wx, wy, d.x1, d.y1, d.x2, d.y2) < thr) return d;
+    }
+    return null;
+  }
+
   // ── Resize math ─────────────────────────────────────────────
   function applyResize(wx: number, wy: number, anchor: HandleAnchor, startItem: FurnitureItem) {
     const local = worldToLocal(wx, wy, startItem.x, startItem.y, startItem.rot);
@@ -261,12 +300,23 @@ export function EditorStage() {
     store.beginGesture();
     // Remove tool
     if (tool === Tool.Remove) {
+      const dim = hitDimension(pt.x, pt.y);
+      if (dim) { store.deleteDimension(dim.id); return; }
       const fur = hitFurniture(pt.x, pt.y);
       if (fur) { store.deleteFurniture(fur.id); store.select(null); return; }
       const node = hitNode(pt.x, pt.y);
       if (node) { store.deleteNode(node.id); return; }
       const wall = hitWall(pt.x, pt.y);
       if (wall) { store.deleteWall(wall.id); return; }
+      return;
+    }
+
+    // Ruler — drag from point to point
+    if (tool === Tool.Measure) {
+      const { p } = measurePoint(pt);
+      dragRef.current = { type: 'measure', start: p };
+      setMeasurePreview({ x1: p.x, y1: p.y, x2: p.x, y2: p.y });
+      setSnapMark(null);
       return;
     }
 
@@ -322,6 +372,11 @@ export function EditorStage() {
       return;
     }
 
+    if (tool === Tool.Select) {
+      const end = hitDimEnd(pt.x, pt.y);
+      if (end) { dragRef.current = { type: 'dim-end', ...end }; return; }
+    }
+
     const fur = hitFurniture(pt.x, pt.y);
     if (fur) {
       store.select(fur.id);
@@ -355,6 +410,17 @@ export function EditorStage() {
       let newRot = d.startRot + (currentAngle - d.startAngle) * 180 / Math.PI;
       if (snapSize > 0) newRot = Math.round(newRot / 15) * 15;
       store.updateFurniture(d.id, { rot: newRot });
+    } else if (d.type === 'measure') {
+      const { p, snapped } = measurePoint(pt, d.start);
+      setMeasurePreview({ x1: d.start.x, y1: d.start.y, x2: p.x, y2: p.y });
+      setSnapMark(snapped ? p : null);
+    } else if (d.type === 'dim-end') {
+      const dim = floor.dimensions.find(x => x.id === d.id);
+      if (!dim) return;
+      const other = d.end === 1 ? { x: dim.x2, y: dim.y2 } : { x: dim.x1, y: dim.y1 };
+      const { p, snapped } = measurePoint(pt, other, d.id);
+      store.updateDimension(d.id, d.end === 1 ? { x1: p.x, y1: p.y } : { x2: p.x, y2: p.y });
+      setSnapMark(snapped ? p : null);
     } else if (d.type === 'wall-draw') {
       // Mark as dragged once past threshold
       if (!d.moved && dist(pt.x, pt.y, d.startPt.x, d.startPt.y) > WALL_DRAG_THRESHOLD / scale) {
@@ -384,6 +450,22 @@ export function EditorStage() {
     if (!dragRef.current) return;
     const d = dragRef.current;
     const pt = getWorld();
+
+    if (d.type === 'measure') {
+      dragRef.current = null;
+      setMeasurePreview(null);
+      setSnapMark(null);
+      // Use the release point itself (the last preview state may not have rendered yet)
+      if (!pt) return;
+      const { p } = measurePoint(pt, d.start);
+      if (dist(d.start.x, d.start.y, p.x, p.y) >= 2) store.addDimension(d.start.x, d.start.y, p.x, p.y);
+      return;
+    }
+    if (d.type === 'dim-end') {
+      dragRef.current = null;
+      setSnapMark(null);
+      return;
+    }
 
     if (d.type === 'wall-draw') {
       dragRef.current = null;
@@ -440,6 +522,7 @@ export function EditorStage() {
   }
 
   function onMouseDown(e: KonvaEventObject<MouseEvent>) {
+    shiftRef.current = e.evt.shiftKey;
     if (e.evt.button === 2) {
       const pt = getWorld();
       if (pt) {
@@ -460,6 +543,7 @@ export function EditorStage() {
   }
 
   function onMouseMove(e: KonvaEventObject<MouseEvent>) {
+    shiftRef.current = e.evt.shiftKey;
     if (isPanning.current) {
       updateStage(
         posAtPan.current.x + e.evt.clientX - panStart.current.x,
@@ -474,6 +558,14 @@ export function EditorStage() {
       if (!pt) return;
       handlePointerDrag(pt);
       return;
+    }
+
+    // Ruler hover: show where the first point would snap
+    if (tool === Tool.Measure) {
+      const pt = getWorld();
+      if (pt) { const { p, snapped } = measurePoint(pt); setSnapMark(snapped ? p : null); }
+    } else if (snapMark) {
+      setSnapMark(null);
     }
 
     // Wall hover preview (mouse only — no button pressed, chain active)
@@ -493,6 +585,8 @@ export function EditorStage() {
           const handle = hitHandle(pt.x, pt.y);
           if (handle) {
             container.style.cursor = handle.type === 'rotate' ? 'grab' : (handle as { cursor: string }).cursor;
+          } else if (hitDimEnd(pt.x, pt.y)) {
+            container.style.cursor = 'pointer';
           } else {
             const fur = hitFurniture(pt.x, pt.y);
             container.style.cursor = fur ? 'move' : 'default';
@@ -501,8 +595,9 @@ export function EditorStage() {
           const fur = hitFurniture(pt.x, pt.y);
           const node = hitNode(pt.x, pt.y);
           const wall = hitWall(pt.x, pt.y);
-          container.style.cursor = (fur || node || wall) ? 'pointer' : 'default';
-        } else if (tool === Tool.WallAdd) {
+          const dim = hitDimension(pt.x, pt.y);
+          container.style.cursor = (fur || node || wall || dim) ? 'pointer' : 'default';
+        } else if (tool === Tool.WallAdd || tool === Tool.Measure) {
           container.style.cursor = 'crosshair';
         } else {
           container.style.cursor = 'default';
@@ -528,7 +623,7 @@ export function EditorStage() {
 
     if (touches.length >= 2) {
       // Start pinch/pan — cancel any ongoing drag
-      if (dragRef.current) { dragRef.current = null; setPreviewPt(null); store.endGesture(); }
+      if (dragRef.current) { dragRef.current = null; setPreviewPt(null); setMeasurePreview(null); store.endGesture(); }
       const t0 = touches[0], t1 = touches[1];
       pinchRef.current = {
         dist: dist(t0.clientX, t0.clientY, t1.clientX, t1.clientY),
@@ -642,6 +737,11 @@ export function EditorStage() {
         {sortByZ(floor.furniture).map(item => (
           <FurnitureVisual key={item.id} item={item} palette={palette} onImageLoaded={onImageLoaded} />
         ))}
+
+        {/* Ruler measurements */}
+        <DimensionsLayerContent dims={floor.dimensions} palette={palette} unit={t('unit.m')} px={1 / scale} />
+        {measurePreview && <DimensionLine d={measurePreview} palette={palette} unit={t('unit.m')} px={1 / scale} preview />}
+        {snapMark && <SnapMarker x={snapMark.x} y={snapMark.y} palette={palette} px={1 / scale} />}
 
         {/* Selection handles */}
         {selectedItem && <SelectionHandles item={selectedItem} scale={scale} palette={palette} />}

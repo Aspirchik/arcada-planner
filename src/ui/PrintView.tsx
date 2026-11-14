@@ -7,6 +7,7 @@ import { usePrefs } from '../prefs';
 import { LIGHT } from '../theme';
 import { WallsLayerContent } from './WallsLayer';
 import { getSprite, spriteSettled } from './images';
+import { DimensionsLayerContent } from './DimensionsLayer';
 import { useT } from '../i18n';
 import type { FloorState } from '../types';
 import { useEffect, useMemo, useState } from 'react';
@@ -24,7 +25,7 @@ function useFloorImages(floor: FloorState): boolean {
 }
 
 function floorBounds(floor: FloorState): { minX: number; minY: number; maxX: number; maxY: number } | null {
-  if (floor.nodes.length === 0 && floor.furniture.length === 0) return null;
+  if (floor.nodes.length === 0 && floor.furniture.length === 0 && floor.dimensions.length === 0) return null;
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
 
   for (const n of floor.nodes) {
@@ -47,6 +48,12 @@ function floorBounds(floor: FloorState): { minX: number; minY: number; maxX: num
       minX = Math.min(minX, c.x); minY = Math.min(minY, c.y);
       maxX = Math.max(maxX, c.x); maxY = Math.max(maxY, c.y);
     }
+  }
+
+  const DIM_MARGIN = 30; // room for the dimension label
+  for (const d of floor.dimensions) {
+    minX = Math.min(minX, d.x1 - DIM_MARGIN, d.x2 - DIM_MARGIN); minY = Math.min(minY, d.y1 - DIM_MARGIN, d.y2 - DIM_MARGIN);
+    maxX = Math.max(maxX, d.x1 + DIM_MARGIN, d.x2 + DIM_MARGIN); maxY = Math.max(maxY, d.y1 + DIM_MARGIN, d.y2 + DIM_MARGIN);
   }
 
   return { minX, minY, maxX, maxY };
@@ -86,11 +93,6 @@ function PrintFloor({ floor, index }: { floor: FloorState; index: number }) {
           {/* Walls (print is always light) */}
           <WallsLayerContent geom={geom} palette={LIGHT} labels={wallLabels} unit={t('unit.m')} />
 
-          {/* Nodes */}
-          {floor.nodes.map(n => (
-            <Circle key={n.id} x={n.x} y={n.y} radius={6} fill="#444" stroke="#222" strokeWidth={1} />
-          ))}
-
           {/* Furniture */}
           {ready && sortByZ(floor.furniture).map(f => {
             const img = getSprite(f.path, false, () => {});
@@ -100,6 +102,9 @@ function PrintFloor({ floor, index }: { floor: FloorState; index: number }) {
               </Group>
             );
           })}
+
+          {/* Ruler measurements: constant size on paper */}
+          <DimensionsLayerContent dims={floor.dimensions} palette={LIGHT} unit={t('unit.m')} px={1 / scaleVal} />
         </Layer>
       </Stage>
     </div>

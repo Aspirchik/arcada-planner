@@ -70,14 +70,16 @@ export function WallsLayerContent({ geom, palette, labels, unit }: {
 }) {
   return (
     <Group>
-      {/* Fills (no stroke, so joints stay clean) */}
+      {/* Fills; a thin stroke in the fill colour hides anti-aliasing seams between pieces */}
       {geom.walls.map(g => (
         <Line key={`f${g.wall.id}`} points={flat(g.polygon)} closed
-          fill={g.wall.exterior ? palette.wallExterior : palette.wallInterior} strokeEnabled={false} />
+          fill={g.wall.exterior ? palette.wallExterior : palette.wallInterior}
+          stroke={g.wall.exterior ? palette.wallExterior : palette.wallInterior} strokeWidth={0.6} />
       ))}
       {geom.hubs.map((h, i) => (
         <Line key={`h${i}`} points={flat(h.polygon)} closed
-          fill={h.exterior ? palette.wallExterior : palette.wallInterior} strokeEnabled={false} />
+          fill={h.exterior ? palette.wallExterior : palette.wallInterior}
+          stroke={h.exterior ? palette.wallExterior : palette.wallInterior} strokeWidth={0.6} />
       ))}
       {/* Outlines: both faces + square ends */}
       {geom.walls.map(g => (

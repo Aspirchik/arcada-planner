@@ -22,10 +22,20 @@ export interface FurnitureItem {
   zi: number;
 }
 
+/** Ruler measurement kept on the plan (a dimension line between two points) */
+export interface Dimension {
+  id: number;
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+}
+
 export interface FloorState {
   nodes: WallNode[];
   walls: Wall[];
   furniture: FurnitureItem[];
+  dimensions: Dimension[];
 }
 
 export interface CatalogItem {

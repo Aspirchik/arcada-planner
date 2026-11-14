@@ -131,6 +131,23 @@ describe('dirty flag', () => {
   });
 });
 
+describe('dimensions', () => {
+  it('add, move an end and delete — each one undo step', () => {
+    const id = st().addDimension(0, 0, 300, 0);
+    st().updateDimension(id, { x2: 400 });
+    expect(floor().dimensions[0]).toMatchObject({ x1: 0, x2: 400 });
+    st().deleteDimension(id);
+    expect(floor().dimensions).toHaveLength(0);
+    expect(undoLen()).toBe(3);
+  });
+
+  it('are saved and loaded', () => {
+    st().addDimension(1, 2, 3, 4);
+    st().load(st().save());
+    expect(floor().dimensions).toEqual([expect.objectContaining({ x1: 1, y1: 2, x2: 3, y2: 4 })]);
+  });
+});
+
 describe('parseProject', () => {
   it('rejects broken files with a readable message', () => {
     expect(() => parseProject('not json')).toThrow(/JSON/);
@@ -149,6 +166,7 @@ describe('parseProject', () => {
     }));
     expect(p.floors[0].walls).toEqual([{ id: 3, a: 1, b: 2, exterior: false }]);
     expect(p.floors[0].furniture[0]).toMatchObject({ rot: 0, zi: 100 });
+    expect(p.floors[0].dimensions).toEqual([]);
     expect(p.nextId).toBe(8);
   });
 });

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import {
   MousePointer2, Eraser, Minus, Grid3X3,
   Tag, ChevronUp, ChevronDown, Trash2, Printer,
-  Save, FolderOpen, HelpCircle, Languages, Sun, Moon, Monitor,
+  Save, FolderOpen, HelpCircle, Languages, Sun, Moon, Monitor, Ruler,
 } from 'lucide-react';
 import { useStore, ProjectError } from '../store';
 import { usePrefs, LANGS, type WallLabelMode, type Lang, type ThemePref } from '../prefs';
@@ -84,6 +84,7 @@ export function Toolbar() {
         <div className="tool-group">
           {toolBtn(<MousePointer2 size={20} />, 'tool.select', Tool.Select)}
           {toolBtn(<Minus size={20} />,         'tool.wall',   Tool.WallAdd)}
+          {toolBtn(<Ruler size={20} />,         'tool.measure', Tool.Measure)}
           {toolBtn(<Eraser size={20} />,        'tool.erase',  Tool.Remove)}
         </div>
 

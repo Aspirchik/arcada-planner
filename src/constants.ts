@@ -8,4 +8,5 @@ export enum Tool {
   Select,
   Remove,
   WallAdd,
+  Measure,
 }

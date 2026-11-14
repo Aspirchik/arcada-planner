@@ -1,10 +1,11 @@
 import { create } from 'zustand';
 import { Tool, METER } from './constants';
-import type { FurnitureItem, FloorState, CatalogItem } from './types';
+import type { FurnitureItem, FloorState, CatalogItem, Dimension } from './types';
 import { translate, type TKey, type TParams } from './i18n';
 
 const HISTORY_LIMIT = 50;
-export const FILE_VERSION = '2.0.0';
+/** Project file format. 2.1.0 adds dimensions (ruler); 2.0.0 files still load. */
+export const FILE_VERSION = '2.1.0';
 export const DEFAULT_Z = 100;
 
 export interface History {
@@ -13,7 +14,7 @@ export interface History {
 }
 
 function emptyFloor(): FloorState {
-  return { nodes: [], walls: [], furniture: [] };
+  return { nodes: [], walls: [], furniture: [], dimensions: [] };
 }
 
 function emptyHistory(): History {
@@ -71,8 +72,12 @@ export function parseProject(json: string): ParsedProject {
       zi: isNum(it.zi) ? it.zi : DEFAULT_Z,
     }));
 
-    for (const o of [...nodes, ...walls, ...furniture]) maxId = Math.max(maxId, o.id);
-    return { nodes, walls, furniture };
+    const dimensions = (Array.isArray(f.dimensions) ? f.dimensions : []).filter((dm): dm is Dimension =>
+      !!dm && isNum(dm.id) && isNum(dm.x1) && isNum(dm.y1) && isNum(dm.x2) && isNum(dm.y2)
+    ).map(dm => ({ id: dm.id, x1: dm.x1, y1: dm.y1, x2: dm.x2, y2: dm.y2 }));
+
+    for (const o of [...nodes, ...walls, ...furniture, ...dimensions]) maxId = Math.max(maxId, o.id);
+    return { nodes, walls, furniture, dimensions };
   });
 
   const nextId = Math.max(isNum(d.nextId) ? d.nextId : 1, maxId + 1);
@@ -81,7 +86,7 @@ export function parseProject(json: string): ParsedProject {
 }
 
 export function isProjectEmpty(floors: FloorState[]): boolean {
-  return floors.every(f => f.nodes.length === 0 && f.furniture.length === 0);
+  return floors.every(f => f.nodes.length === 0 && f.furniture.length === 0 && f.dimensions.length === 0);
 }
 
 // ── Store ──────────────────────────────────────────────────────
@@ -127,6 +132,10 @@ interface Store {
   updateFurniture(id: number, changes: Partial<FurnitureItem>): void;
   bringToFront(id: number): void;
   sendToBack(id: number): void;
+
+  addDimension(x1: number, y1: number, x2: number, y2: number): number;
+  updateDimension(id: number, changes: Partial<Omit<Dimension, 'id'>>): void;
+  deleteDimension(id: number): void;
 
   changeFloor(by: number): void;
   removeFloor(): boolean;
@@ -337,6 +346,20 @@ export const useStore = create<Store>((set, get) => {
       const item = items.find(it => it.id === id);
       if (item && (others.length === 0 || item.zi < bottom)) return;
       get().updateFurniture(id, { zi: bottom - 1 });
+    },
+
+    addDimension(x1, y1, x2, y2) {
+      const id = newId();
+      upFloor(f => ({ ...f, dimensions: [...f.dimensions, { id, x1, y1, x2, y2 }] }));
+      return id;
+    },
+
+    updateDimension(id, changes) {
+      upFloor(f => ({ ...f, dimensions: f.dimensions.map(d => d.id === id ? { ...d, ...changes } : d) }));
+    },
+
+    deleteDimension(id) {
+      upFloor(f => ({ ...f, dimensions: f.dimensions.filter(d => d.id !== id) }));
     },
 
     changeFloor(by) {
