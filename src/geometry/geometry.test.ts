@@ -82,6 +82,23 @@ describe('gaps', () => {
     expect(byDist).toEqual([90, 90, 100, 140]);
   });
 
+  it('items placed flush show 0 cm, and flushShift pulls a near item flush', async () => {
+    const { flushShift } = await import('./raycast');
+    const g = computeWallGeometry(room.nodes, room.walls);
+    // Touching the left wall face (x = 10) and the table on the right
+    const chair: FurnitureItem = { id: 1, path: 'chair', x: 10, y: 100, w: 50, h: 50, rot: 0, zi: 100 };
+    const table: FurnitureItem = { id: 2, path: 'table', x: 60, y: 90, w: 80, h: 80, rot: 0, zi: 100 };
+    const gaps = itemGaps(chair, obstacleSegments(g, [table]));
+    expect(gaps.find(x => x.side === 'l')!.distance).toBe(0);
+    expect(gaps.find(x => x.side === 'r')!.distance).toBe(0);
+
+    // 4 cm from the wall, 3 cm from the table → shift left wins on x (nearer side is the table: right)
+    const near: FurnitureItem = { ...chair, x: 14, y: 100, w: 43 };
+    const shift = flushShift(near, obstacleSegments(g, [table]), 8);
+    expect(shift.x).toBeCloseTo(3);
+    expect(shift.y).toBeCloseTo(0);
+  });
+
   it('ray misses when nothing is in the way', () => {
     expect(castRay({ x: 0, y: 0 }, { x: 1, y: 0 }, [{ a: { x: 5, y: 1 }, b: { x: 5, y: 3 } }])).toBeNull();
   });

@@ -9,7 +9,12 @@ export interface Wall {
   a: number;
   b: number;
   exterior: boolean;
+  /** Custom thickness in cm; when missing: 20 (exterior) or 16 (interior) */
+  thickness?: number;
 }
+
+/** Where a label sits on an item: centre, sides or corners */
+export type LabelPos = 'c' | 't' | 'b' | 'l' | 'r' | 'tl' | 'tr' | 'bl' | 'br';
 
 export interface FurnitureItem {
   id: number;
@@ -24,6 +29,13 @@ export interface FurnitureItem {
   name?: string;
   /** Custom label shown on the item */
   label?: string;
+  /** Label placement (default centre) */
+  labelPos?: LabelPos;
+  /** Label letter height in cm (default: fitted to the item) */
+  labelSize?: number;
+  labelBold?: boolean;
+  /** null / missing = theme text colour */
+  labelColor?: string | null;
 }
 
 /** Free text note placed on the plan */

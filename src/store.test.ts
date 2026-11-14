@@ -182,6 +182,59 @@ describe('texts and labels', () => {
   });
 });
 
+describe('selection and groups', () => {
+  it('ctrl-click toggles; a group moves, copies and deletes together', () => {
+    const a = st().addFurniture(chair, 0, 0);
+    const b = st().addFurniture(chair, 100, 0);
+    const t = st().addText(50, 50, 'x');
+    st().select(a);
+    st().toggleSelect(b);
+    st().toggleSelect(t);
+    expect(st().selection).toEqual([a, b, t]);
+    expect(st().selectedId).toBeNull();
+    st().toggleSelect(t);
+    expect(st().selection).toEqual([a, b]);
+
+    st().moveItems([{ id: a, x: 500, y: 500 }, { id: b, x: 600, y: 500 }]);
+    expect(floor().furniture.map(f => f.x)).toEqual([500, 600]);
+
+    st().copySelected();
+    st().pasteClipboard();
+    expect(floor().furniture).toHaveLength(4);
+    expect(st().selection).toHaveLength(2);
+
+    const before = undoLen();
+    st().deleteSelected();
+    expect(floor().furniture).toHaveLength(2);
+    expect(undoLen()).toBe(before + 1);
+  });
+});
+
+describe('wall settings', () => {
+  it('custom thickness is kept when splitting; length moves the free end', () => {
+    const a = st().addNode(0, 0);
+    const b = st().addNode(300, 0);
+    const c = st().addNode(300, 200);
+    st().addWall(a, b);
+    st().addWall(b, c);
+    const w = floor().walls[0].id;
+    st().updateWall(w, { thickness: 30, exterior: true });
+    st().setWallLength(w, 450);
+    // a has one wall, b has two → a moves
+    expect(floor().nodes.find(n => n.id === a)).toMatchObject({ x: -150, y: 0 });
+    st().splitWall(w, 0, 0);
+    expect(floor().walls.filter(x => x.thickness === 30)).toHaveLength(2);
+    st().load(st().save());
+    expect(floor().walls.filter(x => x.thickness === 30)).toHaveLength(2);
+  });
+
+  it('dimension length keeps the first end', () => {
+    const d = st().addDimension(0, 0, 100, 0);
+    st().setDimensionLength(d, 250);
+    expect(floor().dimensions[0]).toMatchObject({ x1: 0, x2: 250, y2: 0 });
+  });
+});
+
 describe('parseProject', () => {
   it('rejects broken files with a readable message', () => {
     expect(() => parseProject('not json')).toThrow(/JSON/);

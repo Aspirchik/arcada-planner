@@ -10,7 +10,7 @@ import { WALL_THICKNESS, INTERIOR_WALL_THICKNESS } from '../constants';
 import type { Pt } from './hit';
 
 export function wallThickness(w: Wall): number {
-  return w.exterior ? WALL_THICKNESS : INTERIOR_WALL_THICKNESS;
+  return w.thickness && w.thickness > 0 ? w.thickness : (w.exterior ? WALL_THICKNESS : INTERIOR_WALL_THICKNESS);
 }
 
 export interface WallFace {

@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { Tool, METER } from './constants';
-import type { FurnitureItem, FloorState, CatalogItem, Dimension, TextNote } from './types';
+import type { FurnitureItem, FloorState, CatalogItem, Dimension, TextNote, Wall, LabelPos } from './types';
 import { translate, type TKey, type TParams } from './i18n';
 
 const HISTORY_LIMIT = 50;
@@ -9,7 +9,9 @@ export const FILE_VERSION = '2.1.0';
 export const DEFAULT_Z = 100;
 export const DEFAULT_TEXT_SIZE = 20;
 
-export type Clipboard = { kind: 'furniture'; item: FurnitureItem } | { kind: 'text'; item: TextNote };
+export interface Clipboard { furniture: FurnitureItem[]; texts: TextNote[] }
+
+const LABEL_POS: LabelPos[] = ['c', 't', 'b', 'l', 'r', 'tl', 'tr', 'bl', 'br'];
 
 export interface History {
   undo: FloorState[];
@@ -63,9 +65,12 @@ export function parseProject(json: string): ParsedProject {
     ).map(n => ({ id: n.id, x: n.x, y: n.y }));
     const nodeIds = new Set(nodes.map(n => n.id));
 
-    const walls = f.walls.filter((w): w is { id: number; a: number; b: number; exterior?: unknown } =>
+    const walls = f.walls.filter((w): w is { id: number; a: number; b: number; exterior?: unknown; thickness?: unknown } =>
       !!w && isNum(w.id) && isNum(w.a) && isNum(w.b) && w.a !== w.b && nodeIds.has(w.a) && nodeIds.has(w.b)
-    ).map(w => ({ id: w.id, a: w.a, b: w.b, exterior: w.exterior === true }));
+    ).map(w => ({
+      id: w.id, a: w.a, b: w.b, exterior: w.exterior === true,
+      ...(isNum(w.thickness) && w.thickness > 0 ? { thickness: w.thickness } : {}),
+    }));
 
     const furniture = f.furniture.filter((it): it is Record<string, unknown> & { id: number; path: string; x: number; y: number; w: number; h: number } =>
       !!it && isNum(it.id) && typeof it.path === 'string' && isNum(it.x) && isNum(it.y) && isNum(it.w) && isNum(it.h) && it.w > 0 && it.h > 0
@@ -75,6 +80,10 @@ export function parseProject(json: string): ParsedProject {
       zi: isNum(it.zi) ? it.zi : DEFAULT_Z,
       ...(typeof it.name === 'string' ? { name: it.name } : {}),
       ...(typeof it.label === 'string' && it.label ? { label: it.label } : {}),
+      ...(LABEL_POS.includes(it.labelPos as LabelPos) ? { labelPos: it.labelPos as LabelPos } : {}),
+      ...(isNum(it.labelSize) && it.labelSize > 0 ? { labelSize: it.labelSize } : {}),
+      ...(it.labelBold === true ? { labelBold: true } : {}),
+      ...(typeof it.labelColor === 'string' ? { labelColor: it.labelColor } : {}),
     }));
 
     const dimensions = (Array.isArray(f.dimensions) ? f.dimensions : []).filter((dm): dm is Dimension =>
@@ -112,7 +121,10 @@ interface Store {
   /** Undo/redo history, one entry per floor (same index as `floors`) */
   histories: History[];
   fi: number;
+  /** The single selected object (any kind), or null when nothing or several are selected */
   selectedId: number | null;
+  /** All selected objects; groups contain furniture and text notes */
+  selection: number[];
   wallStartId: number | null;
   nextId: number;
   stageX: number;
@@ -129,6 +141,9 @@ interface Store {
   setTool(t: Tool): void;
   setSnapSize(s: number): void;
   select(id: number | null): void;
+  setSelection(ids: number[]): void;
+  /** Ctrl/Shift-click: add to or remove from the selection */
+  toggleSelect(id: number): void;
   setWallStart(id: number | null): void;
   setStageTransform(x: number, y: number, scale: number): void;
   setTextEdit(edit: { id: number | null; x: number; y: number } | null): void;
@@ -144,6 +159,12 @@ interface Store {
   moveNode(id: number, x: number, y: number): void;
   toggleExterior(id: number): void;
   splitWall(wallId: number, x: number, y: number): number | null;
+  updateWall(id: number, changes: Partial<Pick<Wall, 'exterior' | 'thickness'>>): void;
+  /** Sets the centre-line length; the end with fewer connected walls moves */
+  setWallLength(id: number, length: number): void;
+  moveNodes(moves: { id: number; x: number; y: number }[]): void;
+  /** Moves furniture items and text notes to the given positions */
+  moveItems(moves: { id: number; x: number; y: number }[]): void;
 
   addFurniture(item: CatalogItem, cx: number, cy: number): number;
   deleteFurniture(id: number): void;
@@ -154,11 +175,13 @@ interface Store {
   addDimension(x1: number, y1: number, x2: number, y2: number): number;
   updateDimension(id: number, changes: Partial<Omit<Dimension, 'id'>>): void;
   deleteDimension(id: number): void;
+  /** Keeps the first end, moves the second along the line */
+  setDimensionLength(id: number, length: number): void;
 
   addText(x: number, y: number, text: string): number;
   updateText(id: number, changes: Partial<Omit<TextNote, 'id'>>): void;
   deleteText(id: number): void;
-  /** Deletes the selected furniture item or text note */
+  /** Deletes everything selected (furniture, texts, walls, dimensions) */
   deleteSelected(): void;
 
   changeFloor(by: number): void;
@@ -220,6 +243,11 @@ export const useStore = create<Store>((set, get) => {
     try { return fn(); } finally { endGesture(); }
   }
 
+  function sel(ids: number[]) {
+    const unique = [...new Set(ids)];
+    return { selection: unique, selectedId: unique.length === 1 ? unique[0] : null };
+  }
+
   function newId() {
     const id = get().nextId;
     set(s => ({ nextId: s.nextId + 1 }));
@@ -233,6 +261,7 @@ export const useStore = create<Store>((set, get) => {
     histories: [emptyHistory()],
     fi: 0,
     selectedId: null,
+    selection: [],
     wallStartId: null,
     nextId: 1,
     stageX: 0,
@@ -243,9 +272,14 @@ export const useStore = create<Store>((set, get) => {
     dirty: false,
     textEdit: null,
 
-    setTool: (tool) => set({ tool, wallStartId: null, selectedId: null }),
+    setTool: (tool) => set({ tool, wallStartId: null, selectedId: null, selection: [] }),
     setSnapSize: (snapSize) => set({ snapSize }),
-    select: (id) => set({ selectedId: id }),
+    select: (id) => set(sel(id === null ? [] : [id])),
+    setSelection: (ids) => set(sel(ids)),
+    toggleSelect(id) {
+      const cur = get().selection;
+      set(sel(cur.includes(id) ? cur.filter(x => x !== id) : [...cur, id]));
+    },
     setWallStart: (id) => set({ wallStartId: id }),
     setStageTransform: (x, y, scale) => set({ stageX: x, stageY: y, stageScale: scale }),
     setTextEdit: (textEdit) => set({ textEdit }),
@@ -322,11 +356,44 @@ export const useStore = create<Store>((set, get) => {
         nodes: [...fl.nodes, { id: mid, x: nx, y: ny }],
         walls: [
           ...fl.walls.filter(w => w.id !== wallId),
-          { id: w1, a: wall.a, b: mid, exterior: wall.exterior },
-          { id: w2, a: mid, b: wall.b, exterior: wall.exterior },
+          { ...wall, id: w1, a: wall.a, b: mid },
+          { ...wall, id: w2, a: mid, b: wall.b },
         ],
       }));
       return mid;
+    },
+
+    updateWall(id, changes) {
+      upFloor(f => ({ ...f, walls: f.walls.map(w => w.id === id ? { ...w, ...changes } : w) }));
+    },
+
+    setWallLength(id, length) {
+      const f = get().floors[get().fi];
+      const w = f.walls.find(x => x.id === id);
+      if (!w || !(length > 0)) return;
+      const a = f.nodes.find(n => n.id === w.a), b = f.nodes.find(n => n.id === w.b);
+      if (!a || !b) return;
+      const len = Math.hypot(b.x - a.x, b.y - a.y);
+      if (len === 0) return;
+      const degree = (nid: number) => f.walls.filter(x => x.a === nid || x.b === nid).length;
+      // Move the end that disturbs fewer other walls
+      const [fixed, moving] = degree(a.id) < degree(b.id) ? [b, a] : [a, b];
+      const ux = (moving.x - fixed.x) / len, uy = (moving.y - fixed.y) / len;
+      get().moveNode(moving.id, Math.round((fixed.x + ux * length) * 10) / 10, Math.round((fixed.y + uy * length) * 10) / 10);
+    },
+
+    moveNodes(moves) {
+      const m = new Map(moves.map(x => [x.id, x]));
+      upFloor(f => ({ ...f, nodes: f.nodes.map(n => m.has(n.id) ? { ...n, x: m.get(n.id)!.x, y: m.get(n.id)!.y } : n) }));
+    },
+
+    moveItems(moves) {
+      const m = new Map(moves.map(x => [x.id, x]));
+      upFloor(f => ({
+        ...f,
+        furniture: f.furniture.map(it => m.has(it.id) ? { ...it, x: m.get(it.id)!.x, y: m.get(it.id)!.y } : it),
+        texts: f.texts.map(tx => m.has(tx.id) ? { ...tx, x: m.get(tx.id)!.x, y: m.get(tx.id)!.y } : tx),
+      }));
     },
 
     addFurniture(item, cx, cy) {
@@ -345,7 +412,7 @@ export const useStore = create<Store>((set, get) => {
           name: item.name,
         }],
       }));
-      set({ selectedId: id, tool: Tool.Select });
+      set({ ...sel([id]), tool: Tool.Select });
       return id;
     },
 
@@ -389,6 +456,14 @@ export const useStore = create<Store>((set, get) => {
       upFloor(f => ({ ...f, dimensions: f.dimensions.filter(d => d.id !== id) }));
     },
 
+    setDimensionLength(id, length) {
+      const d = get().floors[get().fi].dimensions.find(x => x.id === id);
+      if (!d || !(length > 0)) return;
+      const len = Math.hypot(d.x2 - d.x1, d.y2 - d.y1);
+      const ux = len > 0 ? (d.x2 - d.x1) / len : 1, uy = len > 0 ? (d.y2 - d.y1) / len : 0;
+      get().updateDimension(id, { x2: d.x1 + ux * length, y2: d.y1 + uy * length });
+    },
+
     addText(x, y, text) {
       const id = newId();
       upFloor(f => ({ ...f, texts: [...f.texts, { id, x, y, text, size: DEFAULT_TEXT_SIZE, rot: 0, bold: false, color: null }] }));
@@ -404,11 +479,18 @@ export const useStore = create<Store>((set, get) => {
     },
 
     deleteSelected() {
-      const { selectedId, fi, floors } = get();
-      if (selectedId === null) return;
-      if (floors[fi].texts.some(tx => tx.id === selectedId)) get().deleteText(selectedId);
-      else get().deleteFurniture(selectedId);
-      set({ selectedId: null });
+      const ids = get().selection;
+      if (ids.length === 0) return;
+      transact(() => {
+        for (const id of ids) {
+          const f = get().floors[get().fi];
+          if (f.texts.some(tx => tx.id === id)) get().deleteText(id);
+          else if (f.furniture.some(it => it.id === id)) get().deleteFurniture(id);
+          else if (f.walls.some(w => w.id === id)) get().deleteWall(id);
+          else if (f.dimensions.some(d => d.id === id)) get().deleteDimension(id);
+        }
+      });
+      set(sel([]));
     },
 
     changeFloor(by) {
@@ -422,6 +504,7 @@ export const useStore = create<Store>((set, get) => {
         floors: adding ? [...floors, emptyFloor()] : floors,
         histories: adding ? [...histories, emptyHistory()] : histories,
         selectedId: null,
+        selection: [],
         wallStartId: null,
       });
     },
@@ -435,6 +518,7 @@ export const useStore = create<Store>((set, get) => {
         floors: floors.filter((_, i) => i !== fi),
         histories: histories.filter((_, i) => i !== fi),
         selectedId: null,
+        selection: [],
         wallStartId: null,
         dirty: true,
       });
@@ -451,6 +535,7 @@ export const useStore = create<Store>((set, get) => {
         floors: floors.map((f, i) => i === fi ? prev : f),
         histories: histories.map((x, i) => i === fi ? { undo: h.undo.slice(0, -1), redo: [...h.redo, floors[fi]] } : x),
         selectedId: null,
+        selection: [],
         wallStartId: null,
         dirty: true,
       });
@@ -466,37 +551,32 @@ export const useStore = create<Store>((set, get) => {
         floors: floors.map((f, i) => i === fi ? next : f),
         histories: histories.map((x, i) => i === fi ? { undo: [...h.undo, floors[fi]], redo: h.redo.slice(0, -1) } : x),
         selectedId: null,
+        selection: [],
         wallStartId: null,
         dirty: true,
       });
     },
 
     copySelected() {
-      const { selectedId, fi, floors } = get();
-      if (selectedId === null) return;
-      const item = floors[fi].furniture.find(f => f.id === selectedId);
-      if (item) { set({ clipboard: { kind: 'furniture', item: { ...item } } }); return; }
-      const note = floors[fi].texts.find(tx => tx.id === selectedId);
-      if (note) set({ clipboard: { kind: 'text', item: { ...note } } });
+      const { selection, fi, floors } = get();
+      const furniture = floors[fi].furniture.filter(it => selection.includes(it.id)).map(it => ({ ...it }));
+      const texts = floors[fi].texts.filter(tx => selection.includes(tx.id)).map(tx => ({ ...tx }));
+      if (furniture.length + texts.length > 0) set({ clipboard: { furniture, texts } });
     },
 
     pasteClipboard() {
       const { clipboard } = get();
       if (!clipboard) return;
-      const id = newId();
-      if (clipboard.kind === 'furniture') {
-        const pasted: FurnitureItem = { ...clipboard.item, id, x: clipboard.item.x + 20, y: clipboard.item.y + 20 };
-        upFloor(f => ({ ...f, furniture: [...f.furniture, pasted] }));
-        set({ selectedId: id, clipboard: { kind: 'furniture', item: { ...pasted } } });
-      } else {
-        const pasted: TextNote = { ...clipboard.item, id, x: clipboard.item.x + 20, y: clipboard.item.y + 20 };
-        upFloor(f => ({ ...f, texts: [...f.texts, pasted] }));
-        set({ selectedId: id, clipboard: { kind: 'text', item: { ...pasted } } });
-      }
+      const furniture: FurnitureItem[] = clipboard.furniture.map(it => ({ ...it, id: newId(), x: it.x + 20, y: it.y + 20 }));
+      const texts: TextNote[] = clipboard.texts.map(tx => ({ ...tx, id: newId(), x: tx.x + 20, y: tx.y + 20 }));
+      upFloor(f => ({ ...f, furniture: [...f.furniture, ...furniture], texts: [...f.texts, ...texts] }));
+      set({ ...sel([...furniture, ...texts].map(x => x.id)), clipboard: { furniture, texts } });
     },
 
     cutSelected() {
-      if (get().selectedId === null) return;
+      const { selection, fi, floors } = get();
+      const f = floors[fi];
+      if (!selection.some(id => f.furniture.some(it => it.id === id) || f.texts.some(tx => tx.id === id))) return;
       transact(() => {
         get().copySelected();
         get().deleteSelected();
@@ -522,6 +602,7 @@ export const useStore = create<Store>((set, get) => {
         nextId: p.nextId,
         fi: 0,
         selectedId: null,
+        selection: [],
         wallStartId: null,
         fileCreatedAt: p.createdAt,
         dirty: false,

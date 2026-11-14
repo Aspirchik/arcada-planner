@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">
+	<title>Metal safe (top view)</title>
+	<style>
+		.s0 { fill: #ffffff; stroke: #000000; stroke-width: 3.2 }
+		.s1 { fill: none; stroke: #000000; stroke-width: 1.4 }
+		.s2 { fill: #000000; stroke: none }
+	</style>
+	<rect class="s0" x="2.5" y="2.5" width="95" height="95" rx="3"/>
+	<rect class="s1" x="11" y="11" width="78" height="70"/>
+	<path class="s1" d="M11 11 L89 81 M89 11 L11 81"/>
+	<path class="s1" d="M2.5 86 H97.5"/>
+	<rect class="s0" x="14" y="88" width="10" height="6" rx="1"/>
+	<circle class="s0" cx="50" cy="92" r="4"/>
+	<rect class="s0" x="76" y="88" width="10" height="6" rx="1"/>
+	<circle class="s2" cx="16" cy="16" r="2.2"/>
+	<circle class="s2" cx="84" cy="16" r="2.2"/>
+	<circle class="s2" cx="16" cy="76" r="2.2"/>
+	<circle class="s2" cx="84" cy="76" r="2.2"/>
+</svg>

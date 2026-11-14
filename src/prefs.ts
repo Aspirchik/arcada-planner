@@ -5,6 +5,8 @@ export type Lang = 'en' | 'pl' | 'ru' | 'ua';
 export type ThemePref = 'light' | 'dark' | 'system';
 /** Which wall lengths to show: off, inner faces (room side), both faces, centerline */
 export type WallLabelMode = 'off' | 'interior' | 'both' | 'axis';
+/** Corner where object sizes (W × D) are shown, or off */
+export type SizesPos = 'off' | 'tl' | 'tr' | 'bl' | 'br';
 
 export const LANGS: Lang[] = ['en', 'pl', 'ru', 'ua'];
 const PREFS_KEY = 'arcada-prefs';
@@ -19,6 +21,7 @@ interface Prefs {
   gaps: boolean;
   /** Clearances smaller than this (cm) are highlighted */
   gapWarn: number;
+  sizesPos: SizesPos;
 }
 
 interface PrefsStore extends Prefs {
@@ -40,6 +43,7 @@ const defaults: Prefs = {
   showNames: false,
   gaps: true,
   gapWarn: 60,
+  sizesPos: 'off',
 };
 
 function loadPrefs(): Prefs {
@@ -54,6 +58,7 @@ function loadPrefs(): Prefs {
       showNames: typeof p.showNames === 'boolean' ? p.showNames : defaults.showNames,
       gaps: typeof p.gaps === 'boolean' ? p.gaps : defaults.gaps,
       gapWarn: typeof p.gapWarn === 'number' && p.gapWarn >= 0 ? p.gapWarn : defaults.gapWarn,
+      sizesPos: ['off', 'tl', 'tr', 'bl', 'br'].includes(p.sizesPos as string) ? p.sizesPos as SizesPos : defaults.sizesPos,
     };
   } catch {
     return defaults;

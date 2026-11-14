@@ -74,7 +74,14 @@
         { "name": "Computer monitor", "width": 0.8, "height": 0.1, "imagePath": "computer-monitor" },
         { "name": "Computer",         "width": 0.8, "height": 0.4, "imagePath": "computer" },
         { "name": "Corner desk",      "width": 1.0, "height": 1.5, "imagePath": "corner-desk" },
-        { "name": "Desk",             "width": 1.2, "height": 0.8, "imagePath": "table" }
+        { "name": "Desk",             "width": 1.2, "height": 0.8, "imagePath": "table" },
+        { "name": "Cabinet - metal",          "width": 1.0, "height": 0.45, "imagePath": "cabinet-metal" },
+        { "name": "Cabinet - wood",           "width": 1.0, "height": 0.5,  "imagePath": "cabinet-wood" },
+        { "name": "Desk pedestal - metal",    "width": 0.4, "height": 0.55, "imagePath": "pedestal-metal" },
+        { "name": "Desk pedestal - wood",     "width": 0.4, "height": 0.55, "imagePath": "pedestal-wood" },
+        { "name": "Chest of drawers - metal", "width": 0.8, "height": 0.45, "imagePath": "dresser-metal" },
+        { "name": "Chest of drawers - wood",  "width": 1.0, "height": 0.5,  "imagePath": "dresser-wood" },
+        { "name": "Safe - metal",             "width": 0.5, "height": 0.5,  "imagePath": "safe-metal" }
       ]
     },
     {

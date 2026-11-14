@@ -73,6 +73,7 @@ function PrintFloor({ floor, index }: { floor: FloorState; index: number }) {
   const wallLabels = usePrefs(s => s.wallLabels);
   const showNames = usePrefs(s => s.showNames);
   const lang = usePrefs(s => s.lang);
+  const sizesPos = usePrefs(s => s.sizesPos);
   const t = useT();
   const geom = useMemo(() => computeWallGeometry(floor.nodes, floor.walls), [floor.nodes, floor.walls]);
 
@@ -114,7 +115,7 @@ function PrintFloor({ floor, index }: { floor: FloorState; index: number }) {
           })}
 
           {/* Labels and text notes */}
-          {ready && <FurnitureLabels furniture={floor.furniture} palette={LIGHT} showNames={showNames} lang={lang} />}
+          {ready && <FurnitureLabels furniture={floor.furniture} palette={LIGHT} showNames={showNames} lang={lang} sizesPos={sizesPos} />}
           <TextNotes texts={floor.texts} palette={LIGHT} />
 
           {/* Ruler measurements: constant size on paper */}

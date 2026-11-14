@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 90" width="200" height="90">
+	<title>Metal cabinet (top view)</title>
+	<style>
+		.s0 { fill: #ffffff; stroke: #000000; stroke-width: 2.4 }
+		.s1 { fill: none; stroke: #000000; stroke-width: 1.2 }
+		.s2 { fill: #000000; stroke: none }
+	</style>
+	<rect class="s0" x="2" y="2" width="196" height="86" rx="2"/>
+	<rect class="s1" x="9" y="9" width="182" height="72"/>
+	<path class="s1" d="M100 9 V81"/>
+	<path class="s1" d="M9 22 H191 M9 35 H191 M9 48 H191 M9 61 H191"/>
+	<rect class="s0" x="88" y="68" width="8" height="14" rx="1"/>
+	<rect class="s0" x="104" y="68" width="8" height="14" rx="1"/>
+	<circle class="s2" cx="14" cy="14" r="2"/>
+	<circle class="s2" cx="186" cy="14" r="2"/>
+	<circle class="s2" cx="14" cy="76" r="2"/>
+	<circle class="s2" cx="186" cy="76" r="2"/>
+</svg>

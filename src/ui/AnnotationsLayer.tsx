@@ -1,10 +1,9 @@
 /** Furniture labels and free text notes, shared by the editor and the print view */
 import { Text, Group, Rect } from 'react-konva';
-import type { FurnitureItem, TextNote } from '../types';
+import type { FurnitureItem, TextNote, LabelPos } from '../types';
 import type { Palette } from '../theme';
-import type { Lang } from '../prefs';
+import type { Lang, SizesPos } from '../prefs';
 import { catalogName } from '../i18n';
-import { localToWorld } from '../helpers';
 import catalog from '../catalog.json';
 
 export const TEXT_FONT = 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
@@ -38,28 +37,73 @@ export function furnitureLabel(item: FurnitureItem, showNames: boolean, lang: La
   return name ? catalogName(lang, 'item', name) : '';
 }
 
-export function FurnitureLabels({ furniture, palette, showNames, lang }: {
+const MIRROR: Record<LabelPos, LabelPos> = { c: 'c', t: 'b', b: 't', l: 'r', r: 'l', tl: 'br', tr: 'bl', bl: 'tr', br: 'tl' };
+const H_ALIGN = (p: LabelPos) => (p === 'l' || p === 'tl' || p === 'bl' ? 'left' : p === 'r' || p === 'tr' || p === 'br' ? 'right' : 'center');
+const V_ALIGN = (p: LabelPos) => (p === 't' || p === 'tl' || p === 'tr' ? 'top' : p === 'b' || p === 'bl' || p === 'br' ? 'bottom' : 'middle');
+
+/**
+ * Labels and sizes drawn inside each item, in the item's own frame (they turn with it).
+ * Items turned upside down get their text flipped back, keeping the chosen visual position.
+ */
+export function FurnitureLabels({ furniture, palette, showNames, lang, sizesPos = 'off' }: {
   furniture: FurnitureItem[];
   palette: Palette;
   showNames: boolean;
   lang: Lang;
+  sizesPos?: SizesPos;
 }) {
   return (
     <Group>
       {furniture.map(item => {
         const text = furnitureLabel(item, showNames, lang);
-        if (!text) return null;
-        const c = localToWorld(item.w / 2, item.h / 2, item.x, item.y, item.rot);
-        // Fit the label inside the item where possible (long names get smaller), within readable limits
-        const probe = measureNote({ text, size: 10, bold: false }).w / 10; // width per 1 unit of font size
-        const size = Math.max(7, Math.min(14, Math.min(item.w, item.h) * 0.3, (item.w * 0.92) / Math.max(probe, 0.01)));
-        const W = 400;
+        if (!text && sizesPos === 'off') return null;
+        const rot = ((item.rot % 360) + 360) % 360;
+        const flip = rot > 90 && rot <= 270;
+        const pos = (p: LabelPos) => (flip ? MIRROR[p] : p);
+        const pad = Math.min(4, item.w * 0.05, item.h * 0.05);
+        const boxW = Math.max(1, item.w - pad * 2), boxH = Math.max(1, item.h - pad * 2);
+
+        let size = item.labelSize;
+        if (!size && text) {
+          // Fit the label inside the item where possible (long names get smaller), within readable limits
+          const perUnit = measureNote({ text, size: 10, bold: !!item.labelBold }).w / 10;
+          size = Math.max(7, Math.min(14, Math.min(item.w, item.h) * 0.3, (item.w * 0.92) / Math.max(perUnit, 0.01)));
+        }
+        const sizeFont = Math.max(6, Math.min(11, Math.min(item.w, item.h) * 0.16));
+        const labelPos = item.labelPos ?? 'c';
+
         return (
-          <Text key={item.id} x={c.x} y={c.y} text={text} fontSize={size} fontFamily={TEXT_FONT}
-            fill={palette.text} stroke={palette.textHalo} strokeWidth={size / 4} fillAfterStrokeEnabled lineJoin="round"
-            width={W} align="center" offsetX={W / 2} offsetY={size / 2} />
+          <Group key={item.id} x={item.x} y={item.y} rotation={item.rot}>
+            <Group x={flip ? item.w : 0} y={flip ? item.h : 0} rotation={flip ? 180 : 0}>
+              {text && (
+                <Text x={pad} y={pad} width={boxW} height={boxH} text={text} wrap="word"
+                  fontSize={size} fontFamily={TEXT_FONT} fontStyle={item.labelBold ? 'bold' : 'normal'}
+                  align={H_ALIGN(pos(labelPos))} verticalAlign={V_ALIGN(pos(labelPos))}
+                  fill={item.labelColor ?? palette.text} stroke={palette.textHalo} strokeWidth={(size ?? 10) / 4}
+                  fillAfterStrokeEnabled lineJoin="round" />
+              )}
+              {sizesPos !== 'off' && (
+                <Text x={pad} y={pad} width={boxW} height={boxH}
+                  text={`${Math.round(item.w)}×${Math.round(item.h)}`}
+                  fontSize={sizeFont} fontFamily={TEXT_FONT}
+                  align={H_ALIGN(pos(sizesPos))} verticalAlign={V_ALIGN(pos(sizesPos))}
+                  fill={palette.wallLabel} stroke={palette.textHalo} strokeWidth={sizeFont / 4}
+                  fillAfterStrokeEnabled lineJoin="round" />
+              )}
+            </Group>
+          </Group>
         );
       })}
+    </Group>
+  );
+}
+
+/** Dashed outline around an item that is part of a multi-selection */
+export function ItemOutline({ x, y, w, h, rot, palette, px }: { x: number; y: number; w: number; h: number; rot: number; palette: Palette; px: number }) {
+  return (
+    <Group x={x} y={y} rotation={rot}>
+      <Rect x={-2 * px} y={-2 * px} width={w + 4 * px} height={h + 4 * px}
+        stroke={palette.accent} strokeWidth={1.5 * px} dash={[6 * px, 3 * px]} />
     </Group>
   );
 }

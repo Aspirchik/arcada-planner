@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 100" width="200" height="100">
+	<title>Wooden cabinet (top view)</title>
+	<style>
+		.s0 { fill: #ffffff; stroke: #000000; stroke-width: 2.4 }
+		.s1 { fill: none; stroke: #000000; stroke-width: 1.1; stroke-linecap: round }
+	</style>
+	<rect class="s0" x="2" y="2" width="196" height="96" rx="4"/>
+	<path class="s1" d="M100 4 V96"/>
+	<path class="s1" d="M8 18 C40 12 62 26 94 18"/>
+	<path class="s1" d="M8 38 C30 44 60 30 94 40"/>
+	<path class="s1" d="M8 60 C36 54 58 68 94 58"/>
+	<path class="s1" d="M106 22 C136 16 160 30 192 22"/>
+	<path class="s1" d="M106 44 C128 50 162 36 192 46"/>
+	<path class="s1" d="M106 66 C140 60 158 74 192 64"/>
+	<ellipse class="s1" cx="48" cy="40" rx="9" ry="4"/>
+	<ellipse class="s1" cx="150" cy="44" rx="7" ry="3"/>
+	<circle class="s0" cx="92" cy="84" r="4"/>
+	<circle class="s0" cx="108" cy="84" r="4"/>
+</svg>

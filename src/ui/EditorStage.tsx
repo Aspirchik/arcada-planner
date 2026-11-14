@@ -1,23 +1,22 @@
 import { useEffect, useRef, useState, useMemo } from 'react';
-import { Stage, Layer, Rect, Line, Text, Image as KImage, Circle, Group } from 'react-konva';
+import { Stage, Layer, Rect, Line, Image as KImage, Circle, Group } from 'react-konva';
 import type Konva from 'konva';
 import type { KonvaEventObject } from 'konva/lib/Node';
-import { useStore } from '../store';
+import { useStore, DEFAULT_Z } from '../store';
 import { Tool, WORLD, AUTOSAVE_KEY } from '../constants';
 import { localToWorld, worldToLocal, sortByZ } from '../helpers';
-import { dist, pointInRotatedRect, distToSegment } from '../geometry/hit';
+import { dist, pointInRotatedRect, distToSegment, type Pt } from '../geometry/hit';
 import { computeWallGeometry, wallThickness } from '../geometry/walls';
+import { obstacleSegments, flushShift } from '../geometry/raycast';
+import { snapTargets, snapToTargets, constrain45 } from '../geometry/snap';
 import { usePrefs } from '../prefs';
-import { usePalette } from '../theme';
+import { usePalette, type Palette } from '../theme';
 import { useT } from '../i18n';
 import { getSprite } from './images';
-import type { Palette } from '../theme';
 import { WallsLayerContent, AlongText, formatMeters } from './WallsLayer';
 import { DimensionLine, DimensionsLayerContent, SnapMarker } from './DimensionsLayer';
-import { FurnitureLabels, TextNotes, TextSelection, measureNote } from './AnnotationsLayer';
+import { FurnitureLabels, TextNotes, TextSelection, ItemOutline, measureNote } from './AnnotationsLayer';
 import { GapsLayerContent } from './GapsLayer';
-import { snapTargets, snapToTargets, constrain45 } from '../geometry/snap';
-import type { Pt } from '../geometry/hit';
 import type { WallNode, Wall, FurnitureItem, Dimension, TextNote } from '../types';
 
 const TOOLBAR_W = 80;
@@ -32,6 +31,8 @@ const MIN_SIZE = 10;
 const MEASURE_SNAP_PX = 12;
 const DIM_END_HIT_PX = 10;
 const DIM_LINE_HIT_PX = 6;
+/** Items closer than this (screen px) to a wall / neighbour snap flush against it */
+const FLUSH_SNAP_PX = 10;
 
 // ── Grid helpers ──────────────────────────────────────────────
 const INTERVALS = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000];
@@ -57,15 +58,24 @@ const ANCHORS: { id: HandleAnchor; lx: (w: number) => number; ly: (h: number) =>
   { id: 'br', lx: (w) => w,     ly: (h) => h,     cursor: 'nwse-resize' },
 ];
 
+interface PosRef { id: number; x: number; y: number }
+interface Mods { multi: boolean }
+
 type DragState =
-  | { type: 'furniture'; id: number; offX: number; offY: number }
+  /** Selected furniture / texts move together; `flushId` = single furniture item that snaps flush */
+  | { type: 'items'; start: Pt; anchor: PosRef; base: PosRef[]; flushId: number | null }
   | { type: 'node'; id: number; offX: number; offY: number }
   | { type: 'resize'; id: number; anchor: HandleAnchor; startItem: FurnitureItem }
   | { type: 'rotate'; id: number; centerX: number; centerY: number; startAngle: number; startRot: number }
   | { type: 'wall-draw'; startNodeId: number; startPt: { x: number; y: number }; moved: boolean }
+  | { type: 'wall-move'; start: Pt; a: PosRef; b: PosRef }
   | { type: 'measure'; start: Pt }
-  | { type: 'text'; id: number; offX: number; offY: number }
   | { type: 'dim-end'; id: number; end: 1 | 2 }
+  | { type: 'dim-move'; start: Pt; base: Dimension }
+  /** Screen-space pan by dragging empty space */
+  | { type: 'pan'; start: Pt; pos0: Pt }
+  /** Ctrl/Shift + drag on empty space: frame selection */
+  | { type: 'marquee'; start: Pt; base: number[] }
   | null;
 
 const WALL_DRAG_THRESHOLD = 8; // px in world coords — distinguishes tap from drag
@@ -85,7 +95,9 @@ export function EditorStage() {
   const [previewPt, setPreviewPt] = useState<{ x: number; y: number } | null>(null);
   const [measurePreview, setMeasurePreview] = useState<Omit<Dimension, 'id'> | null>(null);
   const [snapMark, setSnapMark] = useState<Pt | null>(null);
+  const [marquee, setMarquee] = useState<{ x1: number; y1: number; x2: number; y2: number } | null>(null);
   const shiftRef = useRef(false);
+  const altRef = useRef(false);
   const [, forceRender] = useState(0);
 
   const store         = useStore();
@@ -95,12 +107,14 @@ export function EditorStage() {
   const showNames     = usePrefs(s => s.showNames);
   const showGaps      = usePrefs(s => s.gaps);
   const gapWarn       = usePrefs(s => s.gapWarn);
+  const sizesPos      = usePrefs(s => s.sizesPos);
   const lang          = usePrefs(s => s.lang);
   const textEdit      = useStore(s => s.textEdit);
   const palette       = usePalette();
   const t             = useT();
   const wallStartId   = useStore(s => s.wallStartId);
   const selectedId    = useStore(s => s.selectedId);
+  const selection     = useStore(s => s.selection);
   const floor         = useStore(s => s.floors[s.fi]);
   const wallGeom      = useMemo(() => computeWallGeometry(floor.nodes, floor.walls), [floor.nodes, floor.walls]);
 
@@ -129,9 +143,10 @@ export function EditorStage() {
   // Keyboard shortcuts
   useEffect(() => {
     const fn = (e: KeyboardEvent) => {
+      altRef.current = e.altKey;
       // Don't hijack shortcuts while the user is typing in a text field
-      const t = e.target as HTMLElement | null;
-      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+      const target = e.target as HTMLElement | null;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
 
       const st = useStore.getState();
       const mod = e.metaKey || e.ctrlKey;
@@ -146,20 +161,37 @@ export function EditorStage() {
       if (mod && e.code === 'KeyC') { e.preventDefault(); st.copySelected(); }
       if (mod && e.code === 'KeyV') { e.preventDefault(); st.pasteClipboard(); }
       if (mod && e.code === 'KeyX') { e.preventDefault(); st.cutSelected(); }
-      if ((e.code === 'Delete' || e.code === 'Backspace') && st.selectedId !== null) {
+      if (mod && e.code === 'KeyA') {
+        e.preventDefault();
+        const f = st.floors[st.fi];
+        if (st.tool !== Tool.Select) st.setTool(Tool.Select);
+        st.setSelection([...f.furniture, ...f.texts].map(o => o.id));
+      }
+      if ((e.code === 'Delete' || e.code === 'Backspace') && st.selection.length > 0) {
         e.preventDefault();
         st.deleteSelected();
       }
+      // Arrow keys nudge the selected furniture / texts: 1 cm, with Shift 10 cm
+      if (e.code.startsWith('Arrow') && !mod && st.selection.length > 0) {
+        const step = e.shiftKey ? 10 : 1;
+        const dx = e.code === 'ArrowLeft' ? -step : e.code === 'ArrowRight' ? step : 0;
+        const dy = e.code === 'ArrowUp' ? -step : e.code === 'ArrowDown' ? step : 0;
+        const f = st.floors[st.fi];
+        const moves = [...f.furniture, ...f.texts].filter(o => st.selection.includes(o.id)).map(o => ({ id: o.id, x: o.x + dx, y: o.y + dy }));
+        if (moves.length) { e.preventDefault(); st.moveItems(moves); }
+      }
       if (e.code === 'Escape') { st.setWallStart(null); st.select(null); st.setTool(Tool.Select); setMeasurePreview(null); setSnapMark(null); }
     };
+    const up = (e: KeyboardEvent) => { altRef.current = e.altKey; };
     document.addEventListener('keydown', fn);
-    return () => document.removeEventListener('keydown', fn);
+    document.addEventListener('keyup', up);
+    return () => { document.removeEventListener('keydown', fn); document.removeEventListener('keyup', up); };
   }, []);
 
   // Safety net: pointer released outside the canvas — finish the gesture so undo keeps working
   useEffect(() => {
     const fn = () => {
-      if (dragRef.current) { dragRef.current = null; setPreviewPt(null); setMeasurePreview(null); }
+      if (dragRef.current) { dragRef.current = null; setPreviewPt(null); setMeasurePreview(null); setMarquee(null); }
       useStore.getState().endGesture();
     };
     window.addEventListener('mouseup', fn);
@@ -192,6 +224,10 @@ export function EditorStage() {
   // ── Manual hit detection ────────────────────────────────────
   function getWorld(): { x: number; y: number } | null {
     return stageRef.current?.getRelativePointerPosition() ?? null;
+  }
+
+  function getScreen(): Pt | null {
+    return stageRef.current?.getPointerPosition() ?? null;
   }
 
   function hitHandle(wx: number, wy: number): { type: 'resize'; anchor: HandleAnchor; cursor: string } | { type: 'rotate' } | null {
@@ -242,6 +278,15 @@ export function EditorStage() {
     return null;
   }
 
+  function hitText(wx: number, wy: number): TextNote | null {
+    for (let i = floor.texts.length - 1; i >= 0; i--) {
+      const n = floor.texts[i];
+      const { w, h } = measureNote(n);
+      if (pointInRotatedRect(wx, wy, n.x, n.y, w, h, n.rot)) return n;
+    }
+    return null;
+  }
+
   // ── Ruler helpers ───────────────────────────────────────────
   /** Snaps a ruler end to walls / furniture / other dimensions, else to the grid; Shift keeps 45° steps from `from` */
   function measurePoint(pt: Pt, from?: Pt, excludeDimId?: number): { p: Pt; snapped: boolean } {
@@ -257,15 +302,6 @@ export function EditorStage() {
       const d = floor.dimensions[i];
       if (dist(wx, wy, d.x1, d.y1) < thr) return { id: d.id, end: 1 };
       if (dist(wx, wy, d.x2, d.y2) < thr) return { id: d.id, end: 2 };
-    }
-    return null;
-  }
-
-  function hitText(wx: number, wy: number): TextNote | null {
-    for (let i = floor.texts.length - 1; i >= 0; i--) {
-      const n = floor.texts[i];
-      const { w, h } = measureNote(n);
-      if (pointInRotatedRect(wx, wy, n.x, n.y, w, h, n.rot)) return n;
     }
     return null;
   }
@@ -310,12 +346,34 @@ export function EditorStage() {
     return { x: newX, y: newY, w: newW, h: newH };
   }
 
+  // ── Drag starters ───────────────────────────────────────────
+  function startPan() {
+    const s = getScreen();
+    if (!s) return;
+    dragRef.current = { type: 'pan', start: s, pos0: { ...pos } };
+    const container = stageRef.current?.container();
+    if (container) container.style.cursor = 'grabbing';
+  }
+
+  /** Starts moving the current selection, anchored at the clicked object */
+  function startItemsDrag(anchorId: number, pt: Pt) {
+    const sel = useStore.getState().selection;
+    const base: PosRef[] = [...floor.furniture, ...floor.texts]
+      .filter(o => sel.includes(o.id))
+      .map(o => ({ id: o.id, x: o.x, y: o.y }));
+    const anchor = base.find(b => b.id === anchorId);
+    if (!anchor) return;
+    const single = base.length === 1 && floor.furniture.some(f => f.id === anchorId) ? anchorId : null;
+    dragRef.current = { type: 'items', start: pt, anchor, base, flushId: single };
+  }
+
   // ── Shared pointer logic ────────────────────────────────────
-  function handlePointerDown(pt: { x: number; y: number }) {
+  function handlePointerDown(pt: Pt, mods: Mods) {
     // A click outside the text editor only finishes editing (the editor commits on blur)
     if (useStore.getState().textEdit) return;
     // Everything that happens until pointer-up is one undo step
     store.beginGesture();
+
     // Remove tool
     if (tool === Tool.Remove) {
       const note = hitText(pt.x, pt.y);
@@ -328,6 +386,7 @@ export function EditorStage() {
       if (node) { store.deleteNode(node.id); return; }
       const wall = hitWall(pt.x, pt.y);
       if (wall) { store.deleteWall(wall.id); return; }
+      startPan();
       return;
     }
 
@@ -340,8 +399,10 @@ export function EditorStage() {
       return;
     }
 
-    // Ruler — drag from point to point
+    // Ruler — drag an existing end to adjust it, otherwise measure from point to point
     if (tool === Tool.Measure) {
+      const end = hitDimEnd(pt.x, pt.y);
+      if (end) { store.select(end.id); dragRef.current = { type: 'dim-end', ...end }; return; }
       const { p } = measurePoint(pt);
       dragRef.current = { type: 'measure', start: p };
       setMeasurePreview({ x1: p.x, y1: p.y, x2: p.x, y2: p.y });
@@ -387,9 +448,9 @@ export function EditorStage() {
       return;
     }
 
-    // Select tool — handles, furniture, nodes
+    // ── Select tool ──
     const handle = hitHandle(pt.x, pt.y);
-    if (handle) {
+    if (handle && !mods.multi) {
       const item = floor.furniture.find(f => f.id === selectedId)!;
       if (handle.type === 'resize') {
         dragRef.current = { type: 'resize', id: item.id, anchor: handle.anchor, startItem: { ...item } };
@@ -401,42 +462,89 @@ export function EditorStage() {
       return;
     }
 
-    if (tool === Tool.Select) {
+    if (!mods.multi) {
       const end = hitDimEnd(pt.x, pt.y);
-      if (end) { dragRef.current = { type: 'dim-end', ...end }; return; }
-      const note = hitText(pt.x, pt.y);
-      if (note) {
-        store.select(note.id);
-        dragRef.current = { type: 'text', id: note.id, offX: pt.x - note.x, offY: pt.y - note.y };
-        return;
-      }
+      if (end) { store.select(end.id); dragRef.current = { type: 'dim-end', ...end }; return; }
     }
 
-    const fur = hitFurniture(pt.x, pt.y);
-    if (fur) {
-      store.select(fur.id);
-      dragRef.current = { type: 'furniture', id: fur.id, offX: pt.x - fur.x, offY: pt.y - fur.y };
+    // Furniture and text notes (texts are drawn on top)
+    const obj = hitText(pt.x, pt.y) ?? hitFurniture(pt.x, pt.y);
+    if (obj) {
+      const st = useStore.getState();
+      if (mods.multi) {
+        st.toggleSelect(obj.id);
+        if (!useStore.getState().selection.includes(obj.id)) return;
+      } else if (!st.selection.includes(obj.id)) {
+        st.select(obj.id);
+      }
+      startItemsDrag(obj.id, pt);
       return;
     }
 
-    if (tool === Tool.Select) {
+    if (!mods.multi) {
       const node = hitNode(pt.x, pt.y);
       if (node) {
+        store.select(null);
         dragRef.current = { type: 'node', id: node.id, offX: pt.x - node.x, offY: pt.y - node.y };
+        return;
+      }
+      const dim = hitDimension(pt.x, pt.y);
+      if (dim) {
+        store.select(dim.id);
+        dragRef.current = { type: 'dim-move', start: pt, base: { ...dim } };
+        return;
+      }
+      const wall = hitWall(pt.x, pt.y);
+      if (wall) {
+        const a = floor.nodes.find(n => n.id === wall.a), b = floor.nodes.find(n => n.id === wall.b);
+        store.select(wall.id);
+        if (a && b) dragRef.current = { type: 'wall-move', start: pt, a: { ...a }, b: { ...b } };
         return;
       }
     }
 
+    // Empty space: Ctrl/Shift → frame selection, otherwise pan the plan
+    if (mods.multi) {
+      dragRef.current = { type: 'marquee', start: pt, base: [...useStore.getState().selection] };
+      setMarquee({ x1: pt.x, y1: pt.y, x2: pt.x, y2: pt.y });
+      return;
+    }
     store.select(null);
+    startPan();
   }
 
-  function handlePointerDrag(pt: { x: number; y: number }) {
+  function handlePointerDrag(pt: Pt) {
     const d = dragRef.current;
     if (!d) return;
-    if (d.type === 'furniture') {
-      store.updateFurniture(d.id, { x: pt.x - d.offX, y: pt.y - d.offY });
+    if (d.type === 'pan') {
+      const s = getScreen();
+      if (s) updateStage(d.pos0.x + s.x - d.start.x, d.pos0.y + s.y - d.start.y, scale);
+    } else if (d.type === 'items') {
+      let p = doSnap(d.anchor.x + pt.x - d.start.x, d.anchor.y + pt.y - d.start.y, snapSize);
+      // A single item snaps flush against walls and neighbours nearby (Alt = place freely)
+      if (d.flushId !== null && !altRef.current) {
+        const item = floor.furniture.find(f => f.id === d.flushId);
+        if (item) {
+          const others = floor.furniture.filter(f => f.id !== item.id && f.zi >= DEFAULT_Z);
+          const s = flushShift({ ...item, x: p.x, y: p.y }, obstacleSegments(wallGeom, others), FLUSH_SNAP_PX / scale);
+          p = { x: p.x + s.x, y: p.y + s.y };
+        }
+      }
+      const dx = p.x - d.anchor.x, dy = p.y - d.anchor.y;
+      store.moveItems(d.base.map(b => ({ id: b.id, x: b.x + dx, y: b.y + dy })));
     } else if (d.type === 'node') {
-      store.moveNode(d.id, pt.x - d.offX, pt.y - d.offY);
+      const p = doSnap(pt.x - d.offX, pt.y - d.offY, snapSize);
+      store.moveNode(d.id, p.x, p.y);
+    } else if (d.type === 'wall-move') {
+      const p = doSnap(d.a.x + pt.x - d.start.x, d.a.y + pt.y - d.start.y, snapSize);
+      const dx = p.x - d.a.x, dy = p.y - d.a.y;
+      store.moveNodes([{ id: d.a.id, x: d.a.x + dx, y: d.a.y + dy }, { id: d.b.id, x: d.b.x + dx, y: d.b.y + dy }]);
+    } else if (d.type === 'dim-move') {
+      const p = doSnap(d.base.x1 + pt.x - d.start.x, d.base.y1 + pt.y - d.start.y, snapSize);
+      const dx = p.x - d.base.x1, dy = p.y - d.base.y1;
+      store.updateDimension(d.base.id, { x1: d.base.x1 + dx, y1: d.base.y1 + dy, x2: d.base.x2 + dx, y2: d.base.y2 + dy });
+    } else if (d.type === 'marquee') {
+      setMarquee({ x1: d.start.x, y1: d.start.y, x2: pt.x, y2: pt.y });
     } else if (d.type === 'resize') {
       const changes = applyResize(pt.x, pt.y, d.anchor, d.startItem);
       store.updateFurniture(d.id, changes);
@@ -445,8 +553,6 @@ export function EditorStage() {
       let newRot = d.startRot + (currentAngle - d.startAngle) * 180 / Math.PI;
       if (snapSize > 0) newRot = Math.round(newRot / 15) * 15;
       store.updateFurniture(d.id, { rot: newRot });
-    } else if (d.type === 'text') {
-      store.updateText(d.id, { x: pt.x - d.offX, y: pt.y - d.offY });
     } else if (d.type === 'measure') {
       const { p, snapped } = measurePoint(pt, d.start);
       setMeasurePreview({ x1: d.start.x, y1: d.start.y, x2: p.x, y2: p.y });
@@ -487,9 +593,29 @@ export function EditorStage() {
     if (!dragRef.current) return;
     const d = dragRef.current;
     const pt = getWorld();
+    dragRef.current = null;
+
+    if (d.type === 'pan') {
+      const container = stageRef.current?.container();
+      if (container) container.style.cursor = 'default';
+      return;
+    }
+
+    if (d.type === 'marquee') {
+      setMarquee(null);
+      if (!pt) return;
+      const x1 = Math.min(d.start.x, pt.x), x2 = Math.max(d.start.x, pt.x);
+      const y1 = Math.min(d.start.y, pt.y), y2 = Math.max(d.start.y, pt.y);
+      const inside = (p: Pt) => p.x >= x1 && p.x <= x2 && p.y >= y1 && p.y <= y2;
+      const picked = [
+        ...floor.furniture.filter(f => inside(localToWorld(f.w / 2, f.h / 2, f.x, f.y, f.rot))),
+        ...floor.texts.filter(n => { const m = measureNote(n); return inside(localToWorld(m.w / 2, m.h / 2, n.x, n.y, n.rot)); }),
+      ].map(o => o.id);
+      store.setSelection([...d.base, ...picked]);
+      return;
+    }
 
     if (d.type === 'measure') {
-      dragRef.current = null;
       setMeasurePreview(null);
       setSnapMark(null);
       // Use the release point itself (the last preview state may not have rendered yet)
@@ -499,13 +625,11 @@ export function EditorStage() {
       return;
     }
     if (d.type === 'dim-end') {
-      dragRef.current = null;
       setSnapMark(null);
       return;
     }
 
     if (d.type === 'wall-draw') {
-      dragRef.current = null;
       if (!d.moved) {
         // Tap without drag → end the chain (deselect wallStart)
         store.setWallStart(null);
@@ -534,21 +658,8 @@ export function EditorStage() {
       store.addWall(d.startNodeId, endId);
       store.setWallStart(endId); // chain: ready for next drag
       setPreviewPt(null);
-      return;
     }
-
-    if (pt) {
-      if (d.type === 'furniture') {
-        const p = doSnap(pt.x - d.offX, pt.y - d.offY, snapSize);
-        store.updateFurniture(d.id, p);
-      } else if (d.type === 'node') {
-        const p = doSnap(pt.x - d.offX, pt.y - d.offY, snapSize);
-        store.moveNode(d.id, p.x, p.y);
-      } else if (d.type === 'text') {
-        store.updateText(d.id, doSnap(pt.x - d.offX, pt.y - d.offY, snapSize));
-      }
-    }
-    dragRef.current = null;
+    // items, node, wall-move, dim-move, resize, rotate: already applied (and snapped) while dragging
   }
 
   // ── Mouse event handlers ───────────────────────────────────
@@ -562,12 +673,16 @@ export function EditorStage() {
 
   function onMouseDown(e: KonvaEventObject<MouseEvent>) {
     shiftRef.current = e.evt.shiftKey;
-    if (e.evt.button === 2) {
-      const pt = getWorld();
-      if (pt) {
-        const wall = hitWall(pt.x, pt.y);
-        if (wall) { store.toggleExterior(wall.id); return; }
+    altRef.current = e.evt.altKey;
+    if (e.evt.button === 2 || e.evt.button === 1) {
+      if (e.evt.button === 2) {
+        const pt = getWorld();
+        if (pt) {
+          const wall = hitWall(pt.x, pt.y);
+          if (wall) { store.toggleExterior(wall.id); return; }
+        }
       }
+      e.evt.preventDefault();
       isPanning.current = true;
       panStart.current = { x: e.evt.clientX, y: e.evt.clientY };
       posAtPan.current = { ...pos };
@@ -578,11 +693,12 @@ export function EditorStage() {
     if (e.evt.button !== 0) return;
     const pt = getWorld();
     if (!pt) return;
-    handlePointerDown(pt);
+    handlePointerDown(pt, { multi: e.evt.ctrlKey || e.evt.metaKey || e.evt.shiftKey });
   }
 
   function onMouseMove(e: KonvaEventObject<MouseEvent>) {
     shiftRef.current = e.evt.shiftKey;
+    altRef.current = e.evt.altKey;
     if (isPanning.current) {
       updateStage(
         posAtPan.current.x + e.evt.clientX - panStart.current.x,
@@ -626,22 +742,19 @@ export function EditorStage() {
             container.style.cursor = handle.type === 'rotate' ? 'grab' : (handle as { cursor: string }).cursor;
           } else if (hitDimEnd(pt.x, pt.y)) {
             container.style.cursor = 'pointer';
-          } else if (hitText(pt.x, pt.y)) {
+          } else if (hitText(pt.x, pt.y) || hitFurniture(pt.x, pt.y) || hitNode(pt.x, pt.y) || hitDimension(pt.x, pt.y) || hitWall(pt.x, pt.y)) {
             container.style.cursor = 'move';
           } else {
-            const fur = hitFurniture(pt.x, pt.y);
-            container.style.cursor = fur ? 'move' : 'default';
+            container.style.cursor = e.evt.ctrlKey || e.evt.shiftKey || e.evt.metaKey ? 'crosshair' : 'grab';
           }
         } else if (tool === Tool.Remove) {
-          const fur = hitFurniture(pt.x, pt.y);
-          const node = hitNode(pt.x, pt.y);
-          const wall = hitWall(pt.x, pt.y);
-          const dim = hitDimension(pt.x, pt.y);
-          const note = hitText(pt.x, pt.y);
-          container.style.cursor = (fur || node || wall || dim || note) ? 'pointer' : 'default';
+          const hit = hitFurniture(pt.x, pt.y) || hitNode(pt.x, pt.y) || hitWall(pt.x, pt.y) || hitDimension(pt.x, pt.y) || hitText(pt.x, pt.y);
+          container.style.cursor = hit ? 'pointer' : 'grab';
         } else if (tool === Tool.Text) {
           container.style.cursor = hitText(pt.x, pt.y) ? 'text' : 'crosshair';
-        } else if (tool === Tool.WallAdd || tool === Tool.Measure) {
+        } else if (tool === Tool.Measure) {
+          container.style.cursor = hitDimEnd(pt.x, pt.y) ? 'pointer' : 'crosshair';
+        } else if (tool === Tool.WallAdd) {
           container.style.cursor = 'crosshair';
         } else {
           container.style.cursor = 'default';
@@ -660,7 +773,7 @@ export function EditorStage() {
   }
 
   function onMouseUp(e: KonvaEventObject<MouseEvent>) {
-    if (e.evt.button === 2) {
+    if (e.evt.button === 2 || e.evt.button === 1) {
       isPanning.current = false;
       const container = stageRef.current?.container();
       if (container) container.style.cursor = 'default';
@@ -676,7 +789,7 @@ export function EditorStage() {
 
     if (touches.length >= 2) {
       // Start pinch/pan — cancel any ongoing drag
-      if (dragRef.current) { dragRef.current = null; setPreviewPt(null); setMeasurePreview(null); store.endGesture(); }
+      if (dragRef.current) { dragRef.current = null; setPreviewPt(null); setMeasurePreview(null); setMarquee(null); store.endGesture(); }
       const t0 = touches[0], t1 = touches[1];
       pinchRef.current = {
         dist: dist(t0.clientX, t0.clientY, t1.clientX, t1.clientY),
@@ -687,10 +800,10 @@ export function EditorStage() {
       return;
     }
 
-    // Single touch = left click
+    // Single touch = left click (empty space pans)
     const pt = getWorld();
     if (!pt) return;
-    handlePointerDown(pt);
+    handlePointerDown(pt, { multi: false });
   }
 
   function onTouchMove(e: KonvaEventObject<TouchEvent>) {
@@ -717,12 +830,10 @@ export function EditorStage() {
       return;
     }
 
-    // Single touch drag (furniture, nodes, resize, rotate, wall-draw)
     if (dragRef.current) {
       const pt = getWorld();
       if (!pt) return;
       handlePointerDrag(pt);
-      return;
     }
   }
 
@@ -741,7 +852,11 @@ export function EditorStage() {
   const startNode = wallStartId !== null ? floor.nodes.find(n => n.id === wallStartId) : null;
   const selectedItem = selectedId !== null ? floor.furniture.find(f => f.id === selectedId) : null;
   const selectedNote = selectedId !== null ? floor.texts.find(n => n.id === selectedId) : null;
+  const selectedWall = selectedId !== null ? wallGeom.walls.find(g => g.wall.id === selectedId) : null;
+  const selectedDim = selectedId !== null ? floor.dimensions.find(d => d.id === selectedId) : null;
+  const multi = selection.length > 1;
   const onImageLoaded = () => forceRender(c => c + 1);
+  const px = 1 / scale;
 
   return (
     <Stage
@@ -765,6 +880,10 @@ export function EditorStage() {
       <Layer listening={false}>
         {/* Walls */}
         <WallsLayerContent geom={wallGeom} palette={palette} labels={wallLabels} unit={t('unit.m')} />
+        {selectedWall && (
+          <Line points={selectedWall.polygon.flatMap(p => [p.x, p.y])} closed
+            stroke={palette.accent} strokeWidth={2 * px} dash={[6 * px, 3 * px]} />
+        )}
 
         {/* Nodes */}
         {floor.nodes.map(n => {
@@ -796,21 +915,48 @@ export function EditorStage() {
         {/* Free space around the selected item */}
         {selectedItem && showGaps && (
           <GapsLayerContent item={selectedItem} furniture={floor.furniture} geom={wallGeom} palette={palette}
-            px={1 / scale} warnBelow={gapWarn} unit={t('unit.cm')} />
+            px={px} warnBelow={gapWarn} unit={t('unit.cm')} />
         )}
 
-        {/* Labels and text notes */}
-        <FurnitureLabels furniture={floor.furniture} palette={palette} showNames={showNames} lang={lang} />
+        {/* Labels, sizes and text notes */}
+        <FurnitureLabels furniture={floor.furniture} palette={palette} showNames={showNames} lang={lang} sizesPos={sizesPos} />
         <TextNotes texts={floor.texts} palette={palette} hideId={textEdit?.id} />
-        {selectedNote && !textEdit && <TextSelection note={selectedNote} palette={palette} px={1 / scale} />}
+        {selectedNote && !textEdit && <TextSelection note={selectedNote} palette={palette} px={px} />}
 
         {/* Ruler measurements */}
-        <DimensionsLayerContent dims={floor.dimensions} palette={palette} unit={t('unit.m')} px={1 / scale} />
-        {measurePreview && <DimensionLine d={measurePreview} palette={palette} unit={t('unit.m')} px={1 / scale} preview />}
-        {snapMark && <SnapMarker x={snapMark.x} y={snapMark.y} palette={palette} px={1 / scale} />}
+        <DimensionsLayerContent dims={floor.dimensions} palette={palette} unit={t('unit.m')} px={px} />
+        {selectedDim && (
+          <Group>
+            <DimensionLine d={selectedDim} palette={palette} unit={t('unit.m')} px={px} preview />
+            <Circle x={selectedDim.x1} y={selectedDim.y1} radius={5 * px} fill={palette.paper} stroke={palette.accent} strokeWidth={1.5 * px} />
+            <Circle x={selectedDim.x2} y={selectedDim.y2} radius={5 * px} fill={palette.paper} stroke={palette.accent} strokeWidth={1.5 * px} />
+          </Group>
+        )}
+        {measurePreview && <DimensionLine d={measurePreview} palette={palette} unit={t('unit.m')} px={px} preview />}
+        {snapMark && <SnapMarker x={snapMark.x} y={snapMark.y} palette={palette} px={px} />}
+
+        {/* Group selection outlines */}
+        {multi && floor.furniture.filter(f => selection.includes(f.id)).map(f => (
+          <ItemOutline key={`o${f.id}`} x={f.x} y={f.y} w={f.w} h={f.h} rot={f.rot} palette={palette} px={px} />
+        ))}
+        {multi && floor.texts.filter(n => selection.includes(n.id)).map(n => (
+          <TextSelection key={`o${n.id}`} note={n} palette={palette} px={px} />
+        ))}
 
         {/* Selection handles */}
         {selectedItem && <SelectionHandles item={selectedItem} scale={scale} palette={palette} />}
+
+        {/* Frame selection */}
+        {marquee && (
+          <Rect x={Math.min(marquee.x1, marquee.x2)} y={Math.min(marquee.y1, marquee.y2)}
+            width={Math.abs(marquee.x2 - marquee.x1)} height={Math.abs(marquee.y2 - marquee.y1)}
+            fill={palette.accent} opacity={0.12} />
+        )}
+        {marquee && (
+          <Rect x={Math.min(marquee.x1, marquee.x2)} y={Math.min(marquee.y1, marquee.y2)}
+            width={Math.abs(marquee.x2 - marquee.x1)} height={Math.abs(marquee.y2 - marquee.y1)}
+            stroke={palette.accent} strokeWidth={1 * px} dash={[4 * px, 3 * px]} />
+        )}
       </Layer>
     </Stage>
   );

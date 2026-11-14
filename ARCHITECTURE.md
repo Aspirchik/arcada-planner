@@ -103,11 +103,12 @@ All application state lives in a single Zustand store (`src/store.ts`). Key slic
 | `snapSize` | `number` | Snap grid size in world units (0 = off, 10 = 10cm default) |
 | `floors` | `FloorState[]` | Array of floors, each with nodes, walls, furniture |
 | `fi` | `number` | Current floor index |
-| `selectedId` | `number \| null` | Currently selected furniture item or text note |
+| `selection` | `number[]` | Selected object ids (groups: furniture + texts; a single wall or dimension can be selected too) |
+| `selectedId` | `number \| null` | The single selected object (kept in sync: `selection.length === 1 ? selection[0] : null`) |
 | `textEdit` | `{ id, x, y } \| null` | Text note being edited in place |
 | `wallStartId` | `number \| null` | Node where the current wall chain starts |
 | `histories` | `{ undo, redo }[]` | Undo/redo history per floor (same index as `floors`), up to 50 steps each |
-| `clipboard` | `{ kind: 'furniture' \| 'text', item }` | Copy/paste buffer |
+| `clipboard` | `{ furniture: FurnitureItem[]; texts: TextNote[] }` | Copy/paste buffer (whole groups) |
 | `dirty` | `boolean` | Unsaved changes exist (controls the leave-page warning and autosave) |
 
 ### Undo/Redo
@@ -160,6 +161,14 @@ function pointInRotatedRect(px, py, rx, ry, rw, rh, rotDeg) {
   return localX >= 0 && localX <= rw && localY >= 0 && localY <= rh;
 }
 ```
+
+### Pointer actions in the Select tool
+
+Priority on pointer-down: resize/rotate handles → ruler ends → texts / furniture → wall nodes → ruler lines → walls → empty space.
+Ctrl/Shift+click toggles an item in the selection; dragging any selected item moves the whole selection (`moveItems`).
+Empty space: plain drag pans the plan (`pan` drag, screen coordinates); Ctrl/Shift+drag draws a frame (`marquee`) that selects items whose centre is inside.
+
+**Flush snapping**: while a single furniture item is dragged, its position is grid-snapped and then `flushShift()` (`geometry/raycast.ts`) pulls it against a wall face or neighbouring item closer than 10 screen px, so gaps of exactly 0 cm are easy to get. Rugs (layer below 100) are ignored; Alt disables it. Rays that start on an obstacle report distance 0.
 
 ### Manual drag system
 
@@ -249,8 +258,9 @@ Files use `.arcada` extension (JSON content). Current format version **2.1.0** (
   "floors": [
     {
       "nodes": [{ "id": 1, "x": 500, "y": 500 }],
-      "walls": [{ "id": 10, "a": 1, "b": 2, "exterior": true }],
-      "furniture": [{ "id": 20, "path": "couch", "x": 600, "y": 400, "w": 240, "h": 100, "rot": 0, "zi": 100, "name": "Couch", "label": "Guest sofa" }],
+      "walls": [{ "id": 10, "a": 1, "b": 2, "exterior": true, "thickness": 25 }],
+      "furniture": [{ "id": 20, "path": "couch", "x": 600, "y": 400, "w": 240, "h": 100, "rot": 0, "zi": 100, "name": "Couch",
+                     "label": "Guest sofa", "labelPos": "tl", "labelSize": 12, "labelBold": true, "labelColor": "#1a73e8" }],
       "dimensions": [{ "id": 30, "x1": 510, "y1": 700, "x2": 890, "y2": 700 }],
       "texts": [{ "id": 31, "x": 520, "y": 520, "text": "Living room", "size": 20, "rot": 0, "bold": true, "color": null }]
     }
@@ -260,6 +270,8 @@ Files use `.arcada` extension (JSON content). Current format version **2.1.0** (
 ```
 
 - `name` — English catalog name (shown translated when *Names* is on); `label` — the user's own label.
+- `labelPos` — `c`, `t`, `b`, `l`, `r`, `tl`, `tr`, `bl`, `br`; labels are drawn in the item's frame (they turn with it, flipped back when upside down). `labelSize` missing = fitted automatically.
+- Wall `thickness` is optional; without it 20 cm (exterior) or 16 cm (interior) is used (`wallThickness()`).
 - `color: null` on a text means "theme text colour".
 
 ---

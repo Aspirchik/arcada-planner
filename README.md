@@ -31,7 +31,9 @@ Browse the catalog on the right panel: Bedroom, Kitchen, Living room, Bathroom, 
 
 ### 4. Adjust everything
 
-Click any furniture to select it. Drag to move, pull the handles to resize, or drag the top circle to rotate. The floating panel lets you type exact values in **cm** and **degrees** and give the item a **label**. With **Gaps** on, the selected item shows the free space to the nearest wall or furniture on each side; less than 60 cm is highlighted.
+Click any furniture to select it. Drag to move, pull the handles to resize, or drag the top circle to rotate. Items snap flush (0 cm) to walls and neighbours when dragged close — hold **Alt** to place freely. The floating panel lets you type exact values in **cm** and **degrees** and give the item a **label** with its own position (centre, side or corner), size, bold and colour. With **Gaps** on, the selected item shows the free space to the nearest wall or furniture on each side; less than 60 cm is highlighted.
+
+Select several items with **Ctrl/Shift+click** or a **Ctrl/Shift+drag** frame and move, copy or delete them together. Click a **wall** to change its type, thickness and length or drag it; click a **ruler line** to change its length or move it.
 
 ![Resize and rotate](docs/screenshots/resize-rotate.gif)
 <!-- TODO: replace with a GIF -->
@@ -64,9 +66,9 @@ Use the arrows in the toolbar to add and navigate floors. Each floor is independ
 
 | Tool | What it does |
 |---|---|
-| **Select** | Click to select furniture or text, drag to move, pull handles to resize/rotate, drag wall nodes and ruler ends to reshape; double-click a text to edit |
+| **Select** | Click to select furniture, text, a wall or a ruler line; drag to move (walls and rulers too), pull handles to resize/rotate, drag wall nodes and ruler ends; Ctrl/Shift+click or Ctrl/Shift+drag a frame to select a group; double-click a text to edit |
 | **Wall** | Drag to draw walls, click on walls to split them |
-| **Ruler** | Drag to measure; the dimension stays on the plan |
+| **Ruler** | Drag to measure; the dimension stays on the plan. Drag an existing end to adjust it |
 | **Text** | Click to add a note, click a note to edit it |
 | **Erase** | Click any element to delete it |
 
@@ -77,6 +79,7 @@ Use the arrows in the toolbar to add and navigate floors. Each floor is independ
 | **Snap** | Grid snap: Off, 5, 10, 25 or 50 cm |
 | **Lengths** | Wall length labels: Inside / Both / Axis / Off |
 | **Names** | Show catalog names on furniture |
+| **Sizes** | Show width × depth (cm) on every item, in the chosen corner |
 | **Gaps** | Show free space around the selected item |
 | **Language** | EN / PL / RU / UA |
 | **Theme** | Auto (system) → Light → Dark |
@@ -85,10 +88,13 @@ Use the arrows in the toolbar to add and navigate floors. Each floor is independ
 
 | Input | Action |
 |---|---|
-| **Right-click drag** | Pan the canvas |
+| **Drag empty space** (or right / middle button) | Pan the canvas |
+| **Ctrl / Shift + drag empty space** | Frame selection |
+| **Ctrl / Shift + click** | Add / remove an item from the selection |
+| **Alt while dragging** | Place freely, without snapping flush to walls / neighbours |
 | **Scroll wheel** | Zoom in / out |
 | **Right-click on wall** | Toggle exterior / interior |
-| **Two fingers** (touch) | Pan and zoom |
+| **One finger on empty space / two fingers** (touch) | Pan / pan and zoom |
 
 ## Keyboard shortcuts
 
@@ -99,7 +105,9 @@ Use the arrows in the toolbar to add and navigate floors. Each floor is independ
 | **Ctrl+Z** | Undo |
 | **Ctrl+Shift+Z** / **Ctrl+Y** | Redo |
 | **Ctrl+C / V / X** | Copy / Paste / Cut furniture or text |
-| **Delete** | Remove selected furniture or text |
+| **Delete** | Remove the selection (furniture, texts, wall, ruler) |
+| **Ctrl+A** | Select all furniture and texts |
+| **Arrows** / **Shift+Arrows** | Move the selection by 1 cm / 10 cm |
 | **Shift** (while measuring) | Keep the ruler straight / at 45° |
 
 ---

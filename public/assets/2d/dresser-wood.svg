@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 100" width="200" height="100">
+	<title>Wooden chest of drawers (top view)</title>
+	<style>
+		.s0 { fill: #ffffff; stroke: #000000; stroke-width: 2.4 }
+		.s1 { fill: none; stroke: #000000; stroke-width: 1.1; stroke-linecap: round }
+	</style>
+	<rect class="s0" x="2" y="2" width="196" height="96" rx="5"/>
+	<path class="s1" d="M8 18 C50 10 90 28 140 16 C160 12 178 20 192 16"/>
+	<path class="s1" d="M8 38 C44 46 80 30 120 40 C150 46 172 34 192 40"/>
+	<path class="s1" d="M8 60 C40 54 86 70 130 58 C160 52 176 64 192 60"/>
+	<ellipse class="s1" cx="70" cy="34" rx="10" ry="4"/>
+	<ellipse class="s1" cx="150" cy="58" rx="7" ry="3"/>
+	<path class="s1" d="M2 82 H198"/>
+	<circle class="s0" cx="40" cy="90" r="4"/>
+	<circle class="s0" cx="100" cy="90" r="4"/>
+	<circle class="s0" cx="160" cy="90" r="4"/>
+</svg>

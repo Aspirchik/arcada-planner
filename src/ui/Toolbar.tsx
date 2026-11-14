@@ -2,17 +2,17 @@ import { useState } from 'react';
 import {
   MousePointer2, Eraser, Minus, Grid3X3,
   Tag, ChevronUp, ChevronDown, Trash2, Printer,
-  Save, FolderOpen, HelpCircle, Languages, Sun, Moon, Monitor, Ruler, Type, CaseSensitive, ArrowLeftRight,
+  Save, FolderOpen, HelpCircle, Languages, Sun, Moon, Monitor, Ruler, Type, CaseSensitive, ArrowLeftRight, Scaling,
 } from 'lucide-react';
 import { useStore, ProjectError } from '../store';
-import { usePrefs, LANGS, type WallLabelMode, type Lang, type ThemePref } from '../prefs';
+import { usePrefs, LANGS, type WallLabelMode, type Lang, type ThemePref, type SizesPos } from '../prefs';
 import { useT, t as tNow, LANG_NAMES, type TKey } from '../i18n';
 import { Tool, AUTOSAVE_KEY } from '../constants';
 
 /** Theme button cycles: Auto → Light → Dark → Auto */
 const NEXT_THEME: Record<ThemePref, ThemePref> = { system: 'light', light: 'dark', dark: 'system' };
 
-const HELP_KEYS = ['select', 'wall', 'split', 'exterior', 'lengths', 'measure', 'text', 'gaps', 'pan', 'snap', 'keys'] as const;
+const HELP_KEYS = ['select', 'group', 'wall', 'split', 'exterior', 'walledit', 'lengths', 'measure', 'text', 'gaps', 'pan', 'snap', 'keys'] as const;
 
 function saveToFile(data: string) {
   try { localStorage.setItem(AUTOSAVE_KEY, data); } catch { /* storage unavailable */ }
@@ -46,6 +46,7 @@ export function Toolbar() {
   const theme = usePrefs(s => s.theme);
   const showNames = usePrefs(s => s.showNames);
   const showGaps = usePrefs(s => s.gaps);
+  const sizesPos = usePrefs(s => s.sizesPos);
   const setPref = usePrefs(s => s.set);
   const t = useT();
   const [showHelp, setShowHelp] = useState(false);
@@ -134,6 +135,21 @@ export function Toolbar() {
             <CaseSensitive size={20} />
             <span>{t('names.label')}</span>
           </button>
+          <div className={'snap-btn-wrap' + (sizesPos !== 'off' ? ' active' : '')} title={t('sizes.title')}>
+            <Scaling size={20} />
+            <span className="snap-label">{t('sizes.label')}</span>
+            <select
+              className="snap-select"
+              value={sizesPos}
+              onChange={e => setPref('sizesPos', e.target.value as SizesPos)}
+            >
+              <option value="off">{t('lengths.off')}</option>
+              <option value="tl">↖</option>
+              <option value="tr">↗</option>
+              <option value="bl">↙</option>
+              <option value="br">↘</option>
+            </select>
+          </div>
           <button title={t('gaps.title')} className={'tool-btn' + (showGaps ? ' active' : '')}
             onClick={() => setPref('gaps', !showGaps)}>
             <ArrowLeftRight size={20} />

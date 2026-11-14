@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 110" width="80" height="110">
+	<title>Wooden under-desk pedestal (top view)</title>
+	<style>
+		.s0 { fill: #ffffff; stroke: #000000; stroke-width: 2.2 }
+		.s1 { fill: none; stroke: #000000; stroke-width: 1; stroke-linecap: round }
+	</style>
+	<rect class="s0" x="2" y="2" width="76" height="106" rx="4"/>
+	<path class="s1" d="M8 16 C24 10 44 22 72 14"/>
+	<path class="s1" d="M8 36 C26 42 48 28 72 38"/>
+	<path class="s1" d="M8 58 C22 52 50 66 72 56"/>
+	<path class="s1" d="M8 80 C30 86 46 72 72 82"/>
+	<ellipse class="s1" cx="38" cy="47" rx="7" ry="3"/>
+	<circle class="s0" cx="40" cy="98" r="4"/>
+</svg>

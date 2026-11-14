@@ -27,9 +27,9 @@ export function GapsLayerContent({ item, furniture, geom, palette, px, warnBelow
 
   return (
     <Group>
-      {gaps.filter(g => g.distance >= 0.5).map((g, i) => {
+      {gaps.map((g, i) => {
         const color = g.distance < warnBelow ? palette.gapWarn : palette.gap;
-        const ux = (g.to.x - g.from.x) / g.distance, uy = (g.to.y - g.from.y) / g.distance;
+        const ux = g.dir.x, uy = g.dir.y;
         const nx = -uy, ny = ux;
         const tick = 4 * px;
         const angle = Math.atan2(uy, ux) * 180 / Math.PI;
