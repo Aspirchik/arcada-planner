@@ -241,6 +241,18 @@ body { overflow: hidden; font-family: system-ui, sans-serif; background: var(--o
 .help-box button:hover { background: var(--accent-hover); }
 .help-box .dialog-text { font-size: 14px; color: var(--text-2); line-height: 1.5; }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.help-box button:disabled { opacity: 0.6; cursor: default; }
+.export-box { max-width: 520px; }
+.export-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; font-size: 14px; color: var(--text-1); }
+.export-hint { font-size: 12px; margin-top: 6px; }
+.seg { display: inline-flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.help-box .seg-btn {
+  margin: 0; padding: 5px 12px; border: none; border-radius: 0;
+  background: var(--surface-2); color: var(--text-1); font-size: 13px; cursor: pointer;
+}
+.help-box .seg-btn + .seg-btn { border-left: 1px solid var(--border); }
+.help-box .seg-btn:hover { background: var(--hover); }
+.help-box .seg-btn.active { background: var(--accent); color: var(--on-accent); }
 .help-box button.secondary { background: var(--surface-2); color: var(--text-1); }
 .help-box button.secondary:hover { background: var(--hover-2); }
 

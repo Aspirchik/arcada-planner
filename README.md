@@ -57,6 +57,7 @@ Use the arrows in the toolbar to add and navigate floors. Each floor is independ
 
 - **Save** your project as a `.arcada` file and open it back anytime
 - **Ctrl+S** for a quick save to browser storage; the app also autosaves every 30 s and offers to restore your last project on start
+- **Export** saves the plan as a **vector PDF** (A4, A3 or real 1:50 scale; sharp at any zoom) or a **high-resolution PNG** — only the room or everything, in the light or dark theme, current floor or all floors
 - **Print** renders all floors on A4 pages with lengths, dimensions and labels (always in the light theme), ready for PDF or paper
 
 ![Print view](docs/screenshots/print-view.png)

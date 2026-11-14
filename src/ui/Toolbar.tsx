@@ -2,12 +2,13 @@ import { useState } from 'react';
 import {
   MousePointer2, Eraser, Minus, Grid3X3,
   Tag, ChevronUp, ChevronDown, Trash2, Printer,
-  Save, FolderOpen, HelpCircle, Languages, Sun, Moon, Monitor, Ruler, Type, CaseSensitive, ArrowLeftRight, Scaling,
+  Save, FolderOpen, HelpCircle, Languages, Sun, Moon, Monitor, Ruler, Type, CaseSensitive, ArrowLeftRight, Scaling, FileDown,
 } from 'lucide-react';
 import { useStore, ProjectError } from '../store';
 import { usePrefs, LANGS, type WallLabelMode, type Lang, type ThemePref, type SizesPos } from '../prefs';
 import { useT, t as tNow, LANG_NAMES, type TKey } from '../i18n';
 import { Tool, AUTOSAVE_KEY } from '../constants';
+import { ExportDialog } from './ExportDialog';
 
 /** Theme button cycles: Auto → Light → Dark → Auto */
 const NEXT_THEME: Record<ThemePref, ThemePref> = { system: 'light', light: 'dark', dark: 'system' };
@@ -50,6 +51,7 @@ export function Toolbar() {
   const setPref = usePrefs(s => s.set);
   const t = useT();
   const [showHelp, setShowHelp] = useState(false);
+  const [showExport, setShowExport] = useState(false);
 
   const loadProject = (json: string) => {
     if (useStore.getState().dirty && !confirm(t('msg.unsavedOpen'))) return;
@@ -175,10 +177,13 @@ export function Toolbar() {
           )}
           {actionBtn(<Save size={20} />,       'action.save',  () => { saveToFile(save()); markSaved(); })}
           {actionBtn(<FolderOpen size={20} />, 'action.load',  () => loadFromFile(loadProject))}
+          {actionBtn(<FileDown size={20} />,   'action.export', () => setShowExport(true))}
           {actionBtn(<Printer size={20} />,    'action.print', () => window.print())}
           {actionBtn(<HelpCircle size={20} />, 'action.help',  () => setShowHelp(true))}
         </div>
       </nav>
+
+      {showExport && <ExportDialog onClose={() => setShowExport(false)} />}
 
       {showHelp && (
         <div className="help-overlay" onClick={() => setShowHelp(false)}>

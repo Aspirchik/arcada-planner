@@ -288,6 +288,14 @@ Files use `.arcada` extension (JSON content). Current format version **2.1.0** (
 
 ---
 
+## Export (`src/export`)
+
+- `planSvg.ts` (pure, tested) builds one floor as an SVG string in world units (1 = 1 cm): walls with lengths, furniture (sprites inlined as nested `<svg>`; their classes and ids are prefixed by `prepareSprite()` so styles of different sprites don't clash), labels, sizes, texts, dimensions. `contentBounds()` gives the area: `room` = walls that enclose rooms, `all` = everything.
+- `exporter.ts` (browser): loads Roboto TTF from `public/fonts/` (Latin, Polish, Cyrillic) and the sprites (dark variant via `darkSvg()`), then
+  - **PNG** — the SVG (with the font embedded as `@font-face`) is drawn into a canvas at N px per cm and saved;
+  - **PDF** — `jspdf` + `svg2pdf.js` (lazy-loaded) draw the same SVG as vectors; the font is registered in jsPDF so non-Latin text works.
+- `ui/ExportDialog.tsx` — format, area, theme, floors, PNG quality, PDF page (A4 / A3 / 1:50).
+
 ## Languages (`src/i18n`)
 
 - Flat key → text JSON files: `en.json`, `pl.json`, `ru.json`, `ua.json`. Placeholders look like `{n}`.
