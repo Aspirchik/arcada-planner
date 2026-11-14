@@ -10,4 +10,5 @@ export enum Tool {
   WallAdd,
   Measure,
   Text,
+  Cable,
 }

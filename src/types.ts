@@ -73,12 +73,25 @@ export interface Dimension {
   color?: string;
 }
 
+/** Cable run: a polyline with its own colour and label */
+export interface Cable {
+  id: number;
+  points: { x: number; y: number }[];
+  color: string;
+  /** Line width in cm (default 3) */
+  width?: number;
+  label?: string;
+  /** Show the run length next to the label */
+  showLength?: boolean;
+}
+
 export interface FloorState {
   nodes: WallNode[];
   walls: Wall[];
   furniture: FurnitureItem[];
   dimensions: Dimension[];
   texts: TextNote[];
+  cables: Cable[];
 }
 
 export interface CatalogItem {

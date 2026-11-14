@@ -5,6 +5,9 @@
   "tool.erase": "Erase",
   "tool.measure": "Ruler",
   "tool.text": "Text",
+  "tool.cable": "Cable",
+  "cable.width": "Width",
+  "cable.showLength": "Show length",
   "floor.up": "Floor up",
   "floor.down": "Floor down",
   "floor.delete": "Delete floor",
@@ -128,6 +131,8 @@
   "help.measure.text": "drag between two points to measure; ends snap to walls and furniture, Shift keeps the line straight. Measurements stay on the plan; remove them with Erase.",
   "help.text.title": "Text:",
   "help.text.text": "Text tool → click to add a note; double-click a note to edit it. Furniture labels — text, position, size, bold and colour — are set in the panel under the selected item; “Sizes” shows width × depth in a chosen corner.",
+  "help.cable.title": "Cables:",
+  "help.cable.text": "Cable tool → click to place points anywhere; double-click, Enter or a click on the last point finishes, Esc cancels; Shift keeps 45° steps. Points snap to furniture (e.g. a switch), walls and other cables. Select a cable to set its colour, label, width and length display; drag it or its points; double-click a segment to add a point, a point to remove it.",
   "help.gaps.title": "Free space:",
   "help.gaps.text": "with “Gaps” on, the selected item shows the distance to the nearest wall or furniture on each side; less than 60 cm is highlighted. Items snap flush (0 cm) to walls and neighbours when dragged close — hold Alt to place freely.",
   "help.pan.title": "Pan / zoom:",
@@ -147,6 +152,7 @@
   "cat.Office": "Office",
   "cat.Structural": "Structure",
   "cat.Wall": "Openings",
+  "cat.Network": "Network",
   "item.Double bed": "Double bed",
   "item.Single bed": "Single bed",
   "item.Bedside table": "Bedside table",
@@ -220,5 +226,7 @@
   "item.Generic object": "Generic object",
   "item.Car": "Car",
   "item.Window": "Window",
-  "item.Door": "Door"
+  "item.Door": "Door",
+  "item.Switch 24": "Switch 24",
+  "item.Switch 48": "Switch 48"
 }

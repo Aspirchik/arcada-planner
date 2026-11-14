@@ -276,6 +276,7 @@ Files use `.arcada` extension (JSON content). Current format version **2.1.0** (
 - `simple: true` draws the item as a plain rectangle (`SimpleFurniture`) instead of its sprite.
 - Wall `thickness` is optional; without it 20 cm (exterior) or 16 cm (interior) is used (`wallThickness()`).
 - `color: null` on a text means "theme text colour".
+- `cables`: `{ id, points: [{x, y}], color, width?, label?, showLength? }` — polylines drawn above furniture (`ui/CablesLayer.tsx`, helpers in `geometry/cable.ts`). The Cable tool keeps the unfinished run in component state and stores it with one `addCable()` (one undo step).
 
 ---
 

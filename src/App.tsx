@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Trash2, BringToFront, SendToBack, Bold, Pencil, Type, Square, Image as ImageIcon, FlipHorizontal2, FlipVertical2 } from 'lucide-react';
+import { Trash2, BringToFront, SendToBack, Bold, Pencil, Type, Square, Image as ImageIcon, FlipHorizontal2, FlipVertical2, Ruler } from 'lucide-react';
 import { EditorStage } from './ui/EditorStage';
 import { Toolbar } from './ui/Toolbar';
 import { FurniturePanel } from './ui/FurniturePanel';
@@ -7,7 +7,8 @@ import { PrintView } from './ui/PrintView';
 import { TextEditor } from './ui/TextEditor';
 import { measureNote } from './ui/AnnotationsLayer';
 import { rectCorners } from './geometry/hit';
-import { useStore, parseProject, isProjectEmpty } from './store';
+import { useStore, parseProject, isProjectEmpty, DEFAULT_CABLE_WIDTH } from './store';
+import { setNextCableColor } from './ui/EditorStage';
 import { usePrefs } from './prefs';
 import { useT, HTML_LANG, type TKey } from './i18n';
 import { wallThickness } from './geometry/walls';
@@ -124,10 +125,12 @@ const LABEL_POSITIONS: { pos: LabelPos; icon: string }[] = [
   { pos: 'tl', icon: '↖' }, { pos: 'tr', icon: '↗' }, { pos: 'bl', icon: '↙' }, { pos: 'br', icon: '↘' },
 ];
 
-function ColorSwatches({ value, onChange, title }: { value: string | null | undefined; onChange: (c: string | null) => void; title: string }) {
+const CABLE_COLORS: (string | null)[] = ['#1a73e8', '#d0021b', '#188038', '#e8710a', '#f9ab00', '#8e24aa', '#00897b', '#5f6368'];
+
+function ColorSwatches({ value, onChange, title, colors = TEXT_COLORS }: { value: string | null | undefined; onChange: (c: string | null) => void; title: string; colors?: (string | null)[] }) {
   return (
     <span className="sel-swatches" title={title}>
-      {TEXT_COLORS.map(c => (
+      {colors.map(c => (
         <button key={c ?? 'auto'} className={'sel-swatch' + ((value ?? null) === c ? ' active' : '') + (c === null ? ' auto' : '')}
           style={c ? { background: c } : undefined} onClick={() => onChange(c)} />
       ))}
@@ -248,6 +251,24 @@ function SelectionPanel() {
           onCommit={v => st.updateWall(wall.id, { thickness: v })} /> {t('unit.cm')}</label>
         <label>{t('wall.length')} <NumField key={`l${wall.id}`} value={Math.round(len)} min={1}
           onCommit={v => st.setWallLength(wall.id, v)} /> {t('unit.cm')}</label>
+        <button className="sel-delete" title={t('sel.delete')} onClick={st.deleteSelected}><Trash2 size={14} /></button>
+      </div>
+    );
+  }
+
+  // ── Cable ──
+  const cable = floor.cables.find(c => c.id === selectedId);
+  if (cable) {
+    return (
+      <div className="selection-panel" style={at(cable.points, 520)}>
+        <TextField key={`cl${cable.id}`} value={cable.label ?? ''} placeholder={t('sel.label')}
+          onCommit={v => st.updateCable(cable.id, { label: v.trim() || undefined })} />
+        <ColorSwatches value={cable.color} title={t('text.color')} colors={CABLE_COLORS}
+          onChange={c => { if (c) { setNextCableColor(c); st.updateCable(cable.id, { color: c }); } }} />
+        <label>{t('cable.width')} <NumField key={`cw${cable.id}`} value={cable.width ?? DEFAULT_CABLE_WIDTH} min={0.5}
+          onCommit={v => st.updateCable(cable.id, { width: v })} /> {t('unit.cm')}</label>
+        <button className={'sel-btn' + (cable.showLength ? ' active' : '')} title={t('cable.showLength')}
+          onClick={() => st.updateCable(cable.id, { showLength: cable.showLength ? undefined : true })}><Ruler size={14} /></button>
         <button className="sel-delete" title={t('sel.delete')} onClick={st.deleteSelected}><Trash2 size={14} /></button>
       </div>
     );

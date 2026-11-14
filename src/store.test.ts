@@ -268,6 +268,19 @@ describe('wall settings', () => {
   });
 });
 
+describe('cables', () => {
+  it('add, edit, delete, save / load', () => {
+    const id = st().addCable([{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 50 }], '#188038');
+    st().updateCable(id, { label: 'Cat6', showLength: true, width: 4 });
+    st().load(st().save());
+    expect(floor().cables[0]).toMatchObject({ id, color: '#188038', label: 'Cat6', showLength: true, width: 4 });
+    expect(floor().cables[0].points).toHaveLength(3);
+    st().select(id);
+    st().deleteSelected();
+    expect(floor().cables).toHaveLength(0);
+  });
+});
+
 describe('parseProject', () => {
   it('rejects broken files with a readable message', () => {
     expect(() => parseProject('not json')).toThrow(/JSON/);
@@ -288,6 +301,7 @@ describe('parseProject', () => {
     expect(p.floors[0].furniture[0]).toMatchObject({ rot: 0, zi: 100 });
     expect(p.floors[0].dimensions).toEqual([]);
     expect(p.floors[0].texts).toEqual([]);
+    expect(p.floors[0].cables).toEqual([]);
     expect(p.nextId).toBe(8);
   });
 });

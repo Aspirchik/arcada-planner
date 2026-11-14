@@ -1,13 +1,15 @@
 import { create } from 'zustand';
 import { Tool, METER } from './constants';
-import type { FurnitureItem, FloorState, CatalogItem, Dimension, TextNote, Wall, LabelPos } from './types';
+import type { FurnitureItem, FloorState, CatalogItem, Dimension, TextNote, Wall, LabelPos, Cable } from './types';
 import { translate, type TKey, type TParams } from './i18n';
 
 const HISTORY_LIMIT = 50;
-/** Project file format. 2.1.0 adds dimensions (ruler), text notes and furniture labels; 2.0.0 files still load. */
+/** Project file format. 2.1.0 adds dimensions (ruler), text notes, furniture labels and cables; 2.0.0 files still load. */
 export const FILE_VERSION = '2.1.0';
 export const DEFAULT_Z = 100;
 export const DEFAULT_TEXT_SIZE = 20;
+export const DEFAULT_CABLE_COLOR = '#1a73e8';
+export const DEFAULT_CABLE_WIDTH = 3;
 /** Share of the door picture height taken by the frame band along its top edge (door.svg: 25 of 133) */
 export const DOOR_FRAME_RATIO = 25 / 133;
 
@@ -21,7 +23,7 @@ export interface History {
 }
 
 function emptyFloor(): FloorState {
-  return { nodes: [], walls: [], furniture: [], dimensions: [], texts: [] };
+  return { nodes: [], walls: [], furniture: [], dimensions: [], texts: [], cables: [] };
 }
 
 function emptyHistory(): History {
@@ -107,8 +109,20 @@ export function parseProject(json: string): ParsedProject {
       color: typeof tx.color === 'string' ? tx.color : null,
     }));
 
-    for (const o of [...nodes, ...walls, ...furniture, ...dimensions, ...texts]) maxId = Math.max(maxId, o.id);
-    return { nodes, walls, furniture, dimensions, texts };
+    const cables = (Array.isArray(f.cables) ? f.cables : []).filter((c): c is Record<string, unknown> & { id: number; points: unknown[] } =>
+      !!c && isNum(c.id) && Array.isArray(c.points)
+    ).map((c): Cable => ({
+      id: c.id,
+      points: c.points.filter((p): p is { x: number; y: number } => !!p && isNum((p as { x: unknown }).x) && isNum((p as { y: unknown }).y))
+        .map(p => ({ x: p.x, y: p.y })),
+      color: typeof c.color === 'string' ? c.color : DEFAULT_CABLE_COLOR,
+      ...(isNum(c.width) && c.width > 0 ? { width: c.width } : {}),
+      ...(typeof c.label === 'string' && c.label ? { label: c.label } : {}),
+      ...(c.showLength === true ? { showLength: true } : {}),
+    })).filter(c => c.points.length >= 2);
+
+    for (const o of [...nodes, ...walls, ...furniture, ...dimensions, ...texts, ...cables]) maxId = Math.max(maxId, o.id);
+    return { nodes, walls, furniture, dimensions, texts, cables };
   });
 
   const nextId = Math.max(isNum(d.nextId) ? d.nextId : 1, maxId + 1);
@@ -117,7 +131,7 @@ export function parseProject(json: string): ParsedProject {
 }
 
 export function isProjectEmpty(floors: FloorState[]): boolean {
-  return floors.every(f => f.nodes.length === 0 && f.furniture.length === 0 && f.dimensions.length === 0 && f.texts.length === 0);
+  return floors.every(f => f.nodes.length === 0 && f.furniture.length === 0 && f.dimensions.length === 0 && f.texts.length === 0 && f.cables.length === 0);
 }
 
 // ── Store ──────────────────────────────────────────────────────
@@ -188,6 +202,10 @@ interface Store {
   deleteDimension(id: number): void;
   /** Keeps the first end, moves the second along the line */
   setDimensionLength(id: number, length: number): void;
+
+  addCable(points: { x: number; y: number }[], color: string): number;
+  updateCable(id: number, changes: Partial<Omit<Cable, 'id'>>): void;
+  deleteCable(id: number): void;
 
   addText(x: number, y: number, text: string): number;
   updateText(id: number, changes: Partial<Omit<TextNote, 'id'>>): void;
@@ -495,6 +513,20 @@ export const useStore = create<Store>((set, get) => {
       get().updateDimension(id, { x2: d.x1 + ux * length, y2: d.y1 + uy * length });
     },
 
+    addCable(points, color) {
+      const id = newId();
+      upFloor(f => ({ ...f, cables: [...f.cables, { id, points: points.map(p => ({ x: p.x, y: p.y })), color }] }));
+      return id;
+    },
+
+    updateCable(id, changes) {
+      upFloor(f => ({ ...f, cables: f.cables.map(c => c.id === id ? { ...c, ...changes } : c) }));
+    },
+
+    deleteCable(id) {
+      upFloor(f => ({ ...f, cables: f.cables.filter(c => c.id !== id) }));
+    },
+
     addText(x, y, text) {
       const id = newId();
       upFloor(f => ({ ...f, texts: [...f.texts, { id, x, y, text, size: DEFAULT_TEXT_SIZE, rot: 0, bold: false, color: null }] }));
@@ -519,6 +551,7 @@ export const useStore = create<Store>((set, get) => {
           else if (f.furniture.some(it => it.id === id)) get().deleteFurniture(id);
           else if (f.walls.some(w => w.id === id)) get().deleteWall(id);
           else if (f.dimensions.some(d => d.id === id)) get().deleteDimension(id);
+          else if (f.cables.some(c => c.id === id)) get().deleteCable(id);
         }
       });
       set(sel([]));

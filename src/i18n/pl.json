@@ -5,6 +5,9 @@
   "tool.erase": "Gumka",
   "tool.measure": "Miarka",
   "tool.text": "Tekst",
+  "tool.cable": "Kabel",
+  "cable.width": "Grubość",
+  "cable.showLength": "Pokaż długość",
   "floor.up": "Piętro wyżej",
   "floor.down": "Piętro niżej",
   "floor.delete": "Usuń piętro",
@@ -128,6 +131,8 @@
   "help.measure.text": "przeciągnij między dwoma punktami; końce przyciągają się do ścian i mebli, Shift trzyma linię prosto. Pomiary zostają na planie; usuwa je Gumka.",
   "help.text.title": "Tekst:",
   "help.text.text": "narzędzie Tekst → kliknij, aby dodać notatkę; dwuklik edytuje. Podpis mebla — tekst, położenie, rozmiar, pogrubienie i kolor — ustawia się w panelu pod zaznaczonym obiektem; „Wymiary” pokazują szerokość × głębokość w wybranym rogu.",
+  "help.cable.title": "Kable:",
+  "help.cable.text": "narzędzie Kabel → klikaj, aby stawiać punkty w dowolnym miejscu; dwuklik, Enter lub klik w ostatni punkt kończy, Esc anuluje; Shift trzyma kąty co 45°. Punkty przyciągają się do mebli (np. switcha), ścian i innych kabli. Zaznacz kabel, aby ustawić kolor, podpis, grubość i długość; przeciągaj go lub jego punkty; dwuklik w odcinek dodaje punkt, w punkt — usuwa.",
   "help.gaps.title": "Wolne miejsce:",
   "help.gaps.text": "przy włączonych „Odstępach” zaznaczony obiekt pokazuje odległość do najbliższej ściany lub mebla z każdej strony; poniżej 60 cm jest wyróżnione. Przeciągnięty blisko obiekt przylega (0 cm) do ściany lub sąsiada — przytrzymaj Alt, aby ustawić swobodnie.",
   "help.pan.title": "Przesuwanie / zoom:",
@@ -147,6 +152,7 @@
   "cat.Office": "Biuro",
   "cat.Structural": "Konstrukcja",
   "cat.Wall": "Otwory",
+  "cat.Network": "Sieć",
   "item.Double bed": "Łóżko podwójne",
   "item.Single bed": "Łóżko pojedyncze",
   "item.Bedside table": "Szafka nocna",
@@ -220,5 +226,7 @@
   "item.Generic object": "Obiekt",
   "item.Car": "Samochód",
   "item.Window": "Okno",
-  "item.Door": "Drzwi"
+  "item.Door": "Drzwi",
+  "item.Switch 24": "Switch 24",
+  "item.Switch 48": "Switch 48"
 }

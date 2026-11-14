@@ -8,6 +8,7 @@ import { LIGHT } from '../theme';
 import { WallsLayerContent } from './WallsLayer';
 import { getSprite, spriteSettled } from './images';
 import { DimensionsLayerContent } from './DimensionsLayer';
+import { CablesLayerContent } from './CablesLayer';
 import { FurnitureLabels, TextNotes, SimpleFurniture, measureNote } from './AnnotationsLayer';
 import { useT } from '../i18n';
 import type { FloorState } from '../types';
@@ -26,7 +27,7 @@ function useFloorImages(floor: FloorState): boolean {
 }
 
 function floorBounds(floor: FloorState): { minX: number; minY: number; maxX: number; maxY: number } | null {
-  if (floor.nodes.length === 0 && floor.furniture.length === 0 && floor.dimensions.length === 0 && floor.texts.length === 0) return null;
+  if (floor.nodes.length === 0 && floor.furniture.length === 0 && floor.dimensions.length === 0 && floor.texts.length === 0 && floor.cables.length === 0) return null;
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
 
   for (const n of floor.nodes) {
@@ -56,6 +57,11 @@ function floorBounds(floor: FloorState): { minX: number; minY: number; maxX: num
     const r = Math.hypot(w, h);
     minX = Math.min(minX, n.x - r); minY = Math.min(minY, n.y - r);
     maxX = Math.max(maxX, n.x + r); maxY = Math.max(maxY, n.y + r);
+  }
+
+  for (const c of floor.cables) for (const p of c.points) {
+    minX = Math.min(minX, p.x - 20); minY = Math.min(minY, p.y - 20);
+    maxX = Math.max(maxX, p.x + 20); maxY = Math.max(maxY, p.y + 20);
   }
 
   const DIM_MARGIN = 30; // room for the dimension label
@@ -115,6 +121,9 @@ function PrintFloor({ floor, index }: { floor: FloorState; index: number }) {
               </Group>
             );
           })}
+
+          {/* Cables */}
+          <CablesLayerContent cables={floor.cables} palette={LIGHT} unitM={t('unit.m')} />
 
           {/* Labels and text notes */}
           {ready && <FurnitureLabels furniture={floor.furniture} palette={LIGHT} showNames={showNames} lang={lang} sizesPos={sizesPos} />}

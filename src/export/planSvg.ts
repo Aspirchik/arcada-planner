@@ -10,6 +10,7 @@ import { rectCorners, type Pt } from '../geometry/hit';
 import { wallLabelSpecs, formatMeters, LABEL_SIZE } from '../geometry/wallLabels';
 import { sortByZ } from '../helpers';
 import { furnitureLabel, sizesCorner } from '../labels';
+import { midAlong, cableLabel } from '../geometry/cable';
 
 export const EXPORT_FONT = 'Roboto';
 const LINE_HEIGHT = 1.2;
@@ -145,6 +146,7 @@ export function contentBounds(floor: FloorState, geom: FloorWallGeom, area: Expo
   for (const it of floor.furniture) for (const p of rectCorners(it.x, it.y, it.w, it.h, it.rot)) b = grow(b, p);
   for (const n of floor.texts) { const s = noteSize(n, measure); for (const p of rectCorners(n.x, n.y, s.w, s.h, n.rot)) b = grow(b, p); }
   for (const d of floor.dimensions) { b = grow(b, { x: d.x1, y: d.y1 }); b = grow(b, { x: d.x2, y: d.y2 }); }
+  for (const c of floor.cables) for (const p of c.points) b = grow(b, p);
   for (const n of floor.nodes) b = grow(b, n);
   return b;
 }
@@ -259,6 +261,22 @@ export function buildPlanSvg(floor: FloorState, sprites: Map<string, SpriteDef>,
       ? ` transform="translate(${f(it.flipX ? it.w : 0)} ${f(it.flipY ? it.h : 0)}) scale(${it.flipX ? -1 : 1} ${it.flipY ? -1 : 1})"`
       : '';
     parts.push(`<g transform="${tr}"><g${flip}><svg x="0" y="0" width="${f(it.w)}" height="${f(it.h)}" viewBox="${sp.viewBox}" preserveAspectRatio="none" overflow="hidden"${sp.fill ? ` fill="${sp.fill}"` : ''}>${sp.body}</svg></g></g>`);
+  }
+
+  // Cables (above furniture)
+  for (const c of floor.cables) {
+    if (c.points.length < 2) continue;
+    const w = c.width ?? 3;
+    parts.push(`<polyline points="${pts(c.points)}" fill="none" stroke="${c.color}" stroke-width="${f(w)}" stroke-linecap="round" stroke-linejoin="round"/>`);
+    const label = cableLabel(c, opts.unitM);
+    if (label) {
+      const mid = midAlong(c.points);
+      const rad = mid.angle * Math.PI / 180;
+      const nx = -Math.sin(rad), ny = Math.cos(rad);
+      const side = ny > 0 || (ny === 0 && nx > 0) ? -1 : 1;
+      const off = w / 2 + LABEL_SIZE / 2 + 2;
+      parts.push(alongText({ x: mid.p.x + nx * off * side, y: mid.p.y + ny * off * side }, mid.angle, label, LABEL_SIZE, c.color, p.paper));
+    }
   }
 
   // Furniture labels and sizes

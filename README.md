@@ -45,6 +45,7 @@ Select several items with **Ctrl/Shift+click** or a **Ctrl/Shift+drag** frame an
 - **Ruler** — drag between two points to add a dimension line. Ends snap to wall corners and faces, furniture and other dimensions; hold **Shift** for straight / 45° lines. Dimensions stay on the plan and print with it.
 - **Text** — click anywhere to add a note, edit it in place; set size, rotation, bold and colour in the panel.
 - **Names** — show the (translated) catalog name on every item without its own label.
+- **Cable** — draw cable runs point by point anywhere (double-click or Enter to finish); each cable has its own colour, label, width and optional length. Network switches (24 / 48 ports) are in the *Network* category.
 
 ### 6. Multiple floors
 
@@ -73,6 +74,7 @@ Use the arrows in the toolbar to add and navigate floors. Each floor is independ
 | **Wall** | Drag to draw walls, click on walls to split them |
 | **Ruler** | Drag to measure; the dimension stays on the plan. Drag an existing end to adjust it |
 | **Text** | Click to add a note, click a note to edit it |
+| **Cable** | Click to place points of a cable run; double-click / Enter finishes, Esc cancels, Shift = 45° |
 | **Erase** | Click any element to delete it |
 
 ## Toolbar options

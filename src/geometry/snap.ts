@@ -10,7 +10,7 @@ export interface SnapTargets {
   segments: Segment[];
 }
 
-export function snapTargets(floor: FloorState, geom: FloorWallGeom, excludeDimId?: number): SnapTargets {
+export function snapTargets(floor: FloorState, geom: FloorWallGeom, excludeDimId?: number, excludeCableId?: number): SnapTargets {
   const points: Pt[] = [];
   const segments: Segment[] = [];
   for (const n of floor.nodes) points.push({ x: n.x, y: n.y });
@@ -22,6 +22,10 @@ export function snapTargets(floor: FloorState, geom: FloorWallGeom, excludeDimId
     const c = rectCorners(f.x, f.y, f.w, f.h, f.rot);
     points.push(...c);
     for (let i = 0; i < 4; i++) segments.push({ a: c[i], b: c[(i + 1) % 4] });
+  }
+  for (const c of floor.cables) {
+    if (c.id === excludeCableId) continue;
+    points.push(...c.points);
   }
   for (const d of floor.dimensions) {
     if (d.id === excludeDimId) continue;

@@ -17,6 +17,7 @@ const floor: FloorState = {
   ],
   dimensions: [{ id: 31, x1: 10, y1: 200, x2: 390, y2: 200 }],
   texts: [{ id: 41, x: 60, y: 220, text: 'Room <1>', size: 20, rot: 0, bold: true, color: null }],
+  cables: [],
 };
 
 const base = { palette: LIGHT, wallLabels: 'interior' as const, showNames: false, sizesPos: 'br' as const, lang: 'en' as const, unitM: 'm' };
@@ -39,7 +40,7 @@ describe('export bounds', () => {
   });
 
   it('returns null for an empty floor', () => {
-    expect(buildPlanSvg({ nodes: [], walls: [], furniture: [], dimensions: [], texts: [] }, new Map(), { ...base, area: 'all' })).toBeNull();
+    expect(buildPlanSvg({ nodes: [], walls: [], furniture: [], dimensions: [], texts: [], cables: [] }, new Map(), { ...base, area: 'all' })).toBeNull();
   });
 });
 
@@ -53,6 +54,13 @@ describe('export content', () => {
     expect(r.svg).toContain('Room &lt;1&gt;');
     expect(r.svg).toContain('>3.80 m<'); // ruler 380 cm
     expect(r.svg).toContain('font-family="Roboto"');
+  });
+
+  it('draws cables with their colour, label and length', () => {
+    const withCable = { ...floor, cables: [{ id: 51, points: [{ x: 20, y: 20 }, { x: 220, y: 20 }], color: '#e8710a', label: 'Cat6', showLength: true }] };
+    const r = buildPlanSvg(withCable, new Map(), { ...base, area: 'room' })!;
+    expect(r.svg).toContain('stroke="#e8710a"');
+    expect(r.svg).toContain('Cat6 · 2.00 m');
   });
 
   it('draws a ruler in its own colour', () => {

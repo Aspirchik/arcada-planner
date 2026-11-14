@@ -2,7 +2,7 @@ import { useState } from 'react';
 import {
   MousePointer2, Eraser, Minus, Grid3X3,
   Tag, ChevronUp, ChevronDown, Trash2, Printer,
-  Save, FolderOpen, HelpCircle, Languages, Sun, Moon, Monitor, Ruler, Type, CaseSensitive, ArrowLeftRight, Scaling, FileDown,
+  Save, FolderOpen, HelpCircle, Languages, Sun, Moon, Monitor, Ruler, Type, CaseSensitive, ArrowLeftRight, Scaling, FileDown, Cable as CableIcon,
 } from 'lucide-react';
 import { useStore, ProjectError } from '../store';
 import { usePrefs, LANGS, type WallLabelMode, type Lang, type ThemePref, type SizesPos } from '../prefs';
@@ -13,7 +13,7 @@ import { ExportDialog } from './ExportDialog';
 /** Theme button cycles: Auto → Light → Dark → Auto */
 const NEXT_THEME: Record<ThemePref, ThemePref> = { system: 'light', light: 'dark', dark: 'system' };
 
-const HELP_KEYS = ['select', 'group', 'wall', 'split', 'exterior', 'walledit', 'lengths', 'measure', 'text', 'gaps', 'pan', 'snap', 'keys'] as const;
+const HELP_KEYS = ['select', 'group', 'wall', 'split', 'exterior', 'walledit', 'lengths', 'measure', 'text', 'cable', 'gaps', 'pan', 'snap', 'keys'] as const;
 
 function saveToFile(data: string) {
   try { localStorage.setItem(AUTOSAVE_KEY, data); } catch { /* storage unavailable */ }
@@ -91,6 +91,7 @@ export function Toolbar() {
           {toolBtn(<Minus size={20} />,         'tool.wall',   Tool.WallAdd)}
           {toolBtn(<Ruler size={20} />,         'tool.measure', Tool.Measure)}
           {toolBtn(<Type size={20} />,          'tool.text',   Tool.Text)}
+          {toolBtn(<CableIcon size={20} />,     'tool.cable',  Tool.Cable)}
           {toolBtn(<Eraser size={20} />,        'tool.erase',  Tool.Remove)}
         </div>
 

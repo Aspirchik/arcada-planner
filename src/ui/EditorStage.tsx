@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useMemo } from 'react';
 import { Stage, Layer, Rect, Line, Image as KImage, Circle, Group } from 'react-konva';
 import type Konva from 'konva';
 import type { KonvaEventObject } from 'konva/lib/Node';
-import { useStore, DEFAULT_Z } from '../store';
+import { useStore, DEFAULT_Z, DEFAULT_CABLE_COLOR } from '../store';
 import { Tool, WORLD, AUTOSAVE_KEY } from '../constants';
 import { localToWorld, worldToLocal, sortByZ } from '../helpers';
 import { dist, pointInRotatedRect, distToSegment, type Pt } from '../geometry/hit';
@@ -17,8 +17,10 @@ import { WallsLayerContent, AlongText, formatMeters } from './WallsLayer';
 import { DimensionLine, DimensionsLayerContent, SnapMarker } from './DimensionsLayer';
 import { FurnitureLabels, TextNotes, TextSelection, ItemOutline, measureNote } from './AnnotationsLayer';
 import { GapsLayerContent } from './GapsLayer';
+import { CablesLayerContent, CableLine, CableHandles } from './CablesLayer';
+import { hitSegment, hitVertex, dedupePoints } from '../geometry/cable';
 import { SimpleFurniture } from './AnnotationsLayer';
-import type { WallNode, Wall, FurnitureItem, Dimension, TextNote } from '../types';
+import type { WallNode, Wall, FurnitureItem, Dimension, TextNote, Cable } from '../types';
 
 const TOOLBAR_W = 80;
 const PANEL_W = 260;
@@ -34,6 +36,12 @@ const DIM_END_HIT_PX = 10;
 const DIM_LINE_HIT_PX = 6;
 /** Items closer than this (screen px) to a wall / neighbour snap flush against it */
 const FLUSH_SNAP_PX = 10;
+const CABLE_HIT_PX = 6;
+const CABLE_VERTEX_HIT_PX = 9;
+
+/** Colour for the next new cable (the last one chosen) */
+let nextCableColor = DEFAULT_CABLE_COLOR;
+export function setNextCableColor(c: string) { nextCableColor = c; }
 
 // ── Grid helpers ──────────────────────────────────────────────
 const INTERVALS = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000];
@@ -73,6 +81,8 @@ type DragState =
   | { type: 'measure'; start: Pt }
   | { type: 'dim-end'; id: number; end: 1 | 2 }
   | { type: 'dim-move'; start: Pt; base: Dimension }
+  | { type: 'cable-pt'; id: number; index: number }
+  | { type: 'cable-move'; start: Pt; base: Cable }
   /** Screen-space pan by dragging empty space */
   | { type: 'pan'; start: Pt; pos0: Pt }
   /** Ctrl/Shift + drag on empty space: frame selection */
@@ -99,6 +109,24 @@ export function EditorStage() {
   const [marquee, setMarquee] = useState<{ x1: number; y1: number; x2: number; y2: number } | null>(null);
   const shiftRef = useRef(false);
   const altRef = useRef(false);
+  /** Cable being drawn: points placed so far (state for rendering, ref for event handlers) */
+  const [cableDraft, setCableDraftState] = useState<Pt[] | null>(null);
+  const cableDraftRef = useRef<Pt[] | null>(null);
+  const [cablePreview, setCablePreview] = useState<Pt | null>(null);
+  function setCableDraft(d: Pt[] | null) { cableDraftRef.current = d; setCableDraftState(d); if (!d) setCablePreview(null); }
+
+  /** Ends the cable being drawn: saves it if it has at least two distinct points */
+  function finishCableDraft() {
+    const draft = cableDraftRef.current;
+    setCableDraft(null);
+    if (!draft) return;
+    const pts = dedupePoints(draft);
+    if (pts.length >= 2) {
+      const st = useStore.getState();
+      const id = st.addCable(pts, nextCableColor);
+      st.select(id);
+    }
+  }
   const [, forceRender] = useState(0);
 
   const store         = useStore();
@@ -181,6 +209,8 @@ export function EditorStage() {
         const moves = [...f.furniture, ...f.texts].filter(o => st.selection.includes(o.id)).map(o => ({ id: o.id, x: o.x + dx, y: o.y + dy }));
         if (moves.length) { e.preventDefault(); st.moveItems(moves); }
       }
+      if (cableDraftRef.current && (e.code === 'Enter' || e.code === 'NumpadEnter')) { e.preventDefault(); finishCableDraft(); return; }
+      if (e.code === 'Escape' && cableDraftRef.current) { setCableDraft(null); return; }
       if (e.code === 'Escape') { st.setWallStart(null); st.select(null); st.setTool(Tool.Select); setMeasurePreview(null); setSnapMark(null); }
     };
     const up = (e: KeyboardEvent) => { altRef.current = e.altKey; };
@@ -188,6 +218,9 @@ export function EditorStage() {
     document.addEventListener('keyup', up);
     return () => { document.removeEventListener('keydown', fn); document.removeEventListener('keyup', up); };
   }, []);
+
+  // Leaving the Cable tool drops an unfinished cable
+  useEffect(() => { if (tool !== Tool.Cable) setCableDraft(null); }, [tool]);
 
   // Safety net: pointer released outside the canvas — finish the gesture so undo keeps working
   useEffect(() => {
@@ -290,8 +323,8 @@ export function EditorStage() {
 
   // ── Ruler helpers ───────────────────────────────────────────
   /** Snaps a ruler end to walls / furniture / other dimensions, else to the grid; Shift keeps 45° steps from `from` */
-  function measurePoint(pt: Pt, from?: Pt, excludeDimId?: number): { p: Pt; snapped: boolean } {
-    const target = snapToTargets(pt, snapTargets(floor, wallGeom, excludeDimId), MEASURE_SNAP_PX / scale);
+  function measurePoint(pt: Pt, from?: Pt, excludeDimId?: number, excludeCableId?: number): { p: Pt; snapped: boolean } {
+    const target = snapToTargets(pt, snapTargets(floor, wallGeom, excludeDimId, excludeCableId), MEASURE_SNAP_PX / scale);
     let p = target ?? doSnap(pt.x, pt.y, snapSize);
     if (from && shiftRef.current) p = constrain45(from, p);
     return { p, snapped: !!target };
@@ -303,6 +336,15 @@ export function EditorStage() {
       const d = floor.dimensions[i];
       if (dist(wx, wy, d.x1, d.y1) < thr) return { id: d.id, end: 1 };
       if (dist(wx, wy, d.x2, d.y2) < thr) return { id: d.id, end: 2 };
+    }
+    return null;
+  }
+
+  function hitCable(wx: number, wy: number): { cable: Cable; seg: number } | null {
+    for (let i = floor.cables.length - 1; i >= 0; i--) {
+      const c = floor.cables[i];
+      const seg = hitSegment(c.points, { x: wx, y: wy }, Math.max((c.width ?? 3) / 2, CABLE_HIT_PX / scale));
+      if (seg >= 0) return { cable: c, seg };
     }
     return null;
   }
@@ -379,6 +421,8 @@ export function EditorStage() {
     if (tool === Tool.Remove) {
       const note = hitText(pt.x, pt.y);
       if (note) { store.deleteText(note.id); store.select(null); return; }
+      const cab = hitCable(pt.x, pt.y);
+      if (cab) { store.deleteCable(cab.cable.id); store.select(null); return; }
       const dim = hitDimension(pt.x, pt.y);
       if (dim) { store.deleteDimension(dim.id); return; }
       const fur = hitFurniture(pt.x, pt.y);
@@ -397,6 +441,17 @@ export function EditorStage() {
       if (note) { store.setTextEdit({ id: note.id, x: note.x, y: note.y }); return; }
       const p = doSnap(pt.x, pt.y, snapSize);
       store.setTextEdit({ id: null, x: p.x, y: p.y });
+      return;
+    }
+
+    // Cable — each click adds a point; clicking the last point again (or double-click / Enter) finishes
+    if (tool === Tool.Cable) {
+      const draft = cableDraftRef.current;
+      const last = draft?.[draft.length - 1];
+      const { p } = measurePoint(pt, last);
+      if (draft && last && dist(p.x, p.y, last.x, last.y) < 1) { finishCableDraft(); return; }
+      setCableDraft(draft ? [...draft, p] : [p]);
+      setCablePreview(p);
       return;
     }
 
@@ -466,6 +521,18 @@ export function EditorStage() {
     if (!mods.multi) {
       const end = hitDimEnd(pt.x, pt.y);
       if (end) { store.select(end.id); dragRef.current = { type: 'dim-end', ...end }; return; }
+      // Points of the selected cable
+      const selCable = floor.cables.find(c => c.id === selectedId);
+      if (selCable) {
+        const v = hitVertex(selCable.points, pt, CABLE_VERTEX_HIT_PX / scale);
+        if (v >= 0) { dragRef.current = { type: 'cable-pt', id: selCable.id, index: v }; return; }
+      }
+      const cab = hitCable(pt.x, pt.y);
+      if (cab) {
+        store.select(cab.cable.id);
+        dragRef.current = { type: 'cable-move', start: pt, base: { ...cab.cable, points: cab.cable.points.map(q => ({ ...q })) } };
+        return;
+      }
     }
 
     // Furniture and text notes (texts are drawn on top)
@@ -544,6 +611,18 @@ export function EditorStage() {
       const p = doSnap(d.base.x1 + pt.x - d.start.x, d.base.y1 + pt.y - d.start.y, snapSize);
       const dx = p.x - d.base.x1, dy = p.y - d.base.y1;
       store.updateDimension(d.base.id, { x1: d.base.x1 + dx, y1: d.base.y1 + dy, x2: d.base.x2 + dx, y2: d.base.y2 + dy });
+    } else if (d.type === 'cable-pt') {
+      const c = floor.cables.find(x => x.id === d.id);
+      if (!c) return;
+      const prev = c.points[d.index - 1] ?? c.points[d.index + 1];
+      const { p, snapped } = measurePoint(pt, prev, undefined, d.id);
+      store.updateCable(d.id, { points: c.points.map((q, i) => i === d.index ? p : q) });
+      setSnapMark(snapped ? p : null);
+    } else if (d.type === 'cable-move') {
+      const first = d.base.points[0];
+      const p = doSnap(first.x + pt.x - d.start.x, first.y + pt.y - d.start.y, snapSize);
+      const dx = p.x - first.x, dy = p.y - first.y;
+      store.updateCable(d.base.id, { points: d.base.points.map(q => ({ x: q.x + dx, y: q.y + dy })) });
     } else if (d.type === 'marquee') {
       setMarquee({ x1: d.start.x, y1: d.start.y, x2: pt.x, y2: pt.y });
     } else if (d.type === 'resize') {
@@ -625,7 +704,7 @@ export function EditorStage() {
       if (dist(d.start.x, d.start.y, p.x, p.y) >= 2) store.addDimension(d.start.x, d.start.y, p.x, p.y);
       return;
     }
-    if (d.type === 'dim-end') {
+    if (d.type === 'dim-end' || d.type === 'cable-pt') {
       setSnapMark(null);
       return;
     }
@@ -716,10 +795,15 @@ export function EditorStage() {
       return;
     }
 
-    // Ruler hover: show where the first point would snap
-    if (tool === Tool.Measure) {
+    // Ruler / cable hover: show where the next point would snap
+    if (tool === Tool.Measure || tool === Tool.Cable) {
       const pt = getWorld();
-      if (pt) { const { p, snapped } = measurePoint(pt); setSnapMark(snapped ? p : null); }
+      if (pt) {
+        const draft = cableDraftRef.current;
+        const { p, snapped } = measurePoint(pt, tool === Tool.Cable ? draft?.[draft.length - 1] : undefined);
+        setSnapMark(snapped ? p : null);
+        if (tool === Tool.Cable && draft) setCablePreview(p);
+      }
     } else if (snapMark) {
       setSnapMark(null);
     }
@@ -743,18 +827,20 @@ export function EditorStage() {
             container.style.cursor = handle.type === 'rotate' ? 'grab' : (handle as { cursor: string }).cursor;
           } else if (hitDimEnd(pt.x, pt.y)) {
             container.style.cursor = 'pointer';
-          } else if (hitText(pt.x, pt.y) || hitFurniture(pt.x, pt.y) || hitNode(pt.x, pt.y) || hitDimension(pt.x, pt.y) || hitWall(pt.x, pt.y)) {
+          } else if (hitCable(pt.x, pt.y) || hitText(pt.x, pt.y) || hitFurniture(pt.x, pt.y) || hitNode(pt.x, pt.y) || hitDimension(pt.x, pt.y) || hitWall(pt.x, pt.y)) {
             container.style.cursor = 'move';
           } else {
             container.style.cursor = e.evt.ctrlKey || e.evt.shiftKey || e.evt.metaKey ? 'crosshair' : 'grab';
           }
         } else if (tool === Tool.Remove) {
-          const hit = hitFurniture(pt.x, pt.y) || hitNode(pt.x, pt.y) || hitWall(pt.x, pt.y) || hitDimension(pt.x, pt.y) || hitText(pt.x, pt.y);
+          const hit = hitFurniture(pt.x, pt.y) || hitNode(pt.x, pt.y) || hitWall(pt.x, pt.y) || hitDimension(pt.x, pt.y) || hitText(pt.x, pt.y) || hitCable(pt.x, pt.y);
           container.style.cursor = hit ? 'pointer' : 'grab';
         } else if (tool === Tool.Text) {
           container.style.cursor = hitText(pt.x, pt.y) ? 'text' : 'crosshair';
         } else if (tool === Tool.Measure) {
           container.style.cursor = hitDimEnd(pt.x, pt.y) ? 'pointer' : 'crosshair';
+        } else if (tool === Tool.Cable) {
+          container.style.cursor = 'crosshair';
         } else if (tool === Tool.WallAdd) {
           container.style.cursor = 'crosshair';
         } else {
@@ -764,11 +850,32 @@ export function EditorStage() {
     }
   }
 
-  /** Double-click a text note with the Select tool to edit it */
+  /**
+   * Double-click: on a selected cable add / remove a point; on a text note edit it.
+   * (A cable is finished by its own rule: clicking the last point again — that is what a real double-click does.
+   * Konva reports any two quick clicks as a double-click, even far apart, so it must not finish cables.)
+   */
   function onDblClick() {
+    if (tool === Tool.Cable) return;
     if (tool !== Tool.Select) return;
     const pt = getWorld();
     if (!pt) return;
+    const selCable = floor.cables.find(c => c.id === selectedId);
+    if (selCable) {
+      const v = hitVertex(selCable.points, pt, CABLE_VERTEX_HIT_PX / scale);
+      if (v >= 0) {
+        if (selCable.points.length > 2) store.updateCable(selCable.id, { points: selCable.points.filter((_, i) => i !== v) });
+        return;
+      }
+      const seg = hitSegment(selCable.points, pt, Math.max((selCable.width ?? 3) / 2, CABLE_HIT_PX / scale));
+      if (seg >= 0) {
+        const p = doSnap(pt.x, pt.y, snapSize);
+        const pts = [...selCable.points];
+        pts.splice(seg + 1, 0, p);
+        store.updateCable(selCable.id, { points: pts });
+        return;
+      }
+    }
     const note = hitText(pt.x, pt.y);
     if (note) store.setTextEdit({ id: note.id, x: note.x, y: note.y });
   }
@@ -855,6 +962,7 @@ export function EditorStage() {
   const selectedNote = selectedId !== null ? floor.texts.find(n => n.id === selectedId) : null;
   const selectedWall = selectedId !== null ? wallGeom.walls.find(g => g.wall.id === selectedId) : null;
   const selectedDim = selectedId !== null ? floor.dimensions.find(d => d.id === selectedId) : null;
+  const selectedCable = selectedId !== null ? floor.cables.find(c => c.id === selectedId) : null;
   const multi = selection.length > 1;
   const onImageLoaded = () => forceRender(c => c + 1);
   const px = 1 / scale;
@@ -912,6 +1020,14 @@ export function EditorStage() {
         {sortByZ(floor.furniture).map(item => (
           <FurnitureVisual key={item.id} item={item} palette={palette} onImageLoaded={onImageLoaded} />
         ))}
+
+        {/* Cables (above furniture) */}
+        <CablesLayerContent cables={floor.cables} palette={palette} unitM={t('unit.m')} />
+        {cableDraft && (
+          <CableLine points={cablePreview ? [...cableDraft, cablePreview] : cableDraft} color={nextCableColor} palette={palette} dashed />
+        )}
+        {cableDraft && cableDraft.map((q, i) => <Circle key={`cd${i}`} x={q.x} y={q.y} radius={4 * px} fill={nextCableColor} />)}
+        {selectedCable && <CableHandles cable={selectedCable} palette={palette} px={px} />}
 
         {/* Free space around the selected item */}
         {selectedItem && showGaps && (
