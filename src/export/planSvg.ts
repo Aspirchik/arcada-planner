@@ -11,7 +11,7 @@ import { wallLabelSpecs, formatMeters, LABEL_SIZE } from '../geometry/wallLabels
 import { sortByZ } from '../helpers';
 import { layerPasses, styleCables, DEFAULT_WIRING, type LayerView, type LayerChoice } from '../layers';
 import { mixHex, spriteKey } from '../color';
-import { furnitureLabel, sizesCorner } from '../labels';
+import { furnitureLabel, sizesCorner, itemNamer } from '../labels';
 import { cableLabel, layoutCables, placeCableLabels, labelObstacles, midAlong } from '../geometry/cable';
 
 export const EXPORT_FONT = 'Roboto';
@@ -303,7 +303,7 @@ export function buildPlanSvg(floor: FloorState, sprites: Map<string, SpriteDef>,
       out.push(alongText(mid.p, mid.angle, t.label, ws.trayText, t.color ?? pal.trayStroke, pal.paper));
     }
     // Cables (above furniture): shared runs side by side, labels kept apart
-    const cables = styleCables(v.cables, ws);
+    const cables = styleCables(v.cables, ws, itemNamer(floor.furniture, opts.lang));
     const size = ws.cableText;
     const cablePaths = layoutCables(cables);
     const cableTexts = new Map(ws.cableLabels ? cables.map(c => [c.id, cableLabel(c, opts.unitM)] as [number, string]).filter(([, l]) => !!l) : []);

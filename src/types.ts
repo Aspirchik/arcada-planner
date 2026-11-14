@@ -112,10 +112,28 @@ export interface Cable {
   /** Where the cable starts and ends, e.g. "Server room" → "User 1" */
   from?: string;
   to?: string;
+  /** Item the start / end is connected to: the end moves with it, and its name is the default From / To */
+  fromLink?: CableLink;
+  toLink?: CableLink;
+  /** Cable groups (local to the floor or common to the project) this cable belongs to */
+  groups?: number[];
   layer?: Layer;
 }
 
-/** Cable tray: a wide band along a polyline that cables run in (always on the wiring layer) */
+/** Cable end attached to a furniture item, at a spot given as fractions of its width / depth */
+export interface CableLink {
+  id: number;
+  u: number;
+  v: number;
+}
+
+/** Named group of cables; local groups live on a floor, common ones in the project */
+export interface CableGroup {
+  id: number;
+  name: string;
+}
+
+/** Cable tray: a wide band along a polyline that cables run in (on the wiring layer unless `layer` says otherwise) */
 export interface Tray {
   id: number;
   points: { x: number; y: number }[];
@@ -124,6 +142,8 @@ export interface Tray {
   label?: string;
   /** Edge and label colour; missing = theme colour */
   color?: string;
+  /** Missing = wiring layer only, 'plan' = main plan only, 'both' = both plans */
+  layer?: 'plan' | 'both';
 }
 
 export interface FloorState {
@@ -134,6 +154,8 @@ export interface FloorState {
   texts: TextNote[];
   cables: Cable[];
   trays: Tray[];
+  /** Cable groups of this floor */
+  groups: CableGroup[];
 }
 
 export interface CatalogItem {

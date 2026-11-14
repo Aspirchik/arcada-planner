@@ -2,12 +2,16 @@ import type { FloorState } from '../types';
 import type { FloorWallGeom } from './walls';
 import type { Segment } from './raycast';
 import { rectCorners, type Pt } from './hit';
+import { isPort, itemAt } from './links';
+import type { FurnitureItem } from '../types';
 
 export interface SnapTargets {
   /** Points to snap to first: wall corners, nodes, furniture corners, dimension ends */
   points: Pt[];
   /** Lines to snap onto if no point is near: wall faces and furniture edges */
   segments: Segment[];
+  /** Small items (sockets, switches, entry points): anywhere over one snaps to its centre */
+  ports: FurnitureItem[];
 }
 
 export function snapTargets(floor: FloorState, geom: FloorWallGeom, excludeDimId?: number, excludeCableId?: number): SnapTargets {
@@ -37,7 +41,7 @@ export function snapTargets(floor: FloorState, geom: FloorWallGeom, excludeDimId
     if (d.id === excludeDimId) continue;
     points.push({ x: d.x1, y: d.y1 }, { x: d.x2, y: d.y2 });
   }
-  return { points, segments };
+  return { points, segments, ports: floor.furniture.filter(isPort) };
 }
 
 function closestOnSegment(p: Pt, s: Segment): Pt {
@@ -50,6 +54,11 @@ function closestOnSegment(p: Pt, s: Segment): Pt {
 
 /** Snaps to the nearest target point within `radius`, else onto the nearest line, else returns null */
 export function snapToTargets(p: Pt, targets: SnapTargets, radius: number): Pt | null {
+  const port = targets.ports?.length ? itemAt(targets.ports, p, radius * 0.6) : null;
+  if (port) {
+    const c = rectCorners(port.x, port.y, port.w, port.h, port.rot);
+    return { x: (c[0].x + c[2].x) / 2, y: (c[0].y + c[2].y) / 2 };
+  }
   let best: Pt | null = null;
   let bestD = radius;
   for (const q of targets.points) {

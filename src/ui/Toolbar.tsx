@@ -2,7 +2,7 @@ import { useState } from 'react';
 import {
   MousePointer2, Eraser, Minus, Grid3X3,
   Tag, ChevronUp, ChevronDown, Trash2, Printer,
-  Save, FolderOpen, HelpCircle, Languages, Sun, Moon, Monitor, Ruler, Type, CaseSensitive, ArrowLeftRight, Scaling, FileDown, Cable as CableIcon, Network, RectangleHorizontal, SlidersHorizontal,
+  Save, FolderOpen, HelpCircle, Languages, Sun, Moon, Monitor, Ruler, Type, CaseSensitive, ArrowLeftRight, Scaling, FileDown, Cable as CableIcon, Network, RectangleHorizontal, SlidersHorizontal, FolderTree, Wand2,
 } from 'lucide-react';
 import { useStore, ProjectError } from '../store';
 import { usePrefs, LANGS, type WallLabelMode, type Lang, type ThemePref, type SizesPos } from '../prefs';
@@ -10,6 +10,7 @@ import { useT, t as tNow, LANG_NAMES, type TKey } from '../i18n';
 import { Tool, AUTOSAVE_KEY } from '../constants';
 import { ExportDialog } from './ExportDialog';
 import { WiringSettingsDialog } from './WiringSettingsDialog';
+import { GroupsPanel } from './GroupsPanel';
 
 /** Theme button cycles: Auto → Light → Dark → Auto */
 const NEXT_THEME: Record<ThemePref, ThemePref> = { system: 'light', light: 'dark', dark: 'system' };
@@ -54,6 +55,7 @@ export function Toolbar() {
   const [showHelp, setShowHelp] = useState(false);
   const [showExport, setShowExport] = useState(false);
   const [showWiring, setShowWiring] = useState(false);
+  const [showGroups, setShowGroups] = useState(false);
 
   const loadProject = (json: string) => {
     if (useStore.getState().dirty && !confirm(t('msg.unsavedOpen'))) return;
@@ -98,6 +100,18 @@ export function Toolbar() {
             <button title={t('wset.title')} className="tool-btn" onClick={() => setShowWiring(true)}>
               <SlidersHorizontal size={20} />
               <span>{t('wset.button')}</span>
+            </button>
+          )}
+          {mode === 'wiring' && (
+            <button title={t('groups.title')} className={'tool-btn' + (showGroups ? ' active' : '')} onClick={() => setShowGroups(!showGroups)}>
+              <FolderTree size={20} />
+              <span>{t('groups.button')}</span>
+            </button>
+          )}
+          {mode === 'wiring' && (
+            <button title={t('action.tidyTitle')} className="tool-btn" onClick={() => useStore.getState().tidyCables()}>
+              <Wand2 size={20} />
+              <span>{t('action.tidy')}</span>
             </button>
           )}
         </div>
@@ -203,6 +217,7 @@ export function Toolbar() {
 
       {showExport && <ExportDialog onClose={() => setShowExport(false)} />}
       {showWiring && <WiringSettingsDialog onClose={() => setShowWiring(false)} />}
+      {showGroups && mode === 'wiring' && <GroupsPanel onClose={() => setShowGroups(false)} />}
 
       {showHelp && (
         <div className="help-overlay" onClick={() => setShowHelp(false)}>

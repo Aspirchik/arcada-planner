@@ -18,7 +18,7 @@ const floor: FloorState = {
   dimensions: [{ id: 31, x1: 10, y1: 200, x2: 390, y2: 200 }],
   texts: [{ id: 41, x: 60, y: 220, text: 'Room <1>', size: 20, rot: 0, bold: true, color: null }],
   cables: [],
-  trays: [],
+  trays: [], groups: [],
 };
 
 const base = { palette: LIGHT, wallLabels: 'interior' as const, showNames: false, sizesPos: 'br' as const, lang: 'en' as const, unitM: 'm' };
@@ -41,7 +41,7 @@ describe('export bounds', () => {
   });
 
   it('returns null for an empty floor', () => {
-    expect(buildPlanSvg({ nodes: [], walls: [], furniture: [], dimensions: [], texts: [], cables: [], trays: [] }, new Map(), { ...base, area: 'all' })).toBeNull();
+    expect(buildPlanSvg({ nodes: [], walls: [], furniture: [], dimensions: [], texts: [], cables: [], trays: [], groups: [] }, new Map(), { ...base, area: 'all' })).toBeNull();
   });
 });
 

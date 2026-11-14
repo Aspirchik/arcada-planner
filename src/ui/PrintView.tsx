@@ -11,6 +11,7 @@ import { DimensionsLayerContent } from './DimensionsLayer';
 import { CablesLayerContent, TraysLayerContent } from './CablesLayer';
 import { layerPasses, styleCables, type LayerView } from '../layers';
 import { spriteKey } from '../color';
+import { itemNamer } from '../labels';
 import { labelObstacles } from '../geometry/cable';
 import { FurnitureLabels, TextNotes, SimpleFurniture, measureNote } from './AnnotationsLayer';
 import { useT } from '../i18n';
@@ -119,7 +120,7 @@ function PrintFloor({ floor, index }: { floor: FloorState; index: number }) {
         );
       })}
       <TraysLayerContent trays={v.trays} palette={LIGHT} textSize={ws.trayText} />
-      <CablesLayerContent cables={styleCables(v.cables, ws)} palette={LIGHT} unitM={t('unit.m')} avoid={labelObstacles(geom, wallLabels, floor.furniture)}
+      <CablesLayerContent cables={styleCables(v.cables, ws, itemNamer(floor.furniture, lang))} palette={LIGHT} unitM={t('unit.m')} avoid={labelObstacles(geom, wallLabels, floor.furniture)}
         labelSize={ws.cableText} showLabels={ws.cableLabels} />
       {ready && <FurnitureLabels furniture={v.furniture} palette={LIGHT} showNames={showNames} lang={lang} sizesPos={sizesPos} />}
       <TextNotes texts={v.texts} palette={LIGHT} />

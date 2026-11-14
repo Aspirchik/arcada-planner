@@ -21,7 +21,8 @@ import { CablesLayerContent, CableLine, CableHandles, TraysLayerContent } from '
 import { hitSegment, hitVertex, dedupePoints, labelObstacles, layoutCables, distToPath, cablesInTray, cableRoute, pathLength } from '../geometry/cable';
 import { SimpleFurniture } from './AnnotationsLayer';
 import type { WallNode, Wall, FurnitureItem, Dimension, TextNote, Cable, Tray } from '../types';
-import { layerView, styleCables } from '../layers';
+import { layerView, styleCables, cablesInGroups } from '../layers';
+import { itemNamer } from '../labels';
 
 const TOOLBAR_W = 80;
 const PANEL_W = 260;
@@ -152,17 +153,21 @@ export function EditorStage() {
   const mode          = useStore(s => s.mode);
   const wiring        = mode === 'wiring';
   const ws            = useStore(s => s.wiring);
+  const litGroups     = useStore(s => s.litGroups);
+  const nameOf        = useMemo(() => itemNamer(floor.furniture, lang), [floor.furniture, lang]);
   /** Objects of the layer being edited: main plan, or the wiring layer in Wiring mode (with objects shown on both) */
   const act = useMemo(() => {
     const v = layerView(floor, wiring ? 'wiring' : 'main');
-    return { ...v, cables: styleCables(v.cables, ws) };
-  }, [floor, wiring, ws]);
+    return { ...v, cables: styleCables(v.cables, ws, nameOf) };
+  }, [floor, wiring, ws, nameOf]);
   /** In Wiring mode: the main plan, drawn dimmed and not editable */
   const base = useMemo(() => {
     if (!wiring) return null;
     const v = layerView(floor, 'main', true);
-    return { ...v, cables: styleCables(v.cables, ws) };
-  }, [floor, wiring, ws]);
+    return { ...v, cables: styleCables(v.cables, ws, nameOf) };
+  }, [floor, wiring, ws, nameOf]);
+  /** Cables of the highlighted groups (others are dimmed), or null */
+  const litCables = useMemo(() => (litGroups.length ? cablesInGroups(act.cables, litGroups) : null), [act.cables, litGroups]);
   const cablePaths = useMemo(() => layoutCables(act.cables), [act.cables]);
   const [hoverTray, setHoverTray] = useState<{ id: number; x: number; y: number } | null>(null);
   const cableAvoid    = useMemo(() => labelObstacles(wallGeom, wallLabels, floor.furniture), [wallGeom, wallLabels, floor.furniture]);
@@ -1115,6 +1120,7 @@ export function EditorStage() {
         {/* Main plan objects under the wiring layer (Wiring mode only) */}
         {base && (
           <Group>
+            <TraysLayerContent trays={base.trays} palette={palette} textSize={ws.trayText} />
             {sortByZ(base.furniture).map(item => (
               <FurnitureVisual key={item.id} item={item} palette={palette} onImageLoaded={onImageLoaded} />
             ))}
@@ -1150,7 +1156,7 @@ export function EditorStage() {
         {/* Cables (above furniture) */}
         <CablesLayerContent cables={act.cables} palette={palette} unitM={t('unit.m')} avoid={cableAvoid}
           labelSize={ws.cableText} showLabels={ws.cableLabels}
-          highlight={trayCables ? new Set(trayCables.map(c => c.id)) : undefined} />
+          highlight={trayCables ? new Set(trayCables.map(c => c.id)) : litCables ?? undefined} />
         {cableDraft && (
           <CableLine points={cablePreview ? [...cableDraft, cablePreview] : cableDraft}
             color={tool === Tool.Tray ? palette.accent : nextCableColor}

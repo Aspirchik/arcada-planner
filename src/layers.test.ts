@@ -5,7 +5,7 @@ import type { FloorState, FurnitureItem } from './types';
 
 const item = (id: number, layer?: 'wiring' | 'both'): FurnitureItem => ({ id, path: 'x', x: 0, y: 0, w: 10, h: 10, rot: 0, zi: 100, ...(layer ? { layer } : {}) });
 const floor: FloorState = {
-  nodes: [], walls: [], dimensions: [], texts: [], trays: [],
+  nodes: [], walls: [], dimensions: [], texts: [], trays: [], groups: [],
   furniture: [item(1), item(2, 'wiring'), item(3, 'both')],
   cables: [{ id: 4, points: [{ x: 0, y: 0 }, { x: 10, y: 0 }], color: '#000' }, { id: 5, points: [{ x: 0, y: 0 }, { x: 10, y: 0 }], color: '#000', width: 6 }],
 };
@@ -27,6 +27,14 @@ describe('layers', () => {
     }
     // over a dimmed plan the shared object is drawn with the wiring (full strength)
     expect(ids(layerPasses(floor, 'wiring').wiring!)).toContain(3);
+  });
+
+  it('trays: wiring by default, or on the plan / both plans', () => {
+    const tf: FloorState = { ...floor, trays: [
+      { id: 6, points: [], width: 10 }, { id: 7, points: [], width: 10, layer: 'plan' }, { id: 8, points: [], width: 10, layer: 'both' }] };
+    expect(layerView(tf, 'wiring').trays.map(t => t.id)).toEqual([6, 8]);
+    expect(layerView(tf, 'main').trays.map(t => t.id)).toEqual([7, 8]);
+    expect(layerView(tf, 'main', true).trays.map(t => t.id)).toEqual([7]);
   });
 
   it('global cable settings: default width, length on all', () => {

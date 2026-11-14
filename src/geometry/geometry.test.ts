@@ -108,7 +108,7 @@ describe('ruler snapping', () => {
   it('snaps to wall corners first, then onto wall faces, and keeps 45° with Shift', async () => {
     const { snapTargets, snapToTargets, constrain45 } = await import('./snap');
     const g = computeWallGeometry(room.nodes, room.walls);
-    const floor = { ...room, furniture: [], dimensions: [], texts: [], cables: [], trays: [] };
+    const floor = { ...room, furniture: [], dimensions: [], texts: [], cables: [], trays: [], groups: [] };
     const targets = snapTargets(floor, g);
     // Near the inner corner (10, 10) → exactly the corner
     expect(snapToTargets({ x: 14, y: 12 }, targets, 12)).toEqual({ x: 10, y: 10 });

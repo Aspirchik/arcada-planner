@@ -21,6 +21,23 @@ export function furnitureLabel(item: FurnitureItem, showNames: boolean, lang: La
   return name ? catalogName(lang, 'item', name) : '';
 }
 
+/** Name of an item for cable routes: its own label, else the translated catalog name */
+export function itemName(item: FurnitureItem, lang: Lang): string {
+  const own = item.label?.trim();
+  if (own) return own;
+  const name = item.name ?? nameByPath.get(item.path);
+  return name ? catalogName(lang, 'item', name) : '';
+}
+
+/** Looks up item names by id (for cable ends connected to items) */
+export function itemNamer(furniture: FurnitureItem[], lang: Lang): (id: number) => string | undefined {
+  const byId = new Map(furniture.map(f => [f.id, f]));
+  return id => {
+    const it = byId.get(id);
+    return it ? itemName(it, lang) || undefined : undefined;
+  };
+}
+
 /**
  * Corner where the item's size is shown, or 'off'.
  * sizeMode: missing = global corner from the toolbar, 'on' = always (toolbar corner, bottom-right if that is off), 'off' = never.

@@ -1,5 +1,5 @@
 /** Plan layers: the main plan and the wiring layer (pure) */
-import type { FloorState, FurnitureItem, TextNote, Dimension, Cable, Tray, WiringSettings } from './types';
+import type { FloorState, FurnitureItem, TextNote, Dimension, Cable, Tray, WiringSettings, Layer } from './types';
 
 export interface LayerView {
   furniture: FurnitureItem[];
@@ -20,7 +20,7 @@ export function onLayer(o: { layer?: string }, layer: 'main' | 'wiring'): boolea
 }
 
 /**
- * Objects of one layer: 'main' = the plan, 'wiring' = the wiring layer (trays always live there).
+ * Objects of one layer: 'main' = the plan, 'wiring' = the wiring layer (trays live there unless set otherwise).
  * `own` leaves out objects shown on both layers (when the other layer is drawn too, so they are drawn once).
  */
 export function layerView(floor: FloorState, layer: 'main' | 'wiring', own = false): LayerView {
@@ -30,13 +30,34 @@ export function layerView(floor: FloorState, layer: 'main' | 'wiring', own = fal
     texts: floor.texts.filter(inLayer),
     dimensions: floor.dimensions.filter(inLayer),
     cables: floor.cables.filter(inLayer),
-    trays: layer === 'wiring' ? floor.trays : [],
+    trays: floor.trays.filter(t => (t.layer === 'both' ? !own : layer === 'wiring' ? t.layer !== 'plan' : t.layer === 'plan')),
   };
 }
 
-/** Cables with the global settings applied: default width, length shown on all */
-export function styleCables(cables: Cable[], ws: WiringSettings): Cable[] {
-  return cables.map(c => ({ ...c, width: c.width ?? ws.cableWidth, ...(ws.cableLengths ? { showLength: true } : {}) }));
+/** Tray layer as an object layer: trays keep 'wiring' as their default, so missing means wiring */
+export function trayLayer(t: { layer?: 'plan' | 'both' }): Layer | undefined {
+  return t.layer === 'plan' ? undefined : t.layer === 'both' ? 'both' : 'wiring';
+}
+
+/**
+ * Cables ready to draw: global settings applied (default width, length shown on all) and,
+ * when From / To is empty, the name of the item the end is connected to.
+ */
+export function styleCables(cables: Cable[], ws: WiringSettings, nameOf?: (id: number) => string | undefined): Cable[] {
+  return cables.map(c => {
+    const from = c.from || (c.fromLink && nameOf?.(c.fromLink.id));
+    const to = c.to || (c.toLink && nameOf?.(c.toLink.id));
+    return {
+      ...c, width: c.width ?? ws.cableWidth,
+      ...(ws.cableLengths ? { showLength: true } : {}),
+      ...(from ? { from } : {}), ...(to ? { to } : {}),
+    };
+  });
+}
+
+/** Ids of cables in any of the given groups */
+export function cablesInGroups(cables: Cable[], groups: number[]): Set<number> {
+  return new Set(cables.filter(c => c.groups?.some(g => groups.includes(g))).map(c => c.id));
 }
 
 /** Which layers to output: plan only, plan + wiring (both full), or wiring over a dimmed plan */

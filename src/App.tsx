@@ -8,7 +8,9 @@ import { TextEditor } from './ui/TextEditor';
 import { measureNote } from './ui/AnnotationsLayer';
 import { rectCorners } from './geometry/hit';
 import { useStore, parseProject, isProjectEmpty } from './store';
-import { onLayer } from './layers';
+import { onLayer, styleCables, trayLayer } from './layers';
+import { itemNamer } from './labels';
+import { CableGroupChips } from './ui/GroupsPanel';
 import { cablesInTray, cableRoute, pathLength } from './geometry/cable';
 import { formatMeters } from './geometry/wallLabels';
 import { setNextCableColor } from './ui/EditorStage';
@@ -160,13 +162,14 @@ function TriSelect({ value, label, title, onChange }: { value: Tri | ''; label: 
 
 const triOf = (v: 'on' | 'off' | undefined): Tri => v ?? 'global';
 
-/** Which plan shows the object: main plan, wiring layer or both */
-function LayerButton({ id, layer }: { id: number; layer?: Layer }) {
+/** Which plan shows the object(s): main plan, wiring layer or both ('' = mixed) */
+function LayerButton({ id, ids, layer }: { id?: number; ids?: number[]; layer?: Layer | '' }) {
   const t = useT();
   return (
     <label title={t('layer.title')}><Layers size={13} />
-      <select className="sel-select" value={layer ?? 'plan'}
-        onChange={e => useStore.getState().setLayer(id, e.target.value === 'plan' ? undefined : e.target.value as Layer)}>
+      <select className="sel-select" value={layer === '' ? '' : layer ?? 'plan'}
+        onChange={e => useStore.getState().setLayerMany(ids ?? [id!], e.target.value === 'plan' ? undefined : e.target.value as Layer)}>
+        {layer === '' && <option value="">—</option>}
         <option value="plan">{t('layer.plan')}</option>
         <option value="wiring">{t('layer.wiring')}</option>
         <option value="both">{t('layer.both')}</option>
@@ -198,6 +201,7 @@ function SelectionPanel() {
   const stageY       = useStore(s => s.stageY);
   const stageScale   = useStore(s => s.stageScale);
   const textEdit     = useStore(s => s.textEdit);
+  const lang         = usePrefs(s => s.lang);
   const st           = useStore.getState();
   const t            = useT();
 
@@ -236,6 +240,10 @@ function SelectionPanel() {
           </>
           );
         })()}
+        <LayerButton ids={selection} layer={(() => {
+          const v = new Set([...floor.furniture, ...floor.texts].filter(o => selection.includes(o.id)).map(o => o.layer ?? 'plan'));
+          return v.size === 1 ? ([...v][0] === 'plan' ? undefined : [...v][0] as Layer) : '';
+        })()} />
         <button className="sel-delete" title={t('sel.delete')} onClick={st.deleteSelected}><Trash2 size={14} /></button>
       </div>
     );
@@ -293,7 +301,7 @@ function SelectionPanel() {
   // ── Tray ──
   const tray = floor.trays.find(x => x.id === selectedId);
   if (tray) {
-    const inside = cablesInTray(tray, floor.cables.filter(c => onLayer(c, 'wiring')));
+    const inside = cablesInTray(tray, styleCables(floor.cables.filter(c => onLayer(c, 'wiring')), st.wiring, itemNamer(floor.furniture, lang)));
     return (
       <div className="selection-panel" style={at(tray.points, 460)}>
         <TextField key={`tl${tray.id}`} value={tray.label ?? ''} placeholder={t('sel.label')}
@@ -301,6 +309,7 @@ function SelectionPanel() {
         <label>{t('tray.width')} <NumField key={`tw${tray.id}`} value={tray.width} min={1}
           onCommit={v => st.updateTray(tray.id, { width: v })} /> {t('unit.cm')}</label>
         <ObjectColor value={tray.color} onChange={c => st.updateTray(tray.id, { color: c })} />
+        <LayerButton id={tray.id} layer={trayLayer(tray)} />
         <button className="sel-delete" title={t('sel.delete')} onClick={st.deleteSelected}><Trash2 size={14} /></button>
         <div className="sel-break" />
         <div className="tray-list">
@@ -320,15 +329,20 @@ function SelectionPanel() {
   // ── Cable ──
   const cable = floor.cables.find(c => c.id === selectedId);
   if (cable) {
+    const nameOf = itemNamer(floor.furniture, lang);
+    const autoFrom = cable.fromLink ? nameOf(cable.fromLink.id) : undefined;
+    const autoTo = cable.toLink ? nameOf(cable.toLink.id) : undefined;
     return (
       <div className="selection-panel" style={at(cable.points, 620)}>
         <TextField key={`cl${cable.id}`} value={cable.label ?? ''} placeholder={t('sel.label')}
           onCommit={v => st.updateCable(cable.id, { label: v.trim() || undefined })} />
-        <TextField key={`cf${cable.id}`} value={cable.from ?? ''} placeholder={t('cable.from')}
+        <span className={'sel-link' + (cable.fromLink ? ' on' : '')} title={cable.fromLink ? t('cable.linked', { name: autoFrom ?? '?' }) : t('cable.notLinked')}>●</span>
+        <TextField key={`cf${cable.id}`} value={cable.from ?? ''} placeholder={autoFrom ?? t('cable.from')}
           onCommit={v => st.updateCable(cable.id, { from: v.trim() || undefined })} />
         <span className="sel-arrow">→</span>
-        <TextField key={`ct${cable.id}`} value={cable.to ?? ''} placeholder={t('cable.to')}
+        <TextField key={`ct${cable.id}`} value={cable.to ?? ''} placeholder={autoTo ?? t('cable.to')}
           onCommit={v => st.updateCable(cable.id, { to: v.trim() || undefined })} />
+        <span className={'sel-link' + (cable.toLink ? ' on' : '')} title={cable.toLink ? t('cable.linked', { name: autoTo ?? '?' }) : t('cable.notLinked')}>●</span>
         <div className="sel-break" />
         <ColorSwatches value={cable.color} title={t('text.color')} colors={CABLE_COLORS}
           onChange={c => { if (c) { setNextCableColor(c); st.updateCable(cable.id, { color: c }); } }} />
@@ -338,6 +352,9 @@ function SelectionPanel() {
           onClick={() => st.updateCable(cable.id, { showLength: cable.showLength ? undefined : true })}><Ruler size={14} /></button>
         <LayerButton id={cable.id} layer={cable.layer} />
         <button className="sel-delete" title={t('sel.delete')} onClick={st.deleteSelected}><Trash2 size={14} /></button>
+        <div className="sel-break" />
+        <span className="sel-title">{t('cable.groups')}</span>
+        <CableGroupChips cableId={cable.id} groups={cable.groups} />
       </div>
     );
   }

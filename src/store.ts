@@ -1,7 +1,9 @@
 import { create } from 'zustand';
 import { Tool, METER } from './constants';
-import type { FurnitureItem, FloorState, CatalogItem, Dimension, TextNote, Wall, LabelPos, Cable, Tray, Layer, WiringSettings } from './types';
-import { DEFAULT_WIRING, onLayer } from './layers';
+import type { FurnitureItem, FloorState, CatalogItem, Dimension, TextNote, Wall, LabelPos, Cable, Tray, Layer, WiringSettings, CableGroup, CableLink } from './types';
+import { relink, syncLinks } from './geometry/links';
+import { tidyCables } from './geometry/tidy';
+import { DEFAULT_WIRING, onLayer, trayLayer } from './layers';
 import { translate, type TKey, type TParams } from './i18n';
 
 const HISTORY_LIMIT = 50;
@@ -23,6 +25,15 @@ const colorOf = (o: object) => {
   const c = (o as { color?: unknown }).color;
   return typeof c === 'string' && /^#[0-9a-f]{3}([0-9a-f]{3})?$/i.test(c) ? { color: c } : {};
 };
+
+const linkOf = (v: unknown): CableLink | undefined => {
+  const l = v as { id?: unknown; u?: unknown; v?: unknown } | null;
+  return l && isNum(l.id) && isNum(l.u) && isNum(l.v) ? { id: l.id, u: l.u, v: l.v } : undefined;
+};
+
+const groupsOf = (v: unknown): CableGroup[] => (Array.isArray(v) ? v : [])
+  .filter((g): g is { id: number; name: string } => !!g && isNum(g.id) && typeof g.name === 'string')
+  .map(g => ({ id: g.id, name: g.name }));
 
 /** Wiring settings from a file; missing or invalid values take the defaults */
 export function parseWiring(raw: unknown): WiringSettings {
@@ -54,7 +65,7 @@ export interface History {
 }
 
 function emptyFloor(): FloorState {
-  return { nodes: [], walls: [], furniture: [], dimensions: [], texts: [], cables: [], trays: [] };
+  return { nodes: [], walls: [], furniture: [], dimensions: [], texts: [], cables: [], trays: [], groups: [] };
 }
 
 function emptyHistory(): History {
@@ -67,6 +78,8 @@ export interface ParsedProject {
   nextId: number;
   createdAt: string | null;
   wiring: WiringSettings;
+  /** Cable groups common to all floors */
+  groups: CableGroup[];
 }
 
 /** Error with a translation key, so the UI can show it in the current language */
@@ -156,6 +169,9 @@ export function parseProject(json: string): ParsedProject {
       ...(c.showLength === true ? { showLength: true } : {}),
       ...(typeof c.from === 'string' && c.from ? { from: c.from } : {}),
       ...(typeof c.to === 'string' && c.to ? { to: c.to } : {}),
+      ...(linkOf(c.fromLink) ? { fromLink: linkOf(c.fromLink) } : {}),
+      ...(linkOf(c.toLink) ? { toLink: linkOf(c.toLink) } : {}),
+      ...(Array.isArray(c.groups) && c.groups.some(isNum) ? { groups: c.groups.filter(isNum) } : {}),
       ...layerOf(c),
     })).filter(c => c.points.length >= 2);
 
@@ -168,15 +184,19 @@ export function parseProject(json: string): ParsedProject {
       width: isNum(t.width) && t.width > 0 ? t.width : DEFAULT_TRAY_WIDTH,
       ...(typeof t.label === 'string' && t.label ? { label: t.label } : {}),
       ...colorOf(t),
+      ...(t.layer === 'plan' || t.layer === 'both' ? { layer: t.layer as 'plan' | 'both' } : {}),
     })).filter(t => t.points.length >= 2);
 
-    for (const o of [...nodes, ...walls, ...furniture, ...dimensions, ...texts, ...cables, ...trays]) maxId = Math.max(maxId, o.id);
-    return { nodes, walls, furniture, dimensions, texts, cables, trays };
+    const groups = groupsOf(f.groups);
+    for (const o of [...nodes, ...walls, ...furniture, ...dimensions, ...texts, ...cables, ...trays, ...groups]) maxId = Math.max(maxId, o.id);
+    return syncLinks({ nodes, walls, furniture, dimensions, texts, cables, trays, groups });
   });
 
+  const groups = groupsOf(d.cableGroups);
+  for (const g of groups) maxId = Math.max(maxId, g.id);
   const nextId = Math.max(isNum(d.nextId) ? d.nextId : 1, maxId + 1);
   const createdAt = typeof d.createdAt === 'string' ? d.createdAt : null;
-  return { floors, nextId, createdAt, wiring: parseWiring(d.wiring) };
+  return { floors, nextId, createdAt, wiring: parseWiring(d.wiring), groups };
 }
 
 export function isProjectEmpty(floors: FloorState[]): boolean {
@@ -209,6 +229,10 @@ interface Store {
   mode: EditMode;
   /** Project-wide Wiring mode settings (saved in the file) */
   wiring: WiringSettings;
+  /** Cable groups common to all floors (saved in the file); local groups are in each floor */
+  commonGroups: CableGroup[];
+  /** Highlighted groups: while any is on, other cables are dimmed (not saved) */
+  litGroups: number[];
   /** Text note being edited in place: existing note (id) or a new one at (x, y) */
   textEdit: { id: number | null; x: number; y: number } | null;
 
@@ -224,9 +248,20 @@ interface Store {
   setMode(mode: EditMode): void;
   /** Moves an object (furniture, text, dimension, cable) to the main plan or the wiring layer */
   setLayer(id: number, layer: Layer | undefined): void;
+  /** Same layer for several objects (furniture, texts, dimensions, cables, trays), one undo step */
+  setLayerMany(ids: number[], layer: Layer | undefined): void;
   setWiring(changes: Partial<WiringSettings>): void;
   /** Drops the own width of every cable on the floor, so the global width applies */
   resetCableWidths(): void;
+  addGroup(scope: 'local' | 'common', name: string): number;
+  renameGroup(id: number, name: string): void;
+  /** Deletes a group and takes its cables out of it */
+  deleteGroup(id: number): void;
+  /** Adds the cable to the group or takes it out */
+  toggleCableGroup(cableId: number, groupId: number): void;
+  toggleLit(groupId: number): void;
+  /** Lays out the cables of the current layer neatly (right angles, shared runs, onto trays); one undo step */
+  tidyCables(): void;
 
   /** Starts a gesture: all changes until endGesture() become a single undo step */
   beginGesture(): void;
@@ -306,8 +341,10 @@ export const useStore = create<Store>((set, get) => {
   function upFloor(fn: (f: FloorState) => FloorState) {
     const { fi, floors } = get();
     const current = floors[fi];
-    const next = fn(current);
+    let next = fn(current);
     if (next === current) return;
+    // Linked cable ends follow their items
+    if (next.furniture !== current.furniture) next = syncLinks(next);
     set({ floors: floors.map((f, i) => i === fi ? next : f), dirty: true });
     if (!gesture) pushHistory(fi, current);
   }
@@ -332,6 +369,14 @@ export const useStore = create<Store>((set, get) => {
     if (gesture) return fn();
     beginGesture();
     try { return fn(); } finally { endGesture(); }
+  }
+
+  /** Cable with its end links updated: ends on an item of the current layer get connected to it */
+  function withLinks(c: Cable, f: FloorState): Cable {
+    const items = f.furniture.filter(it => onLayer(it, get().mode === 'wiring' ? 'wiring' : 'main'));
+    const { fromLink, toLink } = relink(c, items);
+    const { fromLink: _a, toLink: _b, ...rest } = c;
+    return { ...rest, ...(fromLink ? { fromLink } : {}), ...(toLink ? { toLink } : {}) };
   }
 
   /** Layer for new objects: the wiring layer while in Wiring mode */
@@ -369,6 +414,8 @@ export const useStore = create<Store>((set, get) => {
     textEdit: null,
     mode: 'plan',
     wiring: DEFAULT_WIRING,
+    commonGroups: [],
+    litGroups: [],
 
     setTool: (tool) => set({ tool, wallStartId: null, selectedId: null, selection: [] }),
     setSnapSize: (snapSize) => set({ snapSize }),
@@ -383,20 +430,89 @@ export const useStore = create<Store>((set, get) => {
     setTextEdit: (textEdit) => set({ textEdit }),
     setMode: (mode) => set({ mode, selectedId: null, selection: [], wallStartId: null, textEdit: null }),
     setLayer(id, layer) {
+      get().setLayerMany([id], layer);
+    },
+    setLayerMany(ids, layer) {
+      const has = (o: { id: number }) => ids.includes(o.id);
       const L = layer ? { layer } : { layer: undefined };
+      // Trays: missing = wiring, so the plan is stored as 'plan'
+      const T = { layer: layer === 'wiring' ? undefined : layer === 'both' ? 'both' as const : 'plan' as const };
       upFloor(f => ({
         ...f,
-        furniture: f.furniture.map(o => o.id === id ? { ...o, ...L } : o),
-        texts: f.texts.map(o => o.id === id ? { ...o, ...L } : o),
-        dimensions: f.dimensions.map(o => o.id === id ? { ...o, ...L } : o),
-        cables: f.cables.map(o => o.id === id ? { ...o, ...L } : o),
+        furniture: f.furniture.map(o => has(o) ? { ...o, ...L } : o),
+        texts: f.texts.map(o => has(o) ? { ...o, ...L } : o),
+        dimensions: f.dimensions.map(o => has(o) ? { ...o, ...L } : o),
+        cables: f.cables.map(o => has(o) ? { ...o, ...L } : o),
+        trays: f.trays.map(o => has(o) ? { ...o, ...T } : o),
       }));
-      // Moved out of the layer being edited: drop it from the selection
+      // Objects moved out of the layer being edited leave the selection
       const st = get();
-      const o = [...st.floors[st.fi].furniture, ...st.floors[st.fi].texts, ...st.floors[st.fi].dimensions, ...st.floors[st.fi].cables].find(x => x.id === id);
-      if (o && !onLayer(o, st.mode === 'wiring' ? 'wiring' : 'main')) set(sel([]));
+      const f = st.floors[st.fi];
+      const cur = st.mode === 'wiring' ? 'wiring' : 'main';
+      const visible = (id: number) => {
+        const tr = f.trays.find(x => x.id === id);
+        if (tr) return onLayer({ layer: trayLayer(tr) }, cur);
+        const o = [...f.furniture, ...f.texts, ...f.dimensions, ...f.cables].find(x => x.id === id);
+        return !o || onLayer(o, cur);
+      };
+      if (st.selection.some(id => !visible(id))) set(sel(st.selection.filter(visible)));
     },
     setWiring: (changes) => set(s => ({ wiring: { ...s.wiring, ...changes }, dirty: true })),
+
+    addGroup(scope, name) {
+      const id = newId();
+      if (scope === 'local') upFloor(f => ({ ...f, groups: [...f.groups, { id, name }] }));
+      else set(s => ({ commonGroups: [...s.commonGroups, { id, name }], dirty: true }));
+      return id;
+    },
+    renameGroup(id, name) {
+      if (get().commonGroups.some(g => g.id === id)) set(s => ({ commonGroups: s.commonGroups.map(g => g.id === id ? { ...g, name } : g), dirty: true }));
+      else upFloor(f => ({ ...f, groups: f.groups.map(g => g.id === id ? { ...g, name } : g) }));
+    },
+    deleteGroup(id) {
+      const out = (c: Cable): Cable => {
+        if (!c.groups?.includes(id)) return c;
+        const groups = c.groups.filter(g => g !== id);
+        return { ...c, groups: groups.length ? groups : undefined };
+      };
+      if (get().commonGroups.some(g => g.id === id)) {
+        // Common group: cables on every floor leave it (not an undo step, like other project settings)
+        set(s => ({
+          commonGroups: s.commonGroups.filter(g => g.id !== id),
+          floors: s.floors.map(f => (f.cables.some(c => c.groups?.includes(id)) ? { ...f, cables: f.cables.map(out) } : f)),
+          dirty: true,
+        }));
+      } else {
+        upFloor(f => ({ ...f, groups: f.groups.filter(g => g.id !== id), cables: f.cables.map(out) }));
+      }
+      set(s => ({ litGroups: s.litGroups.filter(g => g !== id) }));
+    },
+    toggleCableGroup(cableId, groupId) {
+      upFloor(f => ({ ...f, cables: f.cables.map(c => {
+        if (c.id !== cableId) return c;
+        const has = c.groups?.includes(groupId);
+        const groups = has ? c.groups!.filter(g => g !== groupId) : [...(c.groups ?? []), groupId];
+        return { ...c, groups: groups.length ? groups : undefined };
+      }) }));
+    },
+    toggleLit: (groupId) => set(s => ({ litGroups: s.litGroups.includes(groupId) ? s.litGroups.filter(g => g !== groupId) : [...s.litGroups, groupId] })),
+
+    tidyCables() {
+      const { mode } = get();
+      upFloor(f => {
+        const mine = f.cables.filter(c => onLayer(c, mode === 'wiring' ? 'wiring' : 'main'));
+        if (mine.length === 0) return f;
+        const paths = tidyCables(mine, mode === 'wiring' ? f.trays : []);
+        let changed = false;
+        const cables = f.cables.map(c => {
+          const p = paths.get(c.id);
+          if (!p || JSON.stringify(p) === JSON.stringify(c.points)) return c;
+          changed = true;
+          return { ...c, points: p };
+        });
+        return changed ? { ...f, cables } : f;
+      });
+    },
     resetCableWidths() {
       upFloor(f => (f.cables.some(c => c.width !== undefined)
         ? { ...f, cables: f.cables.map(c => (c.width === undefined ? c : { ...c, width: undefined })) }
@@ -606,12 +722,19 @@ export const useStore = create<Store>((set, get) => {
 
     addCable(points, color) {
       const id = newId();
-      upFloor(f => ({ ...f, cables: [...f.cables, { id, points: points.map(p => ({ x: p.x, y: p.y })), color, ...curLayer() }] }));
+      upFloor(f => {
+        const c: Cable = { id, points: points.map(p => ({ x: p.x, y: p.y })), color, ...curLayer() };
+        return { ...f, cables: [...f.cables, withLinks(c, f)] };
+      });
       return id;
     },
 
     updateCable(id, changes) {
-      upFloor(f => ({ ...f, cables: f.cables.map(c => c.id === id ? { ...c, ...changes } : c) }));
+      upFloor(f => ({ ...f, cables: f.cables.map(c => {
+        if (c.id !== id) return c;
+        const next = { ...c, ...changes };
+        return changes.points ? withLinks(next, f) : next;
+      }) }));
     },
 
     deleteCable(id) {
@@ -754,11 +877,11 @@ export const useStore = create<Store>((set, get) => {
     },
 
     save() {
-      const { floors, nextId, fileCreatedAt, wiring } = get();
+      const { floors, nextId, fileCreatedAt, wiring, commonGroups } = get();
       const now = new Date().toISOString();
       const created = fileCreatedAt ?? now;
       if (!fileCreatedAt) set({ fileCreatedAt: created });
-      return JSON.stringify({ version: FILE_VERSION, createdAt: created, lastModified: now, floors, nextId, wiring });
+      return JSON.stringify({ version: FILE_VERSION, createdAt: created, lastModified: now, floors, nextId, wiring, cableGroups: commonGroups });
     },
 
     markSaved: () => set({ dirty: false }),
@@ -776,6 +899,8 @@ export const useStore = create<Store>((set, get) => {
         wallStartId: null,
         fileCreatedAt: p.createdAt,
         wiring: p.wiring,
+        commonGroups: p.groups,
+        litGroups: [],
         dirty: false,
       });
     },

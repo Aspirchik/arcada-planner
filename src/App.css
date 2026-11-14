@@ -300,6 +300,33 @@ body { overflow: hidden; font-family: system-ui, sans-serif; background: var(--o
 .sel-swatch.auto { background: linear-gradient(135deg, var(--text-1) 50%, var(--surface) 50%); }
 .sel-swatch.active { outline: 2px solid var(--accent); outline-offset: 1px; }
 
+/* ── Cable groups ────────────────────────────────────────── */
+.groups-panel {
+  position: fixed; left: 92px; bottom: 12px; z-index: 260;
+  width: 280px; max-height: calc(100vh - 24px); overflow-y: auto;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.14);
+  padding: 10px 12px; font-size: 12px; color: var(--text-2);
+}
+.grp-title { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; color: var(--text-1); font-size: 13px; }
+.grp-section { margin-bottom: 8px; }
+.grp-head { display: flex; align-items: center; justify-content: space-between; font-weight: 600; margin-bottom: 4px; }
+.grp-row { display: flex; align-items: center; gap: 6px; padding: 2px 0; }
+.grp-name { flex: 1; min-width: 0; font-size: 12px; padding: 3px 6px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); color: var(--text-1); }
+.grp-count { min-width: 18px; text-align: right; color: var(--text-3); }
+.grp-empty { color: var(--text-3); font-style: italic; }
+.grp-hint { color: var(--text-3); font-size: 11px; margin-top: 4px; }
+.grp-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.grp-chip {
+  font-size: 11px; padding: 2px 8px; border-radius: 10px; cursor: pointer;
+  border: 1px solid var(--border); background: var(--surface); color: var(--text-2);
+}
+.grp-chip.common { border-style: dashed; }
+.grp-chip.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.sel-link { color: var(--text-3); font-size: 10px; }
+.sel-link.on { color: #188038; }
+@media (max-width: 767px) { .groups-panel { left: 8px; bottom: 64px; } }
+
 /* ── In-place text editor ────────────────────────────────── */
 .text-editor {
   position: fixed; z-index: 250;

@@ -336,6 +336,75 @@ describe('both layers, colours and wiring settings', () => {
   });
 });
 
+describe('cable connections and groups', () => {
+  const socket: CatalogItem = { name: 'LAN socket', imagePath: 'socket-lan', width: 0.15, height: 0.1 };
+
+  it('a cable drawn to a socket follows it and takes its label as To', () => {
+    const s = st().addFurniture(socket, 300, 300);
+    const it = floor().furniture[0];
+    st().updateFurniture(s, { label: 'LAN 12' });
+    const c = st().addCable([{ x: 0, y: 0 }, { x: it.x + it.w / 2, y: it.y + it.h / 2 }], '#000');
+    expect(floor().cables[0].toLink?.id).toBe(s);
+    expect(floor().cables[0].fromLink).toBeUndefined();
+    st().moveItems([{ id: s, x: it.x + 100, y: it.y }]);
+    expect(floor().cables[0].points[1].x).toBeCloseTo(it.x + 100 + it.w / 2);
+    st().undo();
+    expect(floor().cables[0].points[1].x).toBeCloseTo(it.x + it.w / 2);
+    // dragging the end off the socket disconnects it
+    st().updateCable(c, { points: [{ x: 0, y: 0 }, { x: 900, y: 900 }] });
+    expect(floor().cables[0].toLink).toBeUndefined();
+  });
+
+  it('local and common groups: membership, highlight, delete, save', () => {
+    const c = st().addCable([{ x: 0, y: 0 }, { x: 100, y: 0 }], '#000');
+    const g1 = st().addGroup('local', 'Office');
+    const g2 = st().addGroup('common', 'Cameras');
+    st().toggleCableGroup(c, g1);
+    st().toggleCableGroup(c, g2);
+    expect(floor().cables[0].groups).toEqual([g1, g2]);
+    st().toggleLit(g2);
+    expect(st().litGroups).toEqual([g2]);
+    st().renameGroup(g2, 'CCTV');
+    st().load(st().save());
+    expect(st().commonGroups).toEqual([{ id: g2, name: 'CCTV' }]);
+    expect(floor().groups).toEqual([{ id: g1, name: 'Office' }]);
+    expect(st().litGroups).toEqual([]);
+    st().deleteGroup(g2);
+    expect(floor().cables[0].groups).toEqual([g1]);
+    st().deleteGroup(g1);
+    expect(floor().cables[0].groups).toBeUndefined();
+  });
+
+  it('layer for several objects at once, trays included', () => {
+    const a = st().addFurniture(chair, 0, 0), b = st().addFurniture(chair, 100, 0);
+    st().setMode('wiring');
+    const tr = st().addTray([{ x: 0, y: 0 }, { x: 100, y: 0 }]);
+    st().setMode('plan');
+    st().setLayerMany([a, b, tr], 'both');
+    expect(floor().furniture.map(f => f.layer)).toEqual(['both', 'both']);
+    expect(floor().trays[0].layer).toBe('both');
+    st().setLayerMany([tr], undefined);
+    expect(floor().trays[0].layer).toBe('plan');
+    st().setLayerMany([tr], 'wiring');
+    expect(floor().trays[0].layer).toBeUndefined();
+    st().setLayerMany([tr], 'both');
+    st().load(st().save());
+    expect(floor().trays[0].layer).toBe('both');
+  });
+
+  it('tidy is one undo step and keeps cable ends', () => {
+    st().addCable([{ x: 0, y: 0 }, { x: 200, y: 80 }], '#000');
+    const before = floor().cables[0].points;
+    const n = undoLen();
+    st().tidyCables();
+    const after = floor().cables[0].points;
+    expect(after[0]).toEqual(before[0]);
+    expect(after[after.length - 1]).toEqual(before[1]);
+    expect(after.every((p, i) => i === 0 || p.x === after[i - 1].x || p.y === after[i - 1].y)).toBe(true);
+    expect(undoLen()).toBe(n + 1);
+  });
+});
+
 describe('parseProject', () => {
   it('rejects broken files with a readable message', () => {
     expect(() => parseProject('not json')).toThrow(/JSON/);
