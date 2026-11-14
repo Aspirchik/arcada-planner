@@ -210,6 +210,24 @@ describe('selection and groups', () => {
   });
 });
 
+describe('mirroring / door direction', () => {
+  it('flipping a door to open the other way keeps its frame in place', () => {
+    const d = st().addFurniture({ name: 'Door', imagePath: 'door', width: 1, height: 1 }, 50, 50);
+    const before = { ...floor().furniture[0] };
+    st().flipFurniture(d, 'y');
+    const after = floor().furniture[0];
+    expect(after.flipY).toBe(true);
+    // frame band: top before (y .. y+18.8), bottom after (y' + 81.2 .. y' + 100) → same place
+    expect(after.y + after.h * (1 - 25 / 133)).toBeCloseTo(before.y);
+    st().flipFurniture(d, 'y');
+    expect(floor().furniture[0].y).toBeCloseTo(before.y);
+    st().flipFurniture(d, 'x');
+    expect(floor().furniture[0]).toMatchObject({ flipX: true, x: before.x });
+    st().load(st().save());
+    expect(floor().furniture[0].flipX).toBe(true);
+  });
+});
+
 describe('simple view', () => {
   it('is set for several items in one step and survives save / load', () => {
     const a = st().addFurniture(chair, 0, 0);

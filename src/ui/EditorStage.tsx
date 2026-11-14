@@ -1014,7 +1014,8 @@ function FurnitureVisual({ item, palette, onImageLoaded }: { item: FurnitureItem
 
   return (
     <Group x={item.x} y={item.y} rotation={item.rot}>
-      {img && <KImage image={img} width={item.w} height={item.h} />}
+      {img && <KImage image={img} width={item.w} height={item.h}
+        x={item.flipX ? item.w : 0} y={item.flipY ? item.h : 0} scaleX={item.flipX ? -1 : 1} scaleY={item.flipY ? -1 : 1} />}
       {!img && <Rect width={item.w} height={item.h} fill={palette.placeholderFill} stroke={palette.placeholderStroke} strokeWidth={1} dash={[4, 2]} />}
     </Group>
   );

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Trash2, BringToFront, SendToBack, Bold, Pencil, Type, Square, Image as ImageIcon } from 'lucide-react';
+import { Trash2, BringToFront, SendToBack, Bold, Pencil, Type, Square, Image as ImageIcon, FlipHorizontal2, FlipVertical2 } from 'lucide-react';
 import { EditorStage } from './ui/EditorStage';
 import { Toolbar } from './ui/Toolbar';
 import { FurniturePanel } from './ui/FurniturePanel';
@@ -253,6 +253,10 @@ function SelectionPanel() {
         onClick={() => st.updateFurniture(item.id, { simple: item.simple ? undefined : true })}>
         {item.simple ? <ImageIcon size={14} /> : <Square size={14} />}
       </button>
+      <button className={'sel-btn' + (item.flipX ? ' active' : '')} title={item.path === 'door' ? t('door.hinge') : t('sel.flipX')}
+        onClick={() => st.flipFurniture(item.id, 'x')}><FlipHorizontal2 size={14} /></button>
+      <button className={'sel-btn' + (item.flipY ? ' active' : '')} title={item.path === 'door' ? t('door.swing') : t('sel.flipY')}
+        onClick={() => st.flipFurniture(item.id, 'y')}><FlipVertical2 size={14} /></button>
       <button className="sel-btn" title={t('sel.front')} onClick={() => st.bringToFront(item.id)}>
         <BringToFront size={14} />
       </button>

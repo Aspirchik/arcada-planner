@@ -110,7 +110,8 @@ function PrintFloor({ floor, index }: { floor: FloorState; index: number }) {
             const img = getSprite(f.path, false, () => {});
             return (
               <Group key={f.id} x={f.x} y={f.y} rotation={f.rot}>
-                {img ? <KImage image={img} width={f.w} height={f.h} /> : <Rect width={f.w} height={f.h} fill="#eee" stroke="#ccc" strokeWidth={1} />}
+                {img ? <KImage image={img} width={f.w} height={f.h}
+                  x={f.flipX ? f.w : 0} y={f.flipY ? f.h : 0} scaleX={f.flipX ? -1 : 1} scaleY={f.flipY ? -1 : 1} /> : <Rect width={f.w} height={f.h} fill="#eee" stroke="#ccc" strokeWidth={1} />}
               </Group>
             );
           })}

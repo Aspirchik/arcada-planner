@@ -38,6 +38,10 @@ export interface FurnitureItem {
   labelColor?: string | null;
   /** Draw as a plain rectangle instead of the detailed picture */
   simple?: boolean;
+  /** Mirror the picture left ↔ right (doors: hinges on the other side) */
+  flipX?: boolean;
+  /** Mirror the picture top ↕ bottom (doors: opens to the other side of the wall) */
+  flipY?: boolean;
 }
 
 /** Free text note placed on the plan */

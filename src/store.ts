@@ -8,6 +8,8 @@ const HISTORY_LIMIT = 50;
 export const FILE_VERSION = '2.1.0';
 export const DEFAULT_Z = 100;
 export const DEFAULT_TEXT_SIZE = 20;
+/** Share of the door picture height taken by the frame band along its top edge (door.svg: 25 of 133) */
+export const DOOR_FRAME_RATIO = 25 / 133;
 
 export interface Clipboard { furniture: FurnitureItem[]; texts: TextNote[] }
 
@@ -85,6 +87,8 @@ export function parseProject(json: string): ParsedProject {
       ...(it.labelBold === true ? { labelBold: true } : {}),
       ...(typeof it.labelColor === 'string' ? { labelColor: it.labelColor } : {}),
       ...(it.simple === true ? { simple: true } : {}),
+      ...(it.flipX === true ? { flipX: true } : {}),
+      ...(it.flipY === true ? { flipY: true } : {}),
     }));
 
     const dimensions = (Array.isArray(f.dimensions) ? f.dimensions : []).filter((dm): dm is Dimension =>
@@ -170,6 +174,8 @@ interface Store {
   addFurniture(item: CatalogItem, cx: number, cy: number): number;
   deleteFurniture(id: number): void;
   updateFurniture(id: number, changes: Partial<FurnitureItem>): void;
+  /** Mirrors an item. A door flipped top ↕ bottom is moved so its frame stays in the wall. */
+  flipFurniture(id: number, axis: 'x' | 'y'): void;
   /** Same change for several items, one undo step */
   updateFurnitureMany(ids: number[], changes: Partial<FurnitureItem>): void;
   bringToFront(id: number): void;
@@ -425,6 +431,22 @@ export const useStore = create<Store>((set, get) => {
 
     updateFurniture(id, changes) {
       upFloor(f => ({ ...f, furniture: f.furniture.map(it => it.id === id ? { ...it, ...changes } : it) }));
+    },
+
+    flipFurniture(id, axis) {
+      const it = get().floors[get().fi].furniture.find(f => f.id === id);
+      if (!it) return;
+      if (axis === 'x') { get().updateFurniture(id, { flipX: it.flipX ? undefined : true }); return; }
+      const flipY = !it.flipY;
+      let { x, y } = it;
+      if (it.path === 'door') {
+        // The door frame is a band along the top of the picture; keep it where it is
+        const shift = it.h * (1 - DOOR_FRAME_RATIO) * (flipY ? -1 : 1);
+        const rad = it.rot * Math.PI / 180;
+        x += -Math.sin(rad) * shift;
+        y += Math.cos(rad) * shift;
+      }
+      get().updateFurniture(id, { flipY: flipY || undefined, x, y });
     },
 
     updateFurnitureMany(ids, changes) {
