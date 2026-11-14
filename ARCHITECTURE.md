@@ -87,19 +87,27 @@ All application state lives in a single Zustand store (`src/store.ts`). Key slic
 | `fi` | `number` | Current floor index |
 | `selectedId` | `number \| null` | Currently selected furniture item |
 | `wallStartId` | `number \| null` | Node where the current wall chain starts |
-| `undoStack` | `FloorState[]` | Up to 50 snapshots for undo |
-| `redoStack` | `FloorState[]` | Redo snapshots |
+| `histories` | `{ undo, redo }[]` | Undo/redo history per floor (same index as `floors`), up to 50 steps each |
 | `clipboard` | `FurnitureItem \| null` | Copy/paste buffer |
+| `dirty` | `boolean` | Unsaved changes exist (controls the leave-page warning and autosave) |
 
 ### Undo/Redo
 
-Every mutation goes through `upFloor()`, which:
-1. Clones the current floor state via `JSON.parse(JSON.stringify(...))`
-2. Pushes it onto `undoStack` (max 50 entries)
-3. Clears `redoStack`
-4. Applies the mutation
+Floors are **immutable**: every change produces a new `FloorState` object, so the previous object itself is the undo snapshot (no deep cloning).
 
-Undo pops from `undoStack` and pushes current state to `redoStack`. Redo does the reverse.
+Every mutation goes through `upFloor()`, which applies the change and, outside a gesture, pushes the previous floor onto the current floor's `undo` stack (max 50) and clears `redo`.
+
+**Gestures** group many changes into one undo step:
+- `EditorStage` calls `beginGesture()` on pointer-down and `endGesture()` on pointer-up, so a whole drag / resize / rotate / wall-draw is a single step. A window-level `mouseup`/`touchend` listener closes the gesture if the pointer is released outside the canvas.
+- `endGesture()` pushes the floor state from the start of the gesture only if the floor actually changed.
+- Multi-step store actions (`splitWall`, `cutSelected`) use an internal `transact()` helper for the same effect.
+
+Each floor has its own history, so switching floors keeps undo/redo intact.
+
+### Saving and autosave
+
+- `save()` serialises the project; `load()` validates it via `parseProject()` (throws a readable `Error` for broken files, fills defaults, drops walls pointing to missing nodes, fixes `nextId`).
+- **Ctrl+S** writes to `localStorage` (`AUTOSAVE_KEY`), and the app also autosaves there every 30 s while `dirty`. On startup `RestoreDialog` offers to restore a non-empty saved project.
 
 ### ID generation
 
@@ -264,6 +272,6 @@ Files use `.arcada` extension (JSON content):
 
 - `width` / `height` are in **meters**
 - `imagePath` is the filename without `.svg` and without the `assets/2d/` prefix
-- `zIndex` controls layering order (higher = on top)
+- `zIndex` (optional, default 100) controls layering order (higher = on top): rugs use 50, doors and windows 200
 
 3. Place it under the appropriate category in the catalog JSON.

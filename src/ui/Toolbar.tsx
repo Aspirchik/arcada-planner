@@ -5,10 +5,10 @@ import {
   Save, FolderOpen, HelpCircle,
 } from 'lucide-react';
 import { useStore } from '../store';
-import { Tool } from '../constants';
+import { Tool, AUTOSAVE_KEY } from '../constants';
 
 function saveToFile(data: string) {
-  localStorage.setItem('arcada-autosave', data);
+  localStorage.setItem(AUTOSAVE_KEY, data);
   const blob = new Blob([data], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -27,7 +27,16 @@ function loadFromFile(onLoad: (json: string) => void) {
 }
 
 export function Toolbar() {
-  const { tool, setTool, snapSize, setSnapSize, labelsVisible, fi, toggleLabels, changeFloor, removeFloor, save, load } = useStore();
+  const { tool, setTool, snapSize, setSnapSize, labelsVisible, fi, toggleLabels, changeFloor, removeFloor, save, load, markSaved } = useStore();
+
+  const loadProject = (json: string) => {
+    if (useStore.getState().dirty && !confirm('You have unsaved changes. Open another project anyway?')) return;
+    try {
+      load(json);
+    } catch (err) {
+      alert('Could not open the file: ' + (err instanceof Error ? err.message : String(err)));
+    }
+  };
   const [showHelp, setShowHelp] = useState(false);
 
   const toolBtn = (icon: React.ReactNode, label: string, t: Tool) => (
@@ -103,8 +112,8 @@ export function Toolbar() {
         </div>
 
         <div className="tool-group toolbar-bottom">
-          {actionBtn(<Save size={20} />,       'Save',  () => saveToFile(save()))}
-          {actionBtn(<FolderOpen size={20} />, 'Load',  () => loadFromFile(load))}
+          {actionBtn(<Save size={20} />,       'Save',  () => { saveToFile(save()); markSaved(); })}
+          {actionBtn(<FolderOpen size={20} />, 'Load',  () => loadFromFile(loadProject))}
           {actionBtn(<Printer size={20} />,    'Print', () => window.print())}
           {actionBtn(<HelpCircle size={20} />, 'Help',  () => setShowHelp(true))}
         </div>

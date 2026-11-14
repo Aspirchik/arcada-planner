@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { Sofa, X } from 'lucide-react';
 import { useStore } from '../store';
 import catalog from '../catalog.json';
@@ -9,11 +9,11 @@ const PANEL_W   = 260;
 
 function useIsMobile() {
   const [mobile, setMobile] = useState(window.innerWidth < 768);
-  useState(() => {
+  useEffect(() => {
     const fn = () => setMobile(window.innerWidth < 768);
     window.addEventListener('resize', fn);
     return () => window.removeEventListener('resize', fn);
-  });
+  }, []);
   return mobile;
 }
 

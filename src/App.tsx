@@ -1,12 +1,65 @@
-import { useEffect } from 'react';
-import { Trash2 } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Trash2, BringToFront, SendToBack } from 'lucide-react';
 import { EditorStage } from './ui/EditorStage';
 import { Toolbar } from './ui/Toolbar';
 import { FurniturePanel } from './ui/FurniturePanel';
 import { PrintView } from './ui/PrintView';
-import { useStore } from './store';
-import { METER } from './constants';
+import { useStore, parseProject, isProjectEmpty } from './store';
+import { METER, AUTOSAVE_KEY } from './constants';
 import './App.css';
+
+const AUTOSAVE_INTERVAL_MS = 30_000;
+
+/**
+ * Number field that commits its value only on Enter / blur (one undo step per edit),
+ * not on every keystroke. Escape reverts the typed text.
+ */
+function NumField({ value, min, onCommit }: { value: number; min?: number; onCommit: (v: number) => void }) {
+  const [text, setText] = useState(String(value));
+  const focused = useRef(false);
+  const skipCommit = useRef(false);
+  // Latest values for the unmount commit (panel can disappear while the field is focused)
+  const latest = useRef({ text, value, onCommit });
+  latest.current = { text, value, onCommit };
+
+  useEffect(() => { if (!focused.current) setText(String(value)); }, [value]);
+
+  function commit(t: string, v: number, cb: (n: number) => void) {
+    const n = parseFloat(t);
+    if (Number.isFinite(n) && (min === undefined || n >= min)) {
+      if (n !== v) cb(n);
+    } else {
+      setText(String(v));
+    }
+  }
+
+  useEffect(() => () => {
+    if (focused.current) {
+      const l = latest.current;
+      commit(l.text, l.value, l.onCommit);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return (
+    <input
+      type="number"
+      value={text}
+      min={min}
+      onFocus={() => { focused.current = true; }}
+      onChange={e => setText(e.target.value)}
+      onBlur={() => {
+        focused.current = false;
+        if (skipCommit.current) { skipCommit.current = false; setText(String(value)); return; }
+        commit(text, value, onCommit);
+      }}
+      onKeyDown={e => {
+        if (e.key === 'Enter') e.currentTarget.blur();
+        if (e.key === 'Escape') { skipCommit.current = true; e.currentTarget.blur(); }
+      }}
+    />
+  );
+}
 
 function SelectionPanel() {
   const selectedId   = useStore(s => s.selectedId);
@@ -17,9 +70,11 @@ function SelectionPanel() {
   const stageScale   = useStore(s => s.stageScale);
   const updateFurniture = useStore(s => s.updateFurniture);
   const deleteFurniture = useStore(s => s.deleteFurniture);
+  const bringToFront = useStore(s => s.bringToFront);
+  const sendToBack   = useStore(s => s.sendToBack);
   const select       = useStore(s => s.select);
 
-  if (!selectedId) return null;
+  if (selectedId === null) return null;
   const item = floors[fi].furniture.find(f => f.id === selectedId);
   if (!item) return null;
 
@@ -43,25 +98,80 @@ function SelectionPanel() {
   const rot  = Math.round(item.rot);
 
   return (
-    <div className="selection-panel" style={{ left: Math.max(8, Math.min(sx - 170, window.innerWidth - 340)), top: Math.min(window.innerHeight - (window.innerWidth < 768 ? 110 : 50), Math.max(8, sy)) }}>
-      <label>W <input type="number" value={wCm} min={1}
-        onChange={e => updateFurniture(selectedId, { w: +e.target.value / 100 * METER })} /> cm</label>
-      <label>H <input type="number" value={hCm} min={1}
-        onChange={e => updateFurniture(selectedId, { h: +e.target.value / 100 * METER })} /> cm</label>
-      <label>R <input type="number" value={rot}
-        onChange={e => updateFurniture(selectedId, { rot: +e.target.value })} /> °</label>
-      <button className="sel-delete" title="Delete" onClick={() => { deleteFurniture(selectedId); select(null); }}>
+    <div className="selection-panel" style={{ left: Math.max(8, Math.min(sx - 200, window.innerWidth - 400)), top: Math.min(window.innerHeight - (window.innerWidth < 768 ? 110 : 50), Math.max(8, sy)) }}>
+      <label>W <NumField key={`w${item.id}`} value={wCm} min={1}
+        onCommit={v => updateFurniture(item.id, { w: v / 100 * METER })} /> cm</label>
+      <label>H <NumField key={`h${item.id}`} value={hCm} min={1}
+        onCommit={v => updateFurniture(item.id, { h: v / 100 * METER })} /> cm</label>
+      <label>R <NumField key={`r${item.id}`} value={rot}
+        onCommit={v => updateFurniture(item.id, { rot: v })} /> °</label>
+      <button className="sel-btn" title="Bring to front" onClick={() => bringToFront(item.id)}>
+        <BringToFront size={14} />
+      </button>
+      <button className="sel-btn" title="Send to back" onClick={() => sendToBack(item.id)}>
+        <SendToBack size={14} />
+      </button>
+      <button className="sel-delete" title="Delete" onClick={() => { deleteFurniture(item.id); select(null); }}>
         <Trash2 size={14} />
       </button>
     </div>
   );
 }
 
+/** Offers to restore the project from the last quick save / autosave */
+function RestoreDialog() {
+  const [saved, setSaved] = useState<string | null>(() => {
+    try {
+      const json = localStorage.getItem(AUTOSAVE_KEY);
+      if (!json) return null;
+      return isProjectEmpty(parseProject(json).floors) ? null : json;
+    } catch {
+      return null;
+    }
+  });
+  if (!saved) return null;
+
+  const restore = () => {
+    try { useStore.getState().load(saved); } catch (err) { alert('Could not restore: ' + (err instanceof Error ? err.message : String(err))); }
+    setSaved(null);
+  };
+  const discard = () => {
+    try { localStorage.removeItem(AUTOSAVE_KEY); } catch { /* storage unavailable */ }
+    setSaved(null);
+  };
+
+  return (
+    <div className="help-overlay">
+      <div className="help-box">
+        <h3>Restore previous project?</h3>
+        <p className="dialog-text">A project from your last session was found in this browser.</p>
+        <div className="dialog-actions">
+          <button className="secondary" onClick={discard}>Start new</button>
+          <button onClick={restore}>Restore</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
+  // Warn before leaving only when there are unsaved changes
   useEffect(() => {
-    const fn = (e: BeforeUnloadEvent) => { e.preventDefault(); };
+    const fn = (e: BeforeUnloadEvent) => {
+      if (useStore.getState().dirty) e.preventDefault();
+    };
     window.addEventListener('beforeunload', fn);
     return () => window.removeEventListener('beforeunload', fn);
+  }, []);
+
+  // Periodic autosave to browser storage while there are unsaved changes
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      const st = useStore.getState();
+      if (!st.dirty) return;
+      try { localStorage.setItem(AUTOSAVE_KEY, st.save()); } catch { /* storage full or unavailable */ }
+    }, AUTOSAVE_INTERVAL_MS);
+    return () => window.clearInterval(id);
   }, []);
 
   return (
@@ -71,6 +181,7 @@ export default function App() {
       <FurniturePanel />
       <SelectionPanel />
       <PrintView />
+      <RestoreDialog />
     </div>
   );
 }

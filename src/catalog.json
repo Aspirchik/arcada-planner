@@ -7,13 +7,13 @@
         { "name": "Single bed",        "width": 1.0, "height": 2.0, "imagePath": "twin-size-bed" },
         { "name": "Bedside table",     "width": 0.8, "height": 0.5, "imagePath": "bedside-table" },
         { "name": "Bedside table 2",   "width": 0.8, "height": 0.5, "imagePath": "noptiera" },
-        { "name": "Bedside rug",       "width": 0.8, "height": 1.2, "imagePath": "bedside-rug" },
+        { "name": "Bedside rug",       "width": 0.8, "height": 1.2, "imagePath": "bedside-rug", "zIndex": 50 },
         { "name": "Wardrobe - small",  "width": 1.5, "height": 1.0, "imagePath": "drawer" },
         { "name": "Wardrobe - large",  "width": 2.5, "height": 0.8, "imagePath": "wardrobe-large" },
         { "name": "Large plant",       "width": 1.0, "height": 1.0, "imagePath": "large-plant" },
         { "name": "Lounge chair",      "width": 0.8, "height": 0.9, "imagePath": "lounge-chair" },
         { "name": "Chair",             "width": 0.6, "height": 0.6, "imagePath": "chair-1" },
-        { "name": "Oval rug",          "width": 1.5, "height": 1.0, "imagePath": "round-rug" },
+        { "name": "Oval rug",          "width": 1.5, "height": 1.0, "imagePath": "round-rug", "zIndex": 50 },
         { "name": "Table",             "width": 1.2, "height": 0.8, "imagePath": "table" },
         { "name": "Round table",       "width": 0.6, "height": 0.6, "imagePath": "round-table" }
       ]
@@ -87,7 +87,7 @@
         { "name": "Staircase - round",  "width": 3.0, "height": 3.0, "imagePath": "stairs-round" },
         { "name": "Stair cover",        "width": 1.0, "height": 1.5, "imagePath": "stair-cover" },
         { "name": "Shoe rack",          "width": 1.1, "height": 0.4, "imagePath": "pantofar" },
-        { "name": "Welcome mat",        "width": 0.6, "height": 0.3, "imagePath": "welcome" },
+        { "name": "Welcome mat",        "width": 0.6, "height": 0.3, "imagePath": "welcome", "zIndex": 50 },
         { "name": "Generic object",     "width": 0.5, "height": 0.5, "imagePath": "generic-object" },
         { "name": "Car",                "width": 4.0, "height": 2.0, "imagePath": "car" }
       ]
@@ -95,8 +95,8 @@
     {
       "name": "Wall",
       "items": [
-        { "name": "Window", "width": 1.0, "height": 0.15, "imagePath": "window" },
-        { "name": "Door",   "width": 1.0, "height": 1.0,  "imagePath": "door" }
+        { "name": "Window", "width": 1.0, "height": 0.15, "imagePath": "window", "zIndex": 200 },
+        { "name": "Door",   "width": 1.0, "height": 1.0,  "imagePath": "door", "zIndex": 200 }
       ]
     }
   ]

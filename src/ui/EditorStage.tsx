@@ -3,8 +3,8 @@ import { Stage, Layer, Rect, Line, Text, Image as KImage, Circle, Group } from '
 import type Konva from 'konva';
 import type { KonvaEventObject } from 'konva/lib/Node';
 import { useStore } from '../store';
-import { Tool, WALL_THICKNESS, INTERIOR_WALL_THICKNESS, WORLD, METER } from '../constants';
-import { dist, angleDeg, localToWorld, worldToLocal } from '../helpers';
+import { Tool, WALL_THICKNESS, INTERIOR_WALL_THICKNESS, WORLD, METER, AUTOSAVE_KEY } from '../constants';
+import { dist, angleDeg, localToWorld, worldToLocal, sortByZ } from '../helpers';
 import type { WallNode, Wall, FurnitureItem } from '../types';
 
 const TOOLBAR_W = 80;
@@ -134,26 +134,44 @@ export function EditorStage() {
   // Keyboard shortcuts
   useEffect(() => {
     const fn = (e: KeyboardEvent) => {
+      // Don't hijack shortcuts while the user is typing in a text field
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+
+      const st = useStore.getState();
       const mod = e.metaKey || e.ctrlKey;
 
-      if (mod && e.code === 'KeyS') { e.preventDefault(); localStorage.setItem('arcada-autosave', store.save()); }
-      if (mod && !e.shiftKey && e.code === 'KeyZ') { e.preventDefault(); store.undo(); }
-      if ((mod && e.shiftKey && e.code === 'KeyZ') || (mod && e.code === 'KeyY')) { e.preventDefault(); store.redo(); }
-      if (mod && e.code === 'KeyC') { e.preventDefault(); store.copySelected(); }
-      if (mod && e.code === 'KeyV') { e.preventDefault(); store.pasteClipboard(); }
-      if (mod && e.code === 'KeyX') { e.preventDefault(); store.cutSelected(); }
-      if (e.code === 'Delete' || e.code === 'Backspace') {
-        if (store.selectedId && !(e.target instanceof HTMLInputElement)) {
-          e.preventDefault();
-          store.deleteFurniture(store.selectedId);
-          store.select(null);
-        }
+      if (mod && e.code === 'KeyS') {
+        e.preventDefault();
+        localStorage.setItem(AUTOSAVE_KEY, st.save());
+        st.markSaved();
       }
-      if (e.code === 'Escape') { store.setWallStart(null); store.select(null); store.setTool(Tool.Select); }
+      if (mod && !e.shiftKey && e.code === 'KeyZ') { e.preventDefault(); st.undo(); }
+      if ((mod && e.shiftKey && e.code === 'KeyZ') || (mod && e.code === 'KeyY')) { e.preventDefault(); st.redo(); }
+      if (mod && e.code === 'KeyC') { e.preventDefault(); st.copySelected(); }
+      if (mod && e.code === 'KeyV') { e.preventDefault(); st.pasteClipboard(); }
+      if (mod && e.code === 'KeyX') { e.preventDefault(); st.cutSelected(); }
+      if ((e.code === 'Delete' || e.code === 'Backspace') && st.selectedId !== null) {
+        e.preventDefault();
+        st.deleteFurniture(st.selectedId);
+        st.select(null);
+      }
+      if (e.code === 'Escape') { st.setWallStart(null); st.select(null); st.setTool(Tool.Select); }
     };
     document.addEventListener('keydown', fn);
     return () => document.removeEventListener('keydown', fn);
-  }, [store]);
+  }, []);
+
+  // Safety net: pointer released outside the canvas — finish the gesture so undo keeps working
+  useEffect(() => {
+    const fn = () => {
+      if (dragRef.current) { dragRef.current = null; setPreviewPt(null); }
+      useStore.getState().endGesture();
+    };
+    window.addEventListener('mouseup', fn);
+    window.addEventListener('touchend', fn);
+    return () => { window.removeEventListener('mouseup', fn); window.removeEventListener('touchend', fn); };
+  }, []);
 
   // Grid
   const minorIv = getGridInterval(scale, 12);
@@ -201,8 +219,9 @@ export function EditorStage() {
   }
 
   function hitFurniture(wx: number, wy: number): FurnitureItem | null {
-    for (let i = floor.furniture.length - 1; i >= 0; i--) {
-      const f = floor.furniture[i];
+    const ordered = sortByZ(floor.furniture);
+    for (let i = ordered.length - 1; i >= 0; i--) {
+      const f = ordered[i];
       if (pointInRotatedRect(wx, wy, f.x, f.y, f.w, f.h, f.rot)) return f;
     }
     return null;
@@ -262,6 +281,8 @@ export function EditorStage() {
 
   // ── Shared pointer logic ────────────────────────────────────
   function handlePointerDown(pt: { x: number; y: number }) {
+    // Everything that happens until pointer-up is one undo step
+    store.beginGesture();
     // Remove tool
     if (tool === Tool.Remove) {
       const fur = hitFurniture(pt.x, pt.y);
@@ -376,6 +397,14 @@ export function EditorStage() {
   }
 
   function handlePointerUp() {
+    try {
+      finishDrag();
+    } finally {
+      store.endGesture();
+    }
+  }
+
+  function finishDrag() {
     if (!dragRef.current) return;
     const d = dragRef.current;
     const pt = getWorld();
@@ -523,7 +552,7 @@ export function EditorStage() {
 
     if (touches.length >= 2) {
       // Start pinch/pan — cancel any ongoing drag
-      dragRef.current = null;
+      if (dragRef.current) { dragRef.current = null; setPreviewPt(null); store.endGesture(); }
       const t0 = touches[0], t1 = touches[1];
       pinchRef.current = {
         dist: dist(t0.clientX, t0.clientY, t1.clientX, t1.clientY),
@@ -646,7 +675,7 @@ export function EditorStage() {
         )}
 
         {/* Furniture */}
-        {floor.furniture.map(item => (
+        {sortByZ(floor.furniture).map(item => (
           <FurnitureVisual key={item.id} item={item} onImageLoaded={onImageLoaded} />
         ))}
 

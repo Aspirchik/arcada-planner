@@ -1,14 +1,4 @@
-import { SNAP_SIZE } from './constants';
-
-export function snap(val: number): number {
-  const rest = val % SNAP_SIZE;
-  return rest < SNAP_SIZE / 2 ? val - rest : val - rest + SNAP_SIZE;
-}
-
-export function snapPt(x: number, y: number, doSnap: boolean): { x: number; y: number } {
-  if (!doSnap) return { x: Math.round(x), y: Math.round(y) };
-  return { x: snap(x), y: snap(y) };
-}
+import type { FurnitureItem } from './types';
 
 export function dist(x1: number, y1: number, x2: number, y2: number): number {
   return Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2);
@@ -34,4 +24,11 @@ export function worldToLocal(wx: number, wy: number, ox: number, oy: number, rot
   const dx = wx - ox;
   const dy = wy - oy;
   return { x: dx * cos - dy * sin, y: dx * sin + dy * cos };
+}
+
+/** Furniture in drawing order: by layer (zi), ties keep their original order */
+export function sortByZ(items: FurnitureItem[]): FurnitureItem[] {
+  return items.map((it, i) => ({ it, i }))
+    .sort((a, b) => a.it.zi - b.it.zi || a.i - b.i)
+    .map(x => x.it);
 }

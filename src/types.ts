@@ -33,5 +33,6 @@ export interface CatalogItem {
   imagePath: string;
   width: number;
   height: number;
-  zIndex: number;
+  /** Layer order, higher = on top. Default 100 */
+  zIndex?: number;
 }
