@@ -9,4 +9,5 @@ export enum Tool {
   Remove,
   WallAdd,
   Measure,
+  Text,
 }

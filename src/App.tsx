@@ -1,9 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
-import { Trash2, BringToFront, SendToBack } from 'lucide-react';
+import { Trash2, BringToFront, SendToBack, Bold, Pencil } from 'lucide-react';
 import { EditorStage } from './ui/EditorStage';
 import { Toolbar } from './ui/Toolbar';
 import { FurniturePanel } from './ui/FurniturePanel';
 import { PrintView } from './ui/PrintView';
+import { TextEditor } from './ui/TextEditor';
+import { measureNote } from './ui/AnnotationsLayer';
+import { rectCorners } from './geometry/hit';
 import { useStore, parseProject, isProjectEmpty } from './store';
 import { usePrefs } from './prefs';
 import { useT, HTML_LANG } from './i18n';
@@ -65,6 +68,55 @@ function NumField({ value, min, onCommit }: { value: number; min?: number; onCom
   );
 }
 
+/** Text field that commits on Enter / blur (one undo step per edit); Escape reverts */
+function TextField({ value, placeholder, onCommit }: { value: string; placeholder?: string; onCommit: (v: string) => void }) {
+  const [text, setText] = useState(value);
+  const focused = useRef(false);
+  const skipCommit = useRef(false);
+  const latest = useRef({ text, value, onCommit });
+  latest.current = { text, value, onCommit };
+
+  useEffect(() => { if (!focused.current) setText(value); }, [value]);
+  useEffect(() => () => {
+    const l = latest.current;
+    if (focused.current && l.text !== l.value) l.onCommit(l.text);
+  }, []);
+
+  return (
+    <input
+      type="text"
+      className="sel-text"
+      value={text}
+      placeholder={placeholder}
+      onFocus={() => { focused.current = true; }}
+      onChange={e => setText(e.target.value)}
+      onBlur={() => {
+        focused.current = false;
+        if (skipCommit.current) { skipCommit.current = false; setText(value); return; }
+        if (text !== value) onCommit(text);
+      }}
+      onKeyDown={e => {
+        if (e.key === 'Enter') e.currentTarget.blur();
+        if (e.key === 'Escape') { skipCommit.current = true; e.currentTarget.blur(); }
+      }}
+    />
+  );
+}
+
+const TEXT_COLORS: (string | null)[] = [null, '#d0021b', '#1a73e8', '#188038', '#e8710a', '#8e24aa', '#5f6368'];
+
+/** Places the floating panel under the given world-space bounding points */
+function panelPos(points: { x: number; y: number }[], stageX: number, stageY: number, stageScale: number, width: number) {
+  const cx = points.reduce((s, c) => s + c.x, 0) / points.length;
+  const maxY = Math.max(...points.map(c => c.y));
+  const sx = stageX + cx * stageScale;
+  const sy = stageY + maxY * stageScale + 12;
+  return {
+    left: Math.max(8, Math.min(sx - width / 2, window.innerWidth - width - 8)),
+    top: Math.min(window.innerHeight - (window.innerWidth < 768 ? 150 : 60), Math.max(8, sy)),
+  };
+}
+
 function SelectionPanel() {
   const selectedId   = useStore(s => s.selectedId);
   const floors       = useStore(s => s.floors);
@@ -72,51 +124,71 @@ function SelectionPanel() {
   const stageX       = useStore(s => s.stageX);
   const stageY       = useStore(s => s.stageY);
   const stageScale   = useStore(s => s.stageScale);
+  const textEdit     = useStore(s => s.textEdit);
   const updateFurniture = useStore(s => s.updateFurniture);
-  const deleteFurniture = useStore(s => s.deleteFurniture);
+  const updateText   = useStore(s => s.updateText);
+  const deleteSelected = useStore(s => s.deleteSelected);
   const bringToFront = useStore(s => s.bringToFront);
   const sendToBack   = useStore(s => s.sendToBack);
-  const select       = useStore(s => s.select);
+  const setTextEdit  = useStore(s => s.setTextEdit);
   const t            = useT();
 
-  if (selectedId === null) return null;
+  if (selectedId === null || textEdit) return null;
   const item = floors[fi].furniture.find(f => f.id === selectedId);
+  const note = item ? null : floors[fi].texts.find(n => n.id === selectedId);
+
+  if (note) {
+    const { w, h } = measureNote(note);
+    const pos = panelPos(rectCorners(note.x, note.y, w, h, note.rot), stageX, stageY, stageScale, 420);
+    return (
+      <div className="selection-panel" style={pos}>
+        <label>{t('text.size')} <NumField key={`s${note.id}`} value={Math.round(note.size)} min={4}
+          onCommit={v => updateText(note.id, { size: v })} /> {t('unit.cm')}</label>
+        <label>{t('sel.r')} <NumField key={`r${note.id}`} value={Math.round(note.rot)}
+          onCommit={v => updateText(note.id, { rot: v })} /> °</label>
+        <button className={'sel-btn' + (note.bold ? ' active' : '')} title={t('text.bold')}
+          onClick={() => updateText(note.id, { bold: !note.bold })}>
+          <Bold size={14} />
+        </button>
+        <span className="sel-swatches" title={t('text.color')}>
+          {TEXT_COLORS.map(c => (
+            <button key={c ?? 'auto'} className={'sel-swatch' + (note.color === c ? ' active' : '') + (c === null ? ' auto' : '')}
+              style={c ? { background: c } : undefined} onClick={() => updateText(note.id, { color: c })} />
+          ))}
+        </span>
+        <button className="sel-btn" title={t('text.edit')} onClick={() => setTextEdit({ id: note.id, x: note.x, y: note.y })}>
+          <Pencil size={14} />
+        </button>
+        <button className="sel-delete" title={t('sel.delete')} onClick={deleteSelected}>
+          <Trash2 size={14} />
+        </button>
+      </div>
+    );
+  }
+
   if (!item) return null;
-
-  // Screen coordinates: center-bottom of item (accounting for rotation)
-  const rad = item.rot * Math.PI / 180;
-  const cos = Math.cos(rad);
-  const sin = Math.sin(rad);
-  const corners = [
-    { x: item.x, y: item.y },
-    { x: item.x + item.w * cos, y: item.y + item.w * sin },
-    { x: item.x - item.h * sin, y: item.y + item.h * cos },
-    { x: item.x + item.w * cos - item.h * sin, y: item.y + item.w * sin + item.h * cos },
-  ];
-  const centerX = corners.reduce((s, c) => s + c.x, 0) / 4;
-  const maxY = Math.max(...corners.map(c => c.y));
-  const sx = stageX + centerX * stageScale;
-  const sy = stageY + maxY * stageScale + 12;
-
   const wCm = Math.round(item.w / METER * 100);
   const hCm = Math.round(item.h / METER * 100);
   const rot  = Math.round(item.rot);
+  const pos = panelPos(rectCorners(item.x, item.y, item.w, item.h, item.rot), stageX, stageY, stageScale, 540);
 
   return (
-    <div className="selection-panel" style={{ left: Math.max(8, Math.min(sx - 200, window.innerWidth - 400)), top: Math.min(window.innerHeight - (window.innerWidth < 768 ? 110 : 50), Math.max(8, sy)) }}>
+    <div className="selection-panel" style={pos}>
       <label>{t('sel.w')} <NumField key={`w${item.id}`} value={wCm} min={1}
         onCommit={v => updateFurniture(item.id, { w: v / 100 * METER })} /> {t('unit.cm')}</label>
       <label>{t('sel.h')} <NumField key={`h${item.id}`} value={hCm} min={1}
         onCommit={v => updateFurniture(item.id, { h: v / 100 * METER })} /> {t('unit.cm')}</label>
       <label>{t('sel.r')} <NumField key={`r${item.id}`} value={rot}
         onCommit={v => updateFurniture(item.id, { rot: v })} /> °</label>
+      <TextField key={`l${item.id}`} value={item.label ?? ''} placeholder={t('sel.label')}
+        onCommit={v => updateFurniture(item.id, { label: v.trim() || undefined })} />
       <button className="sel-btn" title={t('sel.front')} onClick={() => bringToFront(item.id)}>
         <BringToFront size={14} />
       </button>
       <button className="sel-btn" title={t('sel.back')} onClick={() => sendToBack(item.id)}>
         <SendToBack size={14} />
       </button>
-      <button className="sel-delete" title={t('sel.delete')} onClick={() => { deleteFurniture(item.id); select(null); }}>
+      <button className="sel-delete" title={t('sel.delete')} onClick={deleteSelected}>
         <Trash2 size={14} />
       </button>
     </div>
@@ -191,6 +263,7 @@ export default function App() {
       <Toolbar />
       <FurniturePanel />
       <SelectionPanel />
+      <TextEditor />
       <PrintView />
       <RestoreDialog />
     </div>

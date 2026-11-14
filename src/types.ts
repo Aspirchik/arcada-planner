@@ -20,6 +20,24 @@ export interface FurnitureItem {
   h: number;
   rot: number;
   zi: number;
+  /** English catalog name (used to show the translated name) */
+  name?: string;
+  /** Custom label shown on the item */
+  label?: string;
+}
+
+/** Free text note placed on the plan */
+export interface TextNote {
+  id: number;
+  x: number;
+  y: number;
+  text: string;
+  /** Letter height in world units (cm) */
+  size: number;
+  rot: number;
+  bold: boolean;
+  /** null = theme text colour */
+  color: string | null;
 }
 
 /** Ruler measurement kept on the plan (a dimension line between two points) */
@@ -36,6 +54,7 @@ export interface FloorState {
   walls: Wall[];
   furniture: FurnitureItem[];
   dimensions: Dimension[];
+  texts: TextNote[];
 }
 
 export interface CatalogItem {

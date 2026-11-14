@@ -59,6 +59,9 @@ body { overflow: hidden; font-family: system-ui, sans-serif; background: var(--o
   padding: 8px 6px;
   height: 100vh;
   width: 80px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
   background: var(--surface);
   border-right: 1px solid var(--border);
   box-shadow: 2px 0 8px var(--shadow);
@@ -83,7 +86,7 @@ body { overflow: hidden; font-family: system-ui, sans-serif; background: var(--o
 .toolbar-bottom { margin-top: auto; }
 
 .tool-btn {
-  width: 68px; height: 52px;
+  width: 68px; height: 44px;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: 3px;
   border: none; border-radius: 8px;
@@ -248,6 +251,27 @@ body { overflow: hidden; font-family: system-ui, sans-serif; background: var(--o
   transition: background 0.12s;
 }
 .sel-btn:hover { background: var(--accent-soft); color: var(--accent); }
+.sel-btn.active { background: var(--accent-soft); color: var(--accent); }
+.selection-panel { flex-wrap: wrap; max-width: calc(100vw - 16px); }
+.selection-panel input.sel-text { width: 120px; text-align: left; }
+.sel-swatches { display: flex; gap: 3px; align-items: center; }
+.sel-swatch {
+  width: 16px; height: 16px; border-radius: 50%;
+  border: 1px solid var(--border); cursor: pointer; padding: 0;
+}
+.sel-swatch.auto { background: linear-gradient(135deg, var(--text-1) 50%, var(--surface) 50%); }
+.sel-swatch.active { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* ── In-place text editor ────────────────────────────────── */
+.text-editor {
+  position: fixed; z-index: 250;
+  margin: 0; padding: 0; border: none;
+  outline: 1px dashed var(--accent);
+  background: transparent;
+  resize: none; overflow: hidden; white-space: pre;
+  transform-origin: 0 0;
+  min-width: 20px;
+}
 
 /* ── Mobile toggle button (for furniture panel) ────────── */
 .mobile-panel-toggle {

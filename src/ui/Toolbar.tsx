@@ -2,7 +2,7 @@ import { useState } from 'react';
 import {
   MousePointer2, Eraser, Minus, Grid3X3,
   Tag, ChevronUp, ChevronDown, Trash2, Printer,
-  Save, FolderOpen, HelpCircle, Languages, Sun, Moon, Monitor, Ruler,
+  Save, FolderOpen, HelpCircle, Languages, Sun, Moon, Monitor, Ruler, Type, CaseSensitive,
 } from 'lucide-react';
 import { useStore, ProjectError } from '../store';
 import { usePrefs, LANGS, type WallLabelMode, type Lang, type ThemePref } from '../prefs';
@@ -44,6 +44,7 @@ export function Toolbar() {
   const wallLabels = usePrefs(s => s.wallLabels);
   const lang = usePrefs(s => s.lang);
   const theme = usePrefs(s => s.theme);
+  const showNames = usePrefs(s => s.showNames);
   const setPref = usePrefs(s => s.set);
   const t = useT();
   const [showHelp, setShowHelp] = useState(false);
@@ -85,6 +86,7 @@ export function Toolbar() {
           {toolBtn(<MousePointer2 size={20} />, 'tool.select', Tool.Select)}
           {toolBtn(<Minus size={20} />,         'tool.wall',   Tool.WallAdd)}
           {toolBtn(<Ruler size={20} />,         'tool.measure', Tool.Measure)}
+          {toolBtn(<Type size={20} />,          'tool.text',   Tool.Text)}
           {toolBtn(<Eraser size={20} />,        'tool.erase',  Tool.Remove)}
         </div>
 
@@ -126,6 +128,11 @@ export function Toolbar() {
               <option value="axis">{t('lengths.axis')}</option>
             </select>
           </div>
+          <button title={t('names.title')} className={'tool-btn' + (showNames ? ' active' : '')}
+            onClick={() => setPref('showNames', !showNames)}>
+            <CaseSensitive size={20} />
+            <span>{t('names.label')}</span>
+          </button>
         </div>
 
         <div className="tool-group toolbar-bottom">

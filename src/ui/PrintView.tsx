@@ -8,6 +8,7 @@ import { LIGHT } from '../theme';
 import { WallsLayerContent } from './WallsLayer';
 import { getSprite, spriteSettled } from './images';
 import { DimensionsLayerContent } from './DimensionsLayer';
+import { FurnitureLabels, TextNotes, measureNote } from './AnnotationsLayer';
 import { useT } from '../i18n';
 import type { FloorState } from '../types';
 import { useEffect, useMemo, useState } from 'react';
@@ -25,7 +26,7 @@ function useFloorImages(floor: FloorState): boolean {
 }
 
 function floorBounds(floor: FloorState): { minX: number; minY: number; maxX: number; maxY: number } | null {
-  if (floor.nodes.length === 0 && floor.furniture.length === 0 && floor.dimensions.length === 0) return null;
+  if (floor.nodes.length === 0 && floor.furniture.length === 0 && floor.dimensions.length === 0 && floor.texts.length === 0) return null;
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
 
   for (const n of floor.nodes) {
@@ -50,6 +51,13 @@ function floorBounds(floor: FloorState): { minX: number; minY: number; maxX: num
     }
   }
 
+  for (const n of floor.texts) {
+    const { w, h } = measureNote(n);
+    const r = Math.hypot(w, h);
+    minX = Math.min(minX, n.x - r); minY = Math.min(minY, n.y - r);
+    maxX = Math.max(maxX, n.x + r); maxY = Math.max(maxY, n.y + r);
+  }
+
   const DIM_MARGIN = 30; // room for the dimension label
   for (const d of floor.dimensions) {
     minX = Math.min(minX, d.x1 - DIM_MARGIN, d.x2 - DIM_MARGIN); minY = Math.min(minY, d.y1 - DIM_MARGIN, d.y2 - DIM_MARGIN);
@@ -63,6 +71,8 @@ function PrintFloor({ floor, index }: { floor: FloorState; index: number }) {
   const ready = useFloorImages(floor);
   const bounds = floorBounds(floor);
   const wallLabels = usePrefs(s => s.wallLabels);
+  const showNames = usePrefs(s => s.showNames);
+  const lang = usePrefs(s => s.lang);
   const t = useT();
   const geom = useMemo(() => computeWallGeometry(floor.nodes, floor.walls), [floor.nodes, floor.walls]);
 
@@ -102,6 +112,10 @@ function PrintFloor({ floor, index }: { floor: FloorState; index: number }) {
               </Group>
             );
           })}
+
+          {/* Labels and text notes */}
+          {ready && <FurnitureLabels furniture={floor.furniture} palette={LIGHT} showNames={showNames} lang={lang} />}
+          <TextNotes texts={floor.texts} palette={LIGHT} />
 
           {/* Ruler measurements: constant size on paper */}
           <DimensionsLayerContent dims={floor.dimensions} palette={LIGHT} unit={t('unit.m')} px={1 / scaleVal} />

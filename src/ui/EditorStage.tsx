@@ -14,9 +14,10 @@ import { getSprite } from './images';
 import type { Palette } from '../theme';
 import { WallsLayerContent, AlongText, formatMeters } from './WallsLayer';
 import { DimensionLine, DimensionsLayerContent, SnapMarker } from './DimensionsLayer';
+import { FurnitureLabels, TextNotes, TextSelection, measureNote } from './AnnotationsLayer';
 import { snapTargets, snapToTargets, constrain45 } from '../geometry/snap';
 import type { Pt } from '../geometry/hit';
-import type { WallNode, Wall, FurnitureItem, Dimension } from '../types';
+import type { WallNode, Wall, FurnitureItem, Dimension, TextNote } from '../types';
 
 const TOOLBAR_W = 80;
 const PANEL_W = 260;
@@ -62,6 +63,7 @@ type DragState =
   | { type: 'rotate'; id: number; centerX: number; centerY: number; startAngle: number; startRot: number }
   | { type: 'wall-draw'; startNodeId: number; startPt: { x: number; y: number }; moved: boolean }
   | { type: 'measure'; start: Pt }
+  | { type: 'text'; id: number; offX: number; offY: number }
   | { type: 'dim-end'; id: number; end: 1 | 2 }
   | null;
 
@@ -89,6 +91,9 @@ export function EditorStage() {
   const tool          = useStore(s => s.tool);
   const snapSize      = useStore(s => s.snapSize);
   const wallLabels    = usePrefs(s => s.wallLabels);
+  const showNames     = usePrefs(s => s.showNames);
+  const lang          = usePrefs(s => s.lang);
+  const textEdit      = useStore(s => s.textEdit);
   const palette       = usePalette();
   const t             = useT();
   const wallStartId   = useStore(s => s.wallStartId);
@@ -140,8 +145,7 @@ export function EditorStage() {
       if (mod && e.code === 'KeyX') { e.preventDefault(); st.cutSelected(); }
       if ((e.code === 'Delete' || e.code === 'Backspace') && st.selectedId !== null) {
         e.preventDefault();
-        st.deleteFurniture(st.selectedId);
-        st.select(null);
+        st.deleteSelected();
       }
       if (e.code === 'Escape') { st.setWallStart(null); st.select(null); st.setTool(Tool.Select); setMeasurePreview(null); setSnapMark(null); }
     };
@@ -254,6 +258,15 @@ export function EditorStage() {
     return null;
   }
 
+  function hitText(wx: number, wy: number): TextNote | null {
+    for (let i = floor.texts.length - 1; i >= 0; i--) {
+      const n = floor.texts[i];
+      const { w, h } = measureNote(n);
+      if (pointInRotatedRect(wx, wy, n.x, n.y, w, h, n.rot)) return n;
+    }
+    return null;
+  }
+
   function hitDimension(wx: number, wy: number): Dimension | null {
     const thr = DIM_LINE_HIT_PX / scale;
     for (let i = floor.dimensions.length - 1; i >= 0; i--) {
@@ -296,10 +309,14 @@ export function EditorStage() {
 
   // ── Shared pointer logic ────────────────────────────────────
   function handlePointerDown(pt: { x: number; y: number }) {
+    // A click outside the text editor only finishes editing (the editor commits on blur)
+    if (useStore.getState().textEdit) return;
     // Everything that happens until pointer-up is one undo step
     store.beginGesture();
     // Remove tool
     if (tool === Tool.Remove) {
+      const note = hitText(pt.x, pt.y);
+      if (note) { store.deleteText(note.id); store.select(null); return; }
       const dim = hitDimension(pt.x, pt.y);
       if (dim) { store.deleteDimension(dim.id); return; }
       const fur = hitFurniture(pt.x, pt.y);
@@ -308,6 +325,15 @@ export function EditorStage() {
       if (node) { store.deleteNode(node.id); return; }
       const wall = hitWall(pt.x, pt.y);
       if (wall) { store.deleteWall(wall.id); return; }
+      return;
+    }
+
+    // Text — click a note to edit it, or empty space to add one
+    if (tool === Tool.Text) {
+      const note = hitText(pt.x, pt.y);
+      if (note) { store.setTextEdit({ id: note.id, x: note.x, y: note.y }); return; }
+      const p = doSnap(pt.x, pt.y, snapSize);
+      store.setTextEdit({ id: null, x: p.x, y: p.y });
       return;
     }
 
@@ -375,6 +401,12 @@ export function EditorStage() {
     if (tool === Tool.Select) {
       const end = hitDimEnd(pt.x, pt.y);
       if (end) { dragRef.current = { type: 'dim-end', ...end }; return; }
+      const note = hitText(pt.x, pt.y);
+      if (note) {
+        store.select(note.id);
+        dragRef.current = { type: 'text', id: note.id, offX: pt.x - note.x, offY: pt.y - note.y };
+        return;
+      }
     }
 
     const fur = hitFurniture(pt.x, pt.y);
@@ -410,6 +442,8 @@ export function EditorStage() {
       let newRot = d.startRot + (currentAngle - d.startAngle) * 180 / Math.PI;
       if (snapSize > 0) newRot = Math.round(newRot / 15) * 15;
       store.updateFurniture(d.id, { rot: newRot });
+    } else if (d.type === 'text') {
+      store.updateText(d.id, { x: pt.x - d.offX, y: pt.y - d.offY });
     } else if (d.type === 'measure') {
       const { p, snapped } = measurePoint(pt, d.start);
       setMeasurePreview({ x1: d.start.x, y1: d.start.y, x2: p.x, y2: p.y });
@@ -507,6 +541,8 @@ export function EditorStage() {
       } else if (d.type === 'node') {
         const p = doSnap(pt.x - d.offX, pt.y - d.offY, snapSize);
         store.moveNode(d.id, p.x, p.y);
+      } else if (d.type === 'text') {
+        store.updateText(d.id, doSnap(pt.x - d.offX, pt.y - d.offY, snapSize));
       }
     }
     dragRef.current = null;
@@ -587,6 +623,8 @@ export function EditorStage() {
             container.style.cursor = handle.type === 'rotate' ? 'grab' : (handle as { cursor: string }).cursor;
           } else if (hitDimEnd(pt.x, pt.y)) {
             container.style.cursor = 'pointer';
+          } else if (hitText(pt.x, pt.y)) {
+            container.style.cursor = 'move';
           } else {
             const fur = hitFurniture(pt.x, pt.y);
             container.style.cursor = fur ? 'move' : 'default';
@@ -596,7 +634,10 @@ export function EditorStage() {
           const node = hitNode(pt.x, pt.y);
           const wall = hitWall(pt.x, pt.y);
           const dim = hitDimension(pt.x, pt.y);
-          container.style.cursor = (fur || node || wall || dim) ? 'pointer' : 'default';
+          const note = hitText(pt.x, pt.y);
+          container.style.cursor = (fur || node || wall || dim || note) ? 'pointer' : 'default';
+        } else if (tool === Tool.Text) {
+          container.style.cursor = hitText(pt.x, pt.y) ? 'text' : 'crosshair';
         } else if (tool === Tool.WallAdd || tool === Tool.Measure) {
           container.style.cursor = 'crosshair';
         } else {
@@ -604,6 +645,15 @@ export function EditorStage() {
         }
       }
     }
+  }
+
+  /** Double-click a text note with the Select tool to edit it */
+  function onDblClick() {
+    if (tool !== Tool.Select) return;
+    const pt = getWorld();
+    if (!pt) return;
+    const note = hitText(pt.x, pt.y);
+    if (note) store.setTextEdit({ id: note.id, x: note.x, y: note.y });
   }
 
   function onMouseUp(e: KonvaEventObject<MouseEvent>) {
@@ -687,6 +737,7 @@ export function EditorStage() {
 
   const startNode = wallStartId !== null ? floor.nodes.find(n => n.id === wallStartId) : null;
   const selectedItem = selectedId !== null ? floor.furniture.find(f => f.id === selectedId) : null;
+  const selectedNote = selectedId !== null ? floor.texts.find(n => n.id === selectedId) : null;
   const onImageLoaded = () => forceRender(c => c + 1);
 
   return (
@@ -696,6 +747,7 @@ export function EditorStage() {
       x={pos.x} y={pos.y} scaleX={scale} scaleY={scale}
       onWheel={onWheel} onMouseDown={onMouseDown} onMouseMove={onMouseMove} onMouseUp={onMouseUp}
       onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}
+      onDblClick={onDblClick} onDblTap={onDblClick}
       onContextMenu={(e: KonvaEventObject<MouseEvent>) => e.evt.preventDefault()}
       style={{ position: 'fixed', top: 0, left: 0, zIndex: 0, touchAction: 'none' }}
     >
@@ -737,6 +789,11 @@ export function EditorStage() {
         {sortByZ(floor.furniture).map(item => (
           <FurnitureVisual key={item.id} item={item} palette={palette} onImageLoaded={onImageLoaded} />
         ))}
+
+        {/* Labels and text notes */}
+        <FurnitureLabels furniture={floor.furniture} palette={palette} showNames={showNames} lang={lang} />
+        <TextNotes texts={floor.texts} palette={palette} hideId={textEdit?.id} />
+        {selectedNote && !textEdit && <TextSelection note={selectedNote} palette={palette} px={1 / scale} />}
 
         {/* Ruler measurements */}
         <DimensionsLayerContent dims={floor.dimensions} palette={palette} unit={t('unit.m')} px={1 / scale} />

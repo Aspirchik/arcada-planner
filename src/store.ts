@@ -1,12 +1,15 @@
 import { create } from 'zustand';
 import { Tool, METER } from './constants';
-import type { FurnitureItem, FloorState, CatalogItem, Dimension } from './types';
+import type { FurnitureItem, FloorState, CatalogItem, Dimension, TextNote } from './types';
 import { translate, type TKey, type TParams } from './i18n';
 
 const HISTORY_LIMIT = 50;
-/** Project file format. 2.1.0 adds dimensions (ruler); 2.0.0 files still load. */
+/** Project file format. 2.1.0 adds dimensions (ruler), text notes and furniture labels; 2.0.0 files still load. */
 export const FILE_VERSION = '2.1.0';
 export const DEFAULT_Z = 100;
+export const DEFAULT_TEXT_SIZE = 20;
+
+export type Clipboard = { kind: 'furniture'; item: FurnitureItem } | { kind: 'text'; item: TextNote };
 
 export interface History {
   undo: FloorState[];
@@ -14,7 +17,7 @@ export interface History {
 }
 
 function emptyFloor(): FloorState {
-  return { nodes: [], walls: [], furniture: [], dimensions: [] };
+  return { nodes: [], walls: [], furniture: [], dimensions: [], texts: [] };
 }
 
 function emptyHistory(): History {
@@ -70,14 +73,26 @@ export function parseProject(json: string): ParsedProject {
       id: it.id, path: it.path, x: it.x, y: it.y, w: it.w, h: it.h,
       rot: isNum(it.rot) ? it.rot : 0,
       zi: isNum(it.zi) ? it.zi : DEFAULT_Z,
+      ...(typeof it.name === 'string' ? { name: it.name } : {}),
+      ...(typeof it.label === 'string' && it.label ? { label: it.label } : {}),
     }));
 
     const dimensions = (Array.isArray(f.dimensions) ? f.dimensions : []).filter((dm): dm is Dimension =>
       !!dm && isNum(dm.id) && isNum(dm.x1) && isNum(dm.y1) && isNum(dm.x2) && isNum(dm.y2)
     ).map(dm => ({ id: dm.id, x1: dm.x1, y1: dm.y1, x2: dm.x2, y2: dm.y2 }));
 
-    for (const o of [...nodes, ...walls, ...furniture, ...dimensions]) maxId = Math.max(maxId, o.id);
-    return { nodes, walls, furniture, dimensions };
+    const texts = (Array.isArray(f.texts) ? f.texts : []).filter((tx): tx is Record<string, unknown> & { id: number; x: number; y: number; text: string } =>
+      !!tx && isNum(tx.id) && isNum(tx.x) && isNum(tx.y) && typeof tx.text === 'string'
+    ).map((tx): TextNote => ({
+      id: tx.id, x: tx.x, y: tx.y, text: tx.text,
+      size: isNum(tx.size) && tx.size > 0 ? tx.size : DEFAULT_TEXT_SIZE,
+      rot: isNum(tx.rot) ? tx.rot : 0,
+      bold: tx.bold === true,
+      color: typeof tx.color === 'string' ? tx.color : null,
+    }));
+
+    for (const o of [...nodes, ...walls, ...furniture, ...dimensions, ...texts]) maxId = Math.max(maxId, o.id);
+    return { nodes, walls, furniture, dimensions, texts };
   });
 
   const nextId = Math.max(isNum(d.nextId) ? d.nextId : 1, maxId + 1);
@@ -86,7 +101,7 @@ export function parseProject(json: string): ParsedProject {
 }
 
 export function isProjectEmpty(floors: FloorState[]): boolean {
-  return floors.every(f => f.nodes.length === 0 && f.furniture.length === 0 && f.dimensions.length === 0);
+  return floors.every(f => f.nodes.length === 0 && f.furniture.length === 0 && f.dimensions.length === 0 && f.texts.length === 0);
 }
 
 // ── Store ──────────────────────────────────────────────────────
@@ -104,16 +119,19 @@ interface Store {
   stageY: number;
   stageScale: number;
 
-  clipboard: FurnitureItem | null;
+  clipboard: Clipboard | null;
   fileCreatedAt: string | null;
   /** True when there are changes not saved to a file or quick save */
   dirty: boolean;
+  /** Text note being edited in place: existing note (id) or a new one at (x, y) */
+  textEdit: { id: number | null; x: number; y: number } | null;
 
   setTool(t: Tool): void;
   setSnapSize(s: number): void;
   select(id: number | null): void;
   setWallStart(id: number | null): void;
   setStageTransform(x: number, y: number, scale: number): void;
+  setTextEdit(edit: { id: number | null; x: number; y: number } | null): void;
 
   /** Starts a gesture: all changes until endGesture() become a single undo step */
   beginGesture(): void;
@@ -136,6 +154,12 @@ interface Store {
   addDimension(x1: number, y1: number, x2: number, y2: number): number;
   updateDimension(id: number, changes: Partial<Omit<Dimension, 'id'>>): void;
   deleteDimension(id: number): void;
+
+  addText(x: number, y: number, text: string): number;
+  updateText(id: number, changes: Partial<Omit<TextNote, 'id'>>): void;
+  deleteText(id: number): void;
+  /** Deletes the selected furniture item or text note */
+  deleteSelected(): void;
 
   changeFloor(by: number): void;
   removeFloor(): boolean;
@@ -217,12 +241,14 @@ export const useStore = create<Store>((set, get) => {
     clipboard: null,
     fileCreatedAt: null,
     dirty: false,
+    textEdit: null,
 
     setTool: (tool) => set({ tool, wallStartId: null, selectedId: null }),
     setSnapSize: (snapSize) => set({ snapSize }),
     select: (id) => set({ selectedId: id }),
     setWallStart: (id) => set({ wallStartId: id }),
     setStageTransform: (x, y, scale) => set({ stageX: x, stageY: y, stageScale: scale }),
+    setTextEdit: (textEdit) => set({ textEdit }),
 
     beginGesture,
     endGesture,
@@ -316,6 +342,7 @@ export const useStore = create<Store>((set, get) => {
           h: item.height * METER,
           rot: 0,
           zi: item.zIndex ?? DEFAULT_Z,
+          name: item.name,
         }],
       }));
       set({ selectedId: id, tool: Tool.Select });
@@ -360,6 +387,28 @@ export const useStore = create<Store>((set, get) => {
 
     deleteDimension(id) {
       upFloor(f => ({ ...f, dimensions: f.dimensions.filter(d => d.id !== id) }));
+    },
+
+    addText(x, y, text) {
+      const id = newId();
+      upFloor(f => ({ ...f, texts: [...f.texts, { id, x, y, text, size: DEFAULT_TEXT_SIZE, rot: 0, bold: false, color: null }] }));
+      return id;
+    },
+
+    updateText(id, changes) {
+      upFloor(f => ({ ...f, texts: f.texts.map(tx => tx.id === id ? { ...tx, ...changes } : tx) }));
+    },
+
+    deleteText(id) {
+      upFloor(f => ({ ...f, texts: f.texts.filter(tx => tx.id !== id) }));
+    },
+
+    deleteSelected() {
+      const { selectedId, fi, floors } = get();
+      if (selectedId === null) return;
+      if (floors[fi].texts.some(tx => tx.id === selectedId)) get().deleteText(selectedId);
+      else get().deleteFurniture(selectedId);
+      set({ selectedId: null });
     },
 
     changeFloor(by) {
@@ -426,26 +475,32 @@ export const useStore = create<Store>((set, get) => {
       const { selectedId, fi, floors } = get();
       if (selectedId === null) return;
       const item = floors[fi].furniture.find(f => f.id === selectedId);
-      if (item) set({ clipboard: { ...item } });
+      if (item) { set({ clipboard: { kind: 'furniture', item: { ...item } } }); return; }
+      const note = floors[fi].texts.find(tx => tx.id === selectedId);
+      if (note) set({ clipboard: { kind: 'text', item: { ...note } } });
     },
 
     pasteClipboard() {
       const { clipboard } = get();
       if (!clipboard) return;
       const id = newId();
-      const pasted: FurnitureItem = { ...clipboard, id, x: clipboard.x + 20, y: clipboard.y + 20 };
-      upFloor(f => ({ ...f, furniture: [...f.furniture, pasted] }));
-      set({ selectedId: id, clipboard: { ...pasted } });
+      if (clipboard.kind === 'furniture') {
+        const pasted: FurnitureItem = { ...clipboard.item, id, x: clipboard.item.x + 20, y: clipboard.item.y + 20 };
+        upFloor(f => ({ ...f, furniture: [...f.furniture, pasted] }));
+        set({ selectedId: id, clipboard: { kind: 'furniture', item: { ...pasted } } });
+      } else {
+        const pasted: TextNote = { ...clipboard.item, id, x: clipboard.item.x + 20, y: clipboard.item.y + 20 };
+        upFloor(f => ({ ...f, texts: [...f.texts, pasted] }));
+        set({ selectedId: id, clipboard: { kind: 'text', item: { ...pasted } } });
+      }
     },
 
     cutSelected() {
-      const { selectedId } = get();
-      if (selectedId === null) return;
+      if (get().selectedId === null) return;
       transact(() => {
         get().copySelected();
-        get().deleteFurniture(selectedId);
+        get().deleteSelected();
       });
-      set({ selectedId: null });
     },
 
     save() {

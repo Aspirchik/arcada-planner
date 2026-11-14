@@ -148,6 +148,40 @@ describe('dimensions', () => {
   });
 });
 
+describe('texts and labels', () => {
+  it('adds, edits and deletes a text note', () => {
+    const id = st().addText(10, 20, 'Kitchen');
+    st().updateText(id, { text: 'Kuchnia', bold: true });
+    expect(floor().texts[0]).toMatchObject({ x: 10, y: 20, text: 'Kuchnia', bold: true, color: null });
+    st().select(id);
+    st().deleteSelected();
+    expect(floor().texts).toHaveLength(0);
+    expect(st().selectedId).toBeNull();
+  });
+
+  it('copy / paste works for text notes and furniture keeps its catalog name and label', () => {
+    const t = st().addText(0, 0, 'A');
+    st().select(t);
+    st().copySelected();
+    st().pasteClipboard();
+    expect(floor().texts.map(x => x.x)).toEqual([0, 20]);
+
+    const f = st().addFurniture(chair, 0, 0);
+    st().updateFurniture(f, { label: 'My chair' });
+    st().load(st().save());
+    expect(floor().furniture[0]).toMatchObject({ name: 'Chair', label: 'My chair' });
+  });
+
+  it('cut is a single undo step', () => {
+    const f = st().addFurniture(chair, 0, 0);
+    st().select(f);
+    const before = undoLen();
+    st().cutSelected();
+    expect(floor().furniture).toHaveLength(0);
+    expect(undoLen()).toBe(before + 1);
+  });
+});
+
 describe('parseProject', () => {
   it('rejects broken files with a readable message', () => {
     expect(() => parseProject('not json')).toThrow(/JSON/);
@@ -167,6 +201,7 @@ describe('parseProject', () => {
     expect(p.floors[0].walls).toEqual([{ id: 3, a: 1, b: 2, exterior: false }]);
     expect(p.floors[0].furniture[0]).toMatchObject({ rot: 0, zi: 100 });
     expect(p.floors[0].dimensions).toEqual([]);
+    expect(p.floors[0].texts).toEqual([]);
     expect(p.nextId).toBe(8);
   });
 });
