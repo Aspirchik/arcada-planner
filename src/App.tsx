@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Trash2, BringToFront, SendToBack, Bold, Pencil, Type, Square, Image as ImageIcon, FlipHorizontal2, FlipVertical2, Ruler } from 'lucide-react';
+import { Trash2, BringToFront, SendToBack, Bold, Pencil, Type, Square, Image as ImageIcon, FlipHorizontal2, FlipVertical2, Ruler, Layers } from 'lucide-react';
 import { EditorStage } from './ui/EditorStage';
 import { Toolbar } from './ui/Toolbar';
 import { FurniturePanel } from './ui/FurniturePanel';
@@ -8,6 +8,8 @@ import { TextEditor } from './ui/TextEditor';
 import { measureNote } from './ui/AnnotationsLayer';
 import { rectCorners } from './geometry/hit';
 import { useStore, parseProject, isProjectEmpty, DEFAULT_CABLE_WIDTH } from './store';
+import { cablesInTray, cableRoute, pathLength } from './geometry/cable';
+import { formatMeters } from './geometry/wallLabels';
 import { setNextCableColor } from './ui/EditorStage';
 import { usePrefs } from './prefs';
 import { useT, HTML_LANG, type TKey } from './i18n';
@@ -156,6 +158,17 @@ function TriSelect({ value, label, title, onChange }: { value: Tri | ''; label: 
 }
 
 const triOf = (v: 'on' | 'off' | undefined): Tri => v ?? 'global';
+
+/** Moves an object between the main plan and the wiring layer */
+function LayerButton({ id, layer }: { id: number; layer?: 'wiring' }) {
+  const t = useT();
+  return (
+    <button className={'sel-btn' + (layer ? ' active' : '')} title={layer ? t('layer.toPlan') : t('layer.toWiring')}
+      onClick={() => useStore.getState().setLayer(id, layer ? undefined : 'wiring')}>
+      <Layers size={14} />
+    </button>
+  );
+}
 const fromTri = (v: Tri) => (v === 'global' ? undefined : v);
 
 function SelectionPanel() {
@@ -230,6 +243,7 @@ function SelectionPanel() {
         <button className="sel-btn" title={t('text.edit')} onClick={() => st.setTextEdit({ id: note.id, x: note.x, y: note.y })}>
           <Pencil size={14} />
         </button>
+        <LayerButton id={note.id} layer={note.layer} />
         <button className="sel-delete" title={t('sel.delete')} onClick={st.deleteSelected}><Trash2 size={14} /></button>
       </div>
     );
@@ -256,19 +270,52 @@ function SelectionPanel() {
     );
   }
 
+  // ── Tray ──
+  const tray = floor.trays.find(x => x.id === selectedId);
+  if (tray) {
+    const inside = cablesInTray(tray, floor.cables.filter(c => c.layer === 'wiring'));
+    return (
+      <div className="selection-panel" style={at(tray.points, 460)}>
+        <TextField key={`tl${tray.id}`} value={tray.label ?? ''} placeholder={t('sel.label')}
+          onCommit={v => st.updateTray(tray.id, { label: v.trim() || undefined })} />
+        <label>{t('tray.width')} <NumField key={`tw${tray.id}`} value={tray.width} min={1}
+          onCommit={v => st.updateTray(tray.id, { width: v })} /> {t('unit.cm')}</label>
+        <button className="sel-delete" title={t('sel.delete')} onClick={st.deleteSelected}><Trash2 size={14} /></button>
+        <div className="sel-break" />
+        <div className="tray-list">
+          <span className="sel-title">{t('tool.tray')} · {t('tray.count', { n: inside.length })}</span>
+          {inside.map(c => (
+            <div key={c.id} className="tray-tip-row">
+              <span className="tray-tip-dot" style={{ background: c.color }} />
+              <span>{[c.label, cableRoute(c)].filter(Boolean).join(' · ') || '—'}</span>
+              <span className="tray-tip-len">{formatMeters(pathLength(c.points), t('unit.m'))}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
   // ── Cable ──
   const cable = floor.cables.find(c => c.id === selectedId);
   if (cable) {
     return (
-      <div className="selection-panel" style={at(cable.points, 520)}>
+      <div className="selection-panel" style={at(cable.points, 620)}>
         <TextField key={`cl${cable.id}`} value={cable.label ?? ''} placeholder={t('sel.label')}
           onCommit={v => st.updateCable(cable.id, { label: v.trim() || undefined })} />
+        <TextField key={`cf${cable.id}`} value={cable.from ?? ''} placeholder={t('cable.from')}
+          onCommit={v => st.updateCable(cable.id, { from: v.trim() || undefined })} />
+        <span className="sel-arrow">→</span>
+        <TextField key={`ct${cable.id}`} value={cable.to ?? ''} placeholder={t('cable.to')}
+          onCommit={v => st.updateCable(cable.id, { to: v.trim() || undefined })} />
+        <div className="sel-break" />
         <ColorSwatches value={cable.color} title={t('text.color')} colors={CABLE_COLORS}
           onChange={c => { if (c) { setNextCableColor(c); st.updateCable(cable.id, { color: c }); } }} />
         <label>{t('cable.width')} <NumField key={`cw${cable.id}`} value={cable.width ?? DEFAULT_CABLE_WIDTH} min={0.5}
           onCommit={v => st.updateCable(cable.id, { width: v })} /> {t('unit.cm')}</label>
         <button className={'sel-btn' + (cable.showLength ? ' active' : '')} title={t('cable.showLength')}
           onClick={() => st.updateCable(cable.id, { showLength: cable.showLength ? undefined : true })}><Ruler size={14} /></button>
+        <LayerButton id={cable.id} layer={cable.layer} />
         <button className="sel-delete" title={t('sel.delete')} onClick={st.deleteSelected}><Trash2 size={14} /></button>
       </div>
     );
@@ -282,6 +329,7 @@ function SelectionPanel() {
         <label>{t('dim.length')} <NumField key={`d${dim.id}`} value={Math.round(len)} min={1}
           onCommit={v => st.setDimensionLength(dim.id, v)} /> {t('unit.cm')}</label>
         <ColorSwatches value={dim.color} title={t('text.color')} onChange={c => st.updateDimension(dim.id, { color: c ?? undefined })} />
+        <LayerButton id={dim.id} layer={dim.layer} />
         <button className="sel-delete" title={t('sel.delete')} onClick={st.deleteSelected}><Trash2 size={14} /></button>
       </div>
     );
@@ -310,6 +358,7 @@ function SelectionPanel() {
         onClick={() => st.flipFurniture(item.id, 'x')}><FlipHorizontal2 size={14} /></button>
       <button className={'sel-btn' + (item.flipY ? ' active' : '')} title={item.path === 'door' ? t('door.swing') : t('sel.flipY')}
         onClick={() => st.flipFurniture(item.id, 'y')}><FlipVertical2 size={14} /></button>
+      <LayerButton id={item.id} layer={item.layer} />
       <button className="sel-btn" title={t('sel.front')} onClick={() => st.bringToFront(item.id)}>
         <BringToFront size={14} />
       </button>

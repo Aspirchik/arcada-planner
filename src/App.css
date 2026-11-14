@@ -265,6 +265,20 @@ body { overflow: hidden; font-family: system-ui, sans-serif; background: var(--o
 .sel-btn:hover { background: var(--accent-soft); color: var(--accent); }
 .sel-btn.active { background: var(--accent-soft); color: var(--accent); }
 .sel-break { flex-basis: 100%; height: 0; }
+.sel-arrow { color: var(--text-2); }
+.tray-list { display: flex; flex-direction: column; gap: 3px; max-height: 180px; overflow-y: auto; min-width: 260px; }
+.tray-tip {
+  position: fixed; z-index: 260; pointer-events: none;
+  background: var(--surface); color: var(--text-1);
+  border: 1px solid var(--border); border-radius: 8px;
+  box-shadow: 0 4px 16px var(--shadow);
+  padding: 8px 10px; font-size: 12px; min-width: 200px; max-width: 360px;
+}
+.tray-tip-title { font-weight: 600; margin-bottom: 4px; }
+.tray-tip-row { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-1); }
+.tray-tip-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.tray-tip-len { margin-left: auto; color: var(--text-2); padding-left: 8px; white-space: nowrap; }
+.tool-btn.mode-btn.active { background: var(--accent); color: var(--on-accent); }
 .sel-title { font-weight: 600; color: var(--text-1); }
 .sel-select {
   padding: 3px 4px; border: 1px solid var(--border); border-radius: 4px;

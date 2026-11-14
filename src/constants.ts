@@ -11,4 +11,5 @@ export enum Tool {
   Measure,
   Text,
   Cable,
+  Tray,
 }

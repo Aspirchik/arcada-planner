@@ -2,7 +2,7 @@ import { useState } from 'react';
 import {
   MousePointer2, Eraser, Minus, Grid3X3,
   Tag, ChevronUp, ChevronDown, Trash2, Printer,
-  Save, FolderOpen, HelpCircle, Languages, Sun, Moon, Monitor, Ruler, Type, CaseSensitive, ArrowLeftRight, Scaling, FileDown, Cable as CableIcon,
+  Save, FolderOpen, HelpCircle, Languages, Sun, Moon, Monitor, Ruler, Type, CaseSensitive, ArrowLeftRight, Scaling, FileDown, Cable as CableIcon, Network, RectangleHorizontal,
 } from 'lucide-react';
 import { useStore, ProjectError } from '../store';
 import { usePrefs, LANGS, type WallLabelMode, type Lang, type ThemePref, type SizesPos } from '../prefs';
@@ -13,7 +13,7 @@ import { ExportDialog } from './ExportDialog';
 /** Theme button cycles: Auto → Light → Dark → Auto */
 const NEXT_THEME: Record<ThemePref, ThemePref> = { system: 'light', light: 'dark', dark: 'system' };
 
-const HELP_KEYS = ['select', 'group', 'wall', 'split', 'exterior', 'walledit', 'lengths', 'measure', 'text', 'cable', 'gaps', 'pan', 'snap', 'keys'] as const;
+const HELP_KEYS = ['select', 'group', 'wall', 'split', 'exterior', 'walledit', 'lengths', 'measure', 'text', 'cable', 'wiring', 'gaps', 'pan', 'snap', 'keys'] as const;
 
 function saveToFile(data: string) {
   try { localStorage.setItem(AUTOSAVE_KEY, data); } catch { /* storage unavailable */ }
@@ -41,7 +41,7 @@ export function projectErrorText(err: unknown): string {
 }
 
 export function Toolbar() {
-  const { tool, setTool, snapSize, setSnapSize, fi, changeFloor, removeFloor, save, load, markSaved } = useStore();
+  const { tool, setTool, snapSize, setSnapSize, fi, changeFloor, removeFloor, save, load, markSaved, mode, setMode } = useStore();
   const wallLabels = usePrefs(s => s.wallLabels);
   const lang = usePrefs(s => s.lang);
   const theme = usePrefs(s => s.theme);
@@ -87,11 +87,20 @@ export function Toolbar() {
         <div className="toolbar-logo">A</div>
 
         <div className="tool-group">
+          <button title={t('mode.wiringTitle')} className={'tool-btn mode-btn' + (mode === 'wiring' ? ' active' : '')}
+            onClick={() => { setMode(mode === 'wiring' ? 'plan' : 'wiring'); if (tool === Tool.WallAdd || tool === Tool.Tray) setTool(Tool.Select); }}>
+            <Network size={20} />
+            <span>{t('mode.wiring')}</span>
+          </button>
+        </div>
+
+        <div className="tool-group">
           {toolBtn(<MousePointer2 size={20} />, 'tool.select', Tool.Select)}
-          {toolBtn(<Minus size={20} />,         'tool.wall',   Tool.WallAdd)}
+          {mode !== 'wiring' && toolBtn(<Minus size={20} />, 'tool.wall', Tool.WallAdd)}
           {toolBtn(<Ruler size={20} />,         'tool.measure', Tool.Measure)}
           {toolBtn(<Type size={20} />,          'tool.text',   Tool.Text)}
           {toolBtn(<CableIcon size={20} />,     'tool.cable',  Tool.Cable)}
+          {mode === 'wiring' && toolBtn(<RectangleHorizontal size={20} />, 'tool.tray', Tool.Tray)}
           {toolBtn(<Eraser size={20} />,        'tool.erase',  Tool.Remove)}
         </div>
 

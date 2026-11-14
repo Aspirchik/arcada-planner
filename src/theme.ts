@@ -22,6 +22,8 @@ export interface Palette {
   dimension: string;
   gap: string;
   gapWarn: string;
+  trayFill: string;
+  trayStroke: string;
 }
 
 export const LIGHT: Palette = {
@@ -44,6 +46,8 @@ export const LIGHT: Palette = {
   dimension: '#d0021b',
   gap: '#1a73e8',
   gapWarn: '#e8710a',
+  trayFill: '#e6ebf2',
+  trayStroke: '#7a8594',
 };
 
 export const DARK: Palette = {
@@ -66,6 +70,8 @@ export const DARK: Palette = {
   dimension: '#ff6b6b',
   gap: '#8ab4f8',
   gapWarn: '#fbbc04',
+  trayFill: '#2c333d',
+  trayStroke: '#8a96a8',
 };
 
 function systemDark(): boolean {

@@ -18,6 +18,7 @@ const floor: FloorState = {
   dimensions: [{ id: 31, x1: 10, y1: 200, x2: 390, y2: 200 }],
   texts: [{ id: 41, x: 60, y: 220, text: 'Room <1>', size: 20, rot: 0, bold: true, color: null }],
   cables: [],
+  trays: [],
 };
 
 const base = { palette: LIGHT, wallLabels: 'interior' as const, showNames: false, sizesPos: 'br' as const, lang: 'en' as const, unitM: 'm' };
@@ -40,7 +41,7 @@ describe('export bounds', () => {
   });
 
   it('returns null for an empty floor', () => {
-    expect(buildPlanSvg({ nodes: [], walls: [], furniture: [], dimensions: [], texts: [], cables: [] }, new Map(), { ...base, area: 'all' })).toBeNull();
+    expect(buildPlanSvg({ nodes: [], walls: [], furniture: [], dimensions: [], texts: [], cables: [], trays: [] }, new Map(), { ...base, area: 'all' })).toBeNull();
   });
 });
 
@@ -61,6 +62,18 @@ describe('export content', () => {
     const r = buildPlanSvg(withCable, new Map(), { ...base, area: 'room' })!;
     expect(r.svg).toContain('stroke="#e8710a"');
     expect(r.svg).toContain('Cat6 · 2.00 m');
+  });
+
+  it('layers: plan hides the wiring layer, wiring dims the plan', () => {
+    const wf = { ...floor, cables: [{ id: 52, points: [{ x: 20, y: 40 }, { x: 220, y: 40 }], color: '#00897b', layer: 'wiring' as const }],
+      trays: [{ id: 53, points: [{ x: 20, y: 40 }, { x: 220, y: 40 }], width: 10 }] };
+    const plan = buildPlanSvg(wf, new Map(), { ...base, area: 'room', layers: 'plan' })!.svg;
+    const wiring = buildPlanSvg(wf, new Map(), { ...base, area: 'room', layers: 'wiring' })!.svg;
+    expect(plan).not.toContain('#00897b');
+    expect(wiring).toContain('#00897b');
+    // dimmed plan: wall colours mixed with the paper, wiring cable at full colour
+    expect(wiring).not.toContain(`fill="${LIGHT.wallExterior}"`);
+    expect(wiring).toContain(`stroke="${LIGHT.trayFill}"`);
   });
 
   it('draws a ruler in its own colour', () => {

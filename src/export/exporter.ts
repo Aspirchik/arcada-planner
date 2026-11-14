@@ -4,6 +4,7 @@ import { buildPlanSvg, prepareSprite, EXPORT_FONT, type SpriteDef, type Measure,
 import { darkSvg, spriteUrl } from '../ui/images';
 import { DARK, LIGHT } from '../theme';
 import type { WallLabelMode, SizesPos, Lang } from '../prefs';
+import type { LayerChoice } from '../layers';
 
 export type ExportFormat = 'pdf' | 'png';
 export type PdfPage = 'a4' | 'a3' | 'scale50';
@@ -17,6 +18,7 @@ export interface ExportRequest {
   /** PNG: pixels per centimetre */
   pxPerCm: number;
   pdfPage: PdfPage;
+  layers: LayerChoice;
   view: { wallLabels: WallLabelMode; showNames: boolean; sizesPos: SizesPos; lang: Lang };
   text: { unitM: string; floorTitle: (n: number) => string; scale: string };
 }
@@ -90,12 +92,12 @@ async function exportPng(req: ExportRequest, sprites: Map<string, SpriteDef>, fo
     + `@font-face{font-family:${EXPORT_FONT};font-weight:bold;src:url(data:font/ttf;base64,${fonts.bold}) format('truetype');}`;
   let exported = 0;
   for (const { index, floor } of req.floors) {
-    const probe = buildPlanSvg(floor, sprites, { ...req.view, area: req.area, palette, unitM: req.text.unitM, measure });
+    const probe = buildPlanSvg(floor, sprites, { ...req.view, layers: req.layers, area: req.area, palette, unitM: req.text.unitM, measure });
     if (!probe) continue;
     let k = req.pxPerCm;
     k = Math.min(k, MAX_SIDE / probe.width, MAX_SIDE / probe.height, Math.sqrt(MAX_AREA / (probe.width * probe.height)));
     const pw = Math.round(probe.width * k), ph = Math.round(probe.height * k);
-    const r = buildPlanSvg(floor, sprites, { ...req.view, area: req.area, palette, unitM: req.text.unitM, measure, css, pixelWidth: pw, pixelHeight: ph })!;
+    const r = buildPlanSvg(floor, sprites, { ...req.view, layers: req.layers, area: req.area, palette, unitM: req.text.unitM, measure, css, pixelWidth: pw, pixelHeight: ph })!;
     const url = URL.createObjectURL(new Blob([r.svg], { type: 'image/svg+xml' }));
     try {
       const img = new Image();
@@ -122,7 +124,7 @@ async function exportPdf(req: ExportRequest, sprites: Map<string, SpriteDef>, fo
   const MARGIN = 10, TITLE = 10; // mm
 
   const plans = req.floors
-    .map(({ index, floor }) => ({ index, r: buildPlanSvg(floor, sprites, { ...req.view, area: req.area, palette, unitM: req.text.unitM, measure }) }))
+    .map(({ index, floor }) => ({ index, r: buildPlanSvg(floor, sprites, { ...req.view, layers: req.layers, area: req.area, palette, unitM: req.text.unitM, measure }) }))
     .filter((x): x is { index: number; r: NonNullable<typeof x.r> } => !!x.r);
   if (plans.length === 0) return 0;
 

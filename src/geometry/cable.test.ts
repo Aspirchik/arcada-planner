@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { layoutCables, placeCableLabels, pathLength } from './cable';
+import { layoutCables, placeCableLabels, pathLength, cablesInTray, cableLabel } from './cable';
 import type { Cable } from '../types';
 
 const cable = (id: number, points: [number, number][], width = 3): Cable =>
@@ -40,5 +40,19 @@ describe('cable labels', () => {
     const pos = placeCableLabels([a, b], paths, labels, 11, t => t.length * 6);
     expect(Math.abs(pos.get(1)!.p.x - pos.get(2)!.p.x)).toBeGreaterThan(30);
     expect(pathLength(paths.get(1)!)).toBeCloseTo(400);
+  });
+});
+
+describe('trays', () => {
+  it('lists cables that run inside the tray, not ones that only cross it', () => {
+    const tray = { id: 9, points: [{ x: 0, y: 0 }, { x: 500, y: 0 }], width: 10 };
+    const along = cable(1, [[-50, 2], [400, 2], [400, 200]]);
+    const crossing = cable(2, [[200, -100], [200, 100]]);
+    const far = cable(3, [[0, 50], [500, 50]]);
+    expect(cablesInTray(tray, [along, crossing, far]).map(c => c.id)).toEqual([1]);
+  });
+
+  it('cable label includes the route', () => {
+    expect(cableLabel({ ...cable(1, [[0, 0], [100, 0]]), label: 'Line 3', from: 'Server', to: 'User 1' }, 'm')).toBe('Line 3 · Server → User 1');
   });
 });

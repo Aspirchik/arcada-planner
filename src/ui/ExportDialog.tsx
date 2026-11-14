@@ -6,6 +6,7 @@ import { useT, type TKey } from '../i18n';
 import { useIsDark } from '../theme';
 import type { ExportArea } from '../export/planSvg';
 import type { ExportFormat, PdfPage } from '../export/exporter';
+import type { LayerChoice } from '../layers';
 
 interface Choice {
   format: ExportFormat;
@@ -14,6 +15,7 @@ interface Choice {
   allFloors: boolean;
   pxPerCm: number;
   pdfPage: PdfPage;
+  layers: LayerChoice;
 }
 
 // Remembered between openings (per session)
@@ -38,7 +40,8 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
   const isDark = useIsDark();
   const floors = useStore(s => s.floors);
   const fi = useStore(s => s.fi);
-  const [c, setC] = useState<Choice>(() => last ?? { format: 'pdf', area: 'room', dark: isDark, allFloors: false, pxPerCm: 4, pdfPage: 'a4' });
+  const mode = useStore(s => s.mode);
+  const [c, setC] = useState<Choice>(() => last ?? { format: 'pdf', area: 'room', dark: isDark, allFloors: false, pxPerCm: 4, pdfPage: 'a4', layers: mode === 'wiring' ? 'wiring' : 'plan' });
   const [busy, setBusy] = useState(false);
   const set = <K extends keyof Choice>(k: K, v: Choice[K]) => setC(prev => ({ ...prev, [k]: v }));
 
@@ -50,7 +53,7 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
       const prefs = usePrefs.getState();
       const list = c.allFloors ? floors.map((floor, index) => ({ index, floor })) : [{ index: fi, floor: floors[fi] }];
       const n = await runExport({
-        format: c.format, area: c.area, dark: c.dark, floors: list, pxPerCm: c.pxPerCm, pdfPage: c.pdfPage,
+        format: c.format, area: c.area, dark: c.dark, floors: list, pxPerCm: c.pxPerCm, pdfPage: c.pdfPage, layers: c.layers,
         view: { wallLabels: prefs.wallLabels, showNames: prefs.showNames, sizesPos: prefs.sizesPos, lang: prefs.lang },
         text: { unitM: t('unit.m'), floorTitle: n => t('floor.title', { n }), scale: t('export.scale') },
       });
@@ -75,6 +78,8 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
           options={[{ value: 'pdf', label: 'PDF' }, { value: 'png', label: 'PNG' }]} />)}
         {row('export.area', <Segmented value={c.area} onChange={v => set('area', v)}
           options={[{ value: 'room', label: t('export.areaRoom') }, { value: 'all', label: t('export.areaAll') }]} />)}
+        {row('export.layers', <Segmented value={c.layers} onChange={v => set('layers', v)}
+          options={[{ value: 'plan', label: t('export.layersPlan') }, { value: 'all', label: t('export.layersAll') }, { value: 'wiring', label: t('export.layersWiring') }]} />)}
         {row('theme.label', <Segmented value={c.dark} onChange={v => set('dark', v)}
           options={[{ value: false, label: t('theme.light') }, { value: true, label: t('theme.dark') }]} />)}
         {floors.length > 1 && row('export.floors', <Segmented value={c.allFloors} onChange={v => set('allFloors', v)}

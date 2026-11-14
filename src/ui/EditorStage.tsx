@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useMemo } from 'react';
 import { Stage, Layer, Rect, Line, Image as KImage, Circle, Group } from 'react-konva';
 import type Konva from 'konva';
 import type { KonvaEventObject } from 'konva/lib/Node';
-import { useStore, DEFAULT_Z, DEFAULT_CABLE_COLOR } from '../store';
+import { useStore, DEFAULT_Z, DEFAULT_CABLE_COLOR, DEFAULT_TRAY_WIDTH } from '../store';
 import { Tool, WORLD, AUTOSAVE_KEY } from '../constants';
 import { localToWorld, worldToLocal, sortByZ } from '../helpers';
 import { dist, pointInRotatedRect, distToSegment, type Pt } from '../geometry/hit';
@@ -17,10 +17,11 @@ import { WallsLayerContent, AlongText, formatMeters } from './WallsLayer';
 import { DimensionLine, DimensionsLayerContent, SnapMarker } from './DimensionsLayer';
 import { FurnitureLabels, TextNotes, TextSelection, ItemOutline, measureNote } from './AnnotationsLayer';
 import { GapsLayerContent } from './GapsLayer';
-import { CablesLayerContent, CableLine, CableHandles } from './CablesLayer';
-import { hitSegment, hitVertex, dedupePoints, labelObstacles } from '../geometry/cable';
+import { CablesLayerContent, CableLine, CableHandles, TraysLayerContent } from './CablesLayer';
+import { hitSegment, hitVertex, dedupePoints, labelObstacles, layoutCables, distToPath, cablesInTray, cableRoute, pathLength } from '../geometry/cable';
 import { SimpleFurniture } from './AnnotationsLayer';
-import type { WallNode, Wall, FurnitureItem, Dimension, TextNote, Cable } from '../types';
+import type { WallNode, Wall, FurnitureItem, Dimension, TextNote, Cable, Tray } from '../types';
+import { layerView } from '../layers';
 
 const TOOLBAR_W = 80;
 const PANEL_W = 260;
@@ -83,6 +84,8 @@ type DragState =
   | { type: 'dim-move'; start: Pt; base: Dimension }
   | { type: 'cable-pt'; id: number; index: number }
   | { type: 'cable-move'; start: Pt; base: Cable }
+  | { type: 'tray-pt'; id: number; index: number }
+  | { type: 'tray-move'; start: Pt; base: Tray }
   /** Screen-space pan by dragging empty space */
   | { type: 'pan'; start: Pt; pos0: Pt }
   /** Ctrl/Shift + drag on empty space: frame selection */
@@ -123,7 +126,7 @@ export function EditorStage() {
     const pts = dedupePoints(draft);
     if (pts.length >= 2) {
       const st = useStore.getState();
-      const id = st.addCable(pts, nextCableColor);
+      const id = st.tool === Tool.Tray ? st.addTray(pts) : st.addCable(pts, nextCableColor);
       st.select(id);
     }
   }
@@ -146,6 +149,14 @@ export function EditorStage() {
   const selection     = useStore(s => s.selection);
   const floor         = useStore(s => s.floors[s.fi]);
   const wallGeom      = useMemo(() => computeWallGeometry(floor.nodes, floor.walls), [floor.nodes, floor.walls]);
+  const mode          = useStore(s => s.mode);
+  const wiring        = mode === 'wiring';
+  /** Objects of the layer being edited: main plan, or the wiring layer in Wiring mode */
+  const act = useMemo(() => layerView(floor, wiring ? 'wiring' : 'main'), [floor, wiring]);
+  /** In Wiring mode: the main plan, drawn dimmed and not editable */
+  const base = useMemo(() => (wiring ? layerView(floor, 'main') : null), [floor, wiring]);
+  const cablePaths = useMemo(() => layoutCables(act.cables), [act.cables]);
+  const [hoverTray, setHoverTray] = useState<{ id: number; x: number; y: number } | null>(null);
   const cableAvoid    = useMemo(() => labelObstacles(wallGeom, wallLabels, floor.furniture), [wallGeom, wallLabels, floor.furniture]);
 
   function updateStage(x: number, y: number, s: number) {
@@ -193,7 +204,7 @@ export function EditorStage() {
       if (mod && e.code === 'KeyX') { e.preventDefault(); st.cutSelected(); }
       if (mod && e.code === 'KeyA') {
         e.preventDefault();
-        const f = st.floors[st.fi];
+        const f = layerView(st.floors[st.fi], st.mode === 'wiring' ? 'wiring' : 'main');
         if (st.tool !== Tool.Select) st.setTool(Tool.Select);
         st.setSelection([...f.furniture, ...f.texts].map(o => o.id));
       }
@@ -221,7 +232,7 @@ export function EditorStage() {
   }, []);
 
   // Leaving the Cable tool drops an unfinished cable
-  useEffect(() => { if (tool !== Tool.Cable) setCableDraft(null); }, [tool]);
+  useEffect(() => { setCableDraft(null); }, [tool]);
 
   // Safety net: pointer released outside the canvas — finish the gesture so undo keeps working
   useEffect(() => {
@@ -267,7 +278,7 @@ export function EditorStage() {
 
   function hitHandle(wx: number, wy: number): { type: 'resize'; anchor: HandleAnchor; cursor: string } | { type: 'rotate' } | null {
     if (selectedId === null) return null;
-    const item = floor.furniture.find(f => f.id === selectedId);
+    const item = act.furniture.find(f => f.id === selectedId);
     if (!item) return null;
     const thr = HANDLE_HIT / scale;
 
@@ -284,7 +295,7 @@ export function EditorStage() {
   }
 
   function hitFurniture(wx: number, wy: number): FurnitureItem | null {
-    const ordered = sortByZ(floor.furniture);
+    const ordered = sortByZ(act.furniture);
     for (let i = ordered.length - 1; i >= 0; i--) {
       const f = ordered[i];
       if (pointInRotatedRect(wx, wy, f.x, f.y, f.w, f.h, f.rot)) return f;
@@ -314,8 +325,8 @@ export function EditorStage() {
   }
 
   function hitText(wx: number, wy: number): TextNote | null {
-    for (let i = floor.texts.length - 1; i >= 0; i--) {
-      const n = floor.texts[i];
+    for (let i = act.texts.length - 1; i >= 0; i--) {
+      const n = act.texts[i];
       const { w, h } = measureNote(n);
       if (pointInRotatedRect(wx, wy, n.x, n.y, w, h, n.rot)) return n;
     }
@@ -333,8 +344,8 @@ export function EditorStage() {
 
   function hitDimEnd(wx: number, wy: number): { id: number; end: 1 | 2 } | null {
     const thr = DIM_END_HIT_PX / scale;
-    for (let i = floor.dimensions.length - 1; i >= 0; i--) {
-      const d = floor.dimensions[i];
+    for (let i = act.dimensions.length - 1; i >= 0; i--) {
+      const d = act.dimensions[i];
       if (dist(wx, wy, d.x1, d.y1) < thr) return { id: d.id, end: 1 };
       if (dist(wx, wy, d.x2, d.y2) < thr) return { id: d.id, end: 2 };
     }
@@ -342,18 +353,34 @@ export function EditorStage() {
   }
 
   function hitCable(wx: number, wy: number): { cable: Cable; seg: number } | null {
-    for (let i = floor.cables.length - 1; i >= 0; i--) {
-      const c = floor.cables[i];
-      const seg = hitSegment(c.points, { x: wx, y: wy }, Math.max((c.width ?? 3) / 2, CABLE_HIT_PX / scale));
-      if (seg >= 0) return { cable: c, seg };
+    // The cable drawn nearest to the pointer (its own lane in a bundle) wins
+    let best: { cable: Cable; seg: number } | null = null;
+    let bestD = Infinity;
+    for (let i = act.cables.length - 1; i >= 0; i--) {
+      const c = act.cables[i];
+      const shown = cablePaths.get(c.id) ?? c.points;
+      const thr = Math.max((c.width ?? 3) / 2, CABLE_HIT_PX / scale);
+      const d = distToPath(shown, { x: wx, y: wy });
+      if (d <= thr && d < bestD) {
+        bestD = d;
+        best = { cable: c, seg: Math.max(0, hitSegment(c.points, { x: wx, y: wy }, Infinity)) };
+      }
+    }
+    return best;
+  }
+
+  function hitTray(wx: number, wy: number): Tray | null {
+    for (let i = act.trays.length - 1; i >= 0; i--) {
+      const t = act.trays[i];
+      if (distToPath(t.points, { x: wx, y: wy }) <= Math.max(t.width / 2, CABLE_HIT_PX / scale)) return t;
     }
     return null;
   }
 
   function hitDimension(wx: number, wy: number): Dimension | null {
     const thr = DIM_LINE_HIT_PX / scale;
-    for (let i = floor.dimensions.length - 1; i >= 0; i--) {
-      const d = floor.dimensions[i];
+    for (let i = act.dimensions.length - 1; i >= 0; i--) {
+      const d = act.dimensions[i];
       if (distToSegment(wx, wy, d.x1, d.y1, d.x2, d.y2) < thr) return d;
     }
     return null;
@@ -402,12 +429,12 @@ export function EditorStage() {
   /** Starts moving the current selection, anchored at the clicked object */
   function startItemsDrag(anchorId: number, pt: Pt) {
     const sel = useStore.getState().selection;
-    const base: PosRef[] = [...floor.furniture, ...floor.texts]
+    const base: PosRef[] = [...act.furniture, ...act.texts]
       .filter(o => sel.includes(o.id))
       .map(o => ({ id: o.id, x: o.x, y: o.y }));
     const anchor = base.find(b => b.id === anchorId);
     if (!anchor) return;
-    const single = base.length === 1 && floor.furniture.some(f => f.id === anchorId) ? anchorId : null;
+    const single = base.length === 1 && act.furniture.some(f => f.id === anchorId) ? anchorId : null;
     dragRef.current = { type: 'items', start: pt, anchor, base, flushId: single };
   }
 
@@ -428,9 +455,12 @@ export function EditorStage() {
       if (dim) { store.deleteDimension(dim.id); return; }
       const fur = hitFurniture(pt.x, pt.y);
       if (fur) { store.deleteFurniture(fur.id); store.select(null); return; }
-      const node = hitNode(pt.x, pt.y);
+      const tray = hitTray(pt.x, pt.y);
+      if (tray) { store.deleteTray(tray.id); store.select(null); return; }
+      // Walls belong to the main plan: not editable in Wiring mode
+      const node = wiring ? null : hitNode(pt.x, pt.y);
       if (node) { store.deleteNode(node.id); return; }
-      const wall = hitWall(pt.x, pt.y);
+      const wall = wiring ? null : hitWall(pt.x, pt.y);
       if (wall) { store.deleteWall(wall.id); return; }
       startPan();
       return;
@@ -445,8 +475,8 @@ export function EditorStage() {
       return;
     }
 
-    // Cable — each click adds a point; clicking the last point again (or double-click / Enter) finishes
-    if (tool === Tool.Cable) {
+    // Cable / tray — each click adds a point; clicking the last point again (or double-click / Enter) finishes
+    if (tool === Tool.Cable || tool === Tool.Tray) {
       const draft = cableDraftRef.current;
       const last = draft?.[draft.length - 1];
       const { p } = measurePoint(pt, last);
@@ -469,6 +499,7 @@ export function EditorStage() {
 
     // Wall-add tool — drag-to-draw: down = start node, drag = preview, up = end node + wall
     if (tool === Tool.WallAdd) {
+      if (wiring) { startPan(); return; }
       // Try to snap to existing node or wall split
       const existingNode = hitNode(pt.x, pt.y, NODE_HIT_RADIUS_WALL);
       if (existingNode) {
@@ -508,7 +539,7 @@ export function EditorStage() {
     // ── Select tool ──
     const handle = hitHandle(pt.x, pt.y);
     if (handle && !mods.multi) {
-      const item = floor.furniture.find(f => f.id === selectedId)!;
+      const item = act.furniture.find(f => f.id === selectedId)!;
       if (handle.type === 'resize') {
         dragRef.current = { type: 'resize', id: item.id, anchor: handle.anchor, startItem: { ...item } };
       } else {
@@ -523,10 +554,15 @@ export function EditorStage() {
       const end = hitDimEnd(pt.x, pt.y);
       if (end) { store.select(end.id); dragRef.current = { type: 'dim-end', ...end }; return; }
       // Points of the selected cable
-      const selCable = floor.cables.find(c => c.id === selectedId);
+      const selCable = act.cables.find(c => c.id === selectedId);
       if (selCable) {
         const v = hitVertex(selCable.points, pt, CABLE_VERTEX_HIT_PX / scale);
         if (v >= 0) { dragRef.current = { type: 'cable-pt', id: selCable.id, index: v }; return; }
+      }
+      const selTray = act.trays.find(t => t.id === selectedId);
+      if (selTray) {
+        const v = hitVertex(selTray.points, pt, CABLE_VERTEX_HIT_PX / scale);
+        if (v >= 0) { dragRef.current = { type: 'tray-pt', id: selTray.id, index: v }; return; }
       }
       const cab = hitCable(pt.x, pt.y);
       if (cab) {
@@ -551,7 +587,7 @@ export function EditorStage() {
     }
 
     if (!mods.multi) {
-      const node = hitNode(pt.x, pt.y);
+      const node = wiring ? null : hitNode(pt.x, pt.y);
       if (node) {
         store.select(null);
         dragRef.current = { type: 'node', id: node.id, offX: pt.x - node.x, offY: pt.y - node.y };
@@ -563,7 +599,13 @@ export function EditorStage() {
         dragRef.current = { type: 'dim-move', start: pt, base: { ...dim } };
         return;
       }
-      const wall = hitWall(pt.x, pt.y);
+      const tray = hitTray(pt.x, pt.y);
+      if (tray) {
+        store.select(tray.id);
+        dragRef.current = { type: 'tray-move', start: pt, base: { ...tray, points: tray.points.map(q => ({ ...q })) } };
+        return;
+      }
+      const wall = wiring ? null : hitWall(pt.x, pt.y);
       if (wall) {
         const a = floor.nodes.find(n => n.id === wall.a), b = floor.nodes.find(n => n.id === wall.b);
         store.select(wall.id);
@@ -592,9 +634,9 @@ export function EditorStage() {
       let p = doSnap(d.anchor.x + pt.x - d.start.x, d.anchor.y + pt.y - d.start.y, snapSize);
       // A single item snaps flush against walls and neighbours nearby (Alt = place freely)
       if (d.flushId !== null && !altRef.current) {
-        const item = floor.furniture.find(f => f.id === d.flushId);
+        const item = act.furniture.find(f => f.id === d.flushId);
         if (item) {
-          const others = floor.furniture.filter(f => f.id !== item.id && f.zi >= DEFAULT_Z);
+          const others = act.furniture.filter(f => f.id !== item.id && f.zi >= DEFAULT_Z);
           const s = flushShift({ ...item, x: p.x, y: p.y }, obstacleSegments(wallGeom, others), FLUSH_SNAP_PX / scale);
           p = { x: p.x + s.x, y: p.y + s.y };
         }
@@ -613,7 +655,7 @@ export function EditorStage() {
       const dx = p.x - d.base.x1, dy = p.y - d.base.y1;
       store.updateDimension(d.base.id, { x1: d.base.x1 + dx, y1: d.base.y1 + dy, x2: d.base.x2 + dx, y2: d.base.y2 + dy });
     } else if (d.type === 'cable-pt') {
-      const c = floor.cables.find(x => x.id === d.id);
+      const c = act.cables.find(x => x.id === d.id);
       if (!c) return;
       const prev = c.points[d.index - 1] ?? c.points[d.index + 1];
       const { p, snapped } = measurePoint(pt, prev, undefined, d.id);
@@ -624,6 +666,18 @@ export function EditorStage() {
       const p = doSnap(first.x + pt.x - d.start.x, first.y + pt.y - d.start.y, snapSize);
       const dx = p.x - first.x, dy = p.y - first.y;
       store.updateCable(d.base.id, { points: d.base.points.map(q => ({ x: q.x + dx, y: q.y + dy })) });
+    } else if (d.type === 'tray-pt') {
+      const tr = act.trays.find(x => x.id === d.id);
+      if (!tr) return;
+      const prev = tr.points[d.index - 1] ?? tr.points[d.index + 1];
+      let p = doSnap(pt.x, pt.y, snapSize);
+      if (shiftRef.current && prev) p = constrain45(prev, p);
+      store.updateTray(d.id, { points: tr.points.map((q, i) => i === d.index ? p : q) });
+    } else if (d.type === 'tray-move') {
+      const first = d.base.points[0];
+      const p = doSnap(first.x + pt.x - d.start.x, first.y + pt.y - d.start.y, snapSize);
+      const dx = p.x - first.x, dy = p.y - first.y;
+      store.updateTray(d.base.id, { points: d.base.points.map(q => ({ x: q.x + dx, y: q.y + dy })) });
     } else if (d.type === 'marquee') {
       setMarquee({ x1: d.start.x, y1: d.start.y, x2: pt.x, y2: pt.y });
     } else if (d.type === 'resize') {
@@ -639,7 +693,7 @@ export function EditorStage() {
       setMeasurePreview({ x1: d.start.x, y1: d.start.y, x2: p.x, y2: p.y });
       setSnapMark(snapped ? p : null);
     } else if (d.type === 'dim-end') {
-      const dim = floor.dimensions.find(x => x.id === d.id);
+      const dim = act.dimensions.find(x => x.id === d.id);
       if (!dim) return;
       const other = d.end === 1 ? { x: dim.x2, y: dim.y2 } : { x: dim.x1, y: dim.y1 };
       const { p, snapped } = measurePoint(pt, other, d.id);
@@ -689,8 +743,8 @@ export function EditorStage() {
       const y1 = Math.min(d.start.y, pt.y), y2 = Math.max(d.start.y, pt.y);
       const inside = (p: Pt) => p.x >= x1 && p.x <= x2 && p.y >= y1 && p.y <= y2;
       const picked = [
-        ...floor.furniture.filter(f => inside(localToWorld(f.w / 2, f.h / 2, f.x, f.y, f.rot))),
-        ...floor.texts.filter(n => { const m = measureNote(n); return inside(localToWorld(m.w / 2, m.h / 2, n.x, n.y, n.rot)); }),
+        ...act.furniture.filter(f => inside(localToWorld(f.w / 2, f.h / 2, f.x, f.y, f.rot))),
+        ...act.texts.filter(n => { const m = measureNote(n); return inside(localToWorld(m.w / 2, m.h / 2, n.x, n.y, n.rot)); }),
       ].map(o => o.id);
       store.setSelection([...d.base, ...picked]);
       return;
@@ -759,7 +813,7 @@ export function EditorStage() {
       if (e.evt.button === 2) {
         const pt = getWorld();
         if (pt) {
-          const wall = hitWall(pt.x, pt.y);
+          const wall = wiring ? null : hitWall(pt.x, pt.y);
           if (wall) { store.toggleExterior(wall.id); return; }
         }
       }
@@ -797,17 +851,27 @@ export function EditorStage() {
     }
 
     // Ruler / cable hover: show where the next point would snap
-    if (tool === Tool.Measure || tool === Tool.Cable) {
+    if (tool === Tool.Measure || tool === Tool.Cable || tool === Tool.Tray) {
       const pt = getWorld();
       if (pt) {
         const draft = cableDraftRef.current;
-        const { p, snapped } = measurePoint(pt, tool === Tool.Cable ? draft?.[draft.length - 1] : undefined);
+        const drawing = tool === Tool.Cable || tool === Tool.Tray;
+        const { p, snapped } = measurePoint(pt, drawing ? draft?.[draft.length - 1] : undefined);
         setSnapMark(snapped ? p : null);
-        if (tool === Tool.Cable && draft) setCablePreview(p);
+        if (drawing && draft) setCablePreview(p);
       }
     } else if (snapMark) {
       setSnapMark(null);
     }
+
+    // Tray hover (Wiring mode): show which cables run in it
+    if (wiring && !cableDraftRef.current) {
+      const pt = getWorld();
+      const tr = pt ? hitTray(pt.x, pt.y) : null;
+      const sp = getScreen();
+      if (tr && sp) setHoverTray({ id: tr.id, x: sp.x, y: sp.y });
+      else if (hoverTray) setHoverTray(null);
+    } else if (hoverTray) setHoverTray(null);
 
     // Wall hover preview (mouse only — no button pressed, chain active)
     if (tool === Tool.WallAdd && wallStartId !== null) {
@@ -828,7 +892,8 @@ export function EditorStage() {
             container.style.cursor = handle.type === 'rotate' ? 'grab' : (handle as { cursor: string }).cursor;
           } else if (hitDimEnd(pt.x, pt.y)) {
             container.style.cursor = 'pointer';
-          } else if (hitCable(pt.x, pt.y) || hitText(pt.x, pt.y) || hitFurniture(pt.x, pt.y) || hitNode(pt.x, pt.y) || hitDimension(pt.x, pt.y) || hitWall(pt.x, pt.y)) {
+          } else if (hitCable(pt.x, pt.y) || hitText(pt.x, pt.y) || hitFurniture(pt.x, pt.y) || hitDimension(pt.x, pt.y) || hitTray(pt.x, pt.y)
+            || (!wiring && (hitNode(pt.x, pt.y) || hitWall(pt.x, pt.y)))) {
             container.style.cursor = 'move';
           } else {
             container.style.cursor = e.evt.ctrlKey || e.evt.shiftKey || e.evt.metaKey ? 'crosshair' : 'grab';
@@ -840,7 +905,7 @@ export function EditorStage() {
           container.style.cursor = hitText(pt.x, pt.y) ? 'text' : 'crosshair';
         } else if (tool === Tool.Measure) {
           container.style.cursor = hitDimEnd(pt.x, pt.y) ? 'pointer' : 'crosshair';
-        } else if (tool === Tool.Cable) {
+        } else if (tool === Tool.Cable || tool === Tool.Tray) {
           container.style.cursor = 'crosshair';
         } else if (tool === Tool.WallAdd) {
           container.style.cursor = 'crosshair';
@@ -857,11 +922,26 @@ export function EditorStage() {
    * Konva reports any two quick clicks as a double-click, even far apart, so it must not finish cables.)
    */
   function onDblClick() {
-    if (tool === Tool.Cable) return;
+    if (tool === Tool.Cable || tool === Tool.Tray) return;
     if (tool !== Tool.Select) return;
     const pt = getWorld();
     if (!pt) return;
-    const selCable = floor.cables.find(c => c.id === selectedId);
+    const selTray = act.trays.find(t => t.id === selectedId);
+    if (selTray) {
+      const v = hitVertex(selTray.points, pt, CABLE_VERTEX_HIT_PX / scale);
+      if (v >= 0) {
+        if (selTray.points.length > 2) store.updateTray(selTray.id, { points: selTray.points.filter((_, i) => i !== v) });
+        return;
+      }
+      const seg = hitSegment(selTray.points, pt, Math.max(selTray.width / 2, CABLE_HIT_PX / scale));
+      if (seg >= 0) {
+        const pts = [...selTray.points];
+        pts.splice(seg + 1, 0, doSnap(pt.x, pt.y, snapSize));
+        store.updateTray(selTray.id, { points: pts });
+        return;
+      }
+    }
+    const selCable = act.cables.find(c => c.id === selectedId);
     if (selCable) {
       const v = hitVertex(selCable.points, pt, CABLE_VERTEX_HIT_PX / scale);
       if (v >= 0) {
@@ -959,16 +1039,33 @@ export function EditorStage() {
   }
 
   const startNode = wallStartId !== null ? floor.nodes.find(n => n.id === wallStartId) : null;
-  const selectedItem = selectedId !== null ? floor.furniture.find(f => f.id === selectedId) : null;
-  const selectedNote = selectedId !== null ? floor.texts.find(n => n.id === selectedId) : null;
+  const selectedItem = selectedId !== null ? act.furniture.find(f => f.id === selectedId) : null;
+  const selectedNote = selectedId !== null ? act.texts.find(n => n.id === selectedId) : null;
   const selectedWall = selectedId !== null ? wallGeom.walls.find(g => g.wall.id === selectedId) : null;
-  const selectedDim = selectedId !== null ? floor.dimensions.find(d => d.id === selectedId) : null;
-  const selectedCable = selectedId !== null ? floor.cables.find(c => c.id === selectedId) : null;
+  const selectedDim = selectedId !== null ? act.dimensions.find(d => d.id === selectedId) : null;
+  const selectedCable = selectedId !== null ? act.cables.find(c => c.id === selectedId) : null;
+  const selectedTray = selectedId !== null ? act.trays.find(t => t.id === selectedId) : null;
+  const hoveredTray = hoverTray ? act.trays.find(t => t.id === hoverTray.id) ?? null : null;
+  const trayCables = hoveredTray ? cablesInTray(hoveredTray, act.cables) : null;
   const multi = selection.length > 1;
   const onImageLoaded = () => forceRender(c => c + 1);
   const px = 1 / scale;
 
   return (
+    <>
+    {hoveredTray && hoverTray && trayCables && (
+      <div className="tray-tip" style={{ left: hoverTray.x + 14, top: hoverTray.y + 14 }}>
+        <div className="tray-tip-title">{hoveredTray.label || t('tool.tray')} · {t('tray.count', { n: trayCables.length })}</div>
+        {trayCables.length === 0 && <div className="tray-tip-row">{t('tray.none')}</div>}
+        {trayCables.map(c => (
+          <div key={c.id} className="tray-tip-row">
+            <span className="tray-tip-dot" style={{ background: c.color }} />
+            <span>{[c.label, cableRoute(c)].filter(Boolean).join(' · ') || '—'}</span>
+            <span className="tray-tip-len">{formatMeters(pathLength(c.points), t('unit.m'))}</span>
+          </div>
+        ))}
+      </div>
+    )}
     <Stage
       ref={stageRef}
       width={size.w} height={size.h}
@@ -988,6 +1085,7 @@ export function EditorStage() {
 
       {/* All shapes */}
       <Layer listening={false}>
+        <Group opacity={wiring ? 0.3 : 1}>
         {/* Walls */}
         <WallsLayerContent geom={wallGeom} palette={palette} labels={wallLabels} unit={t('unit.m')} />
         {selectedWall && (
@@ -996,7 +1094,7 @@ export function EditorStage() {
         )}
 
         {/* Nodes */}
-        {floor.nodes.map(n => {
+        {!wiring && floor.nodes.map(n => {
           const isStart = n.id === wallStartId;
           return (
             <Circle key={n.id} x={n.x} y={n.y} radius={NODE_RADIUS}
@@ -1005,6 +1103,24 @@ export function EditorStage() {
               strokeWidth={isStart ? 2 : 1} />
           );
         })}
+
+        {/* Main plan objects under the wiring layer (Wiring mode only) */}
+        {base && (
+          <Group>
+            {sortByZ(base.furniture).map(item => (
+              <FurnitureVisual key={item.id} item={item} palette={palette} onImageLoaded={onImageLoaded} />
+            ))}
+            <CablesLayerContent cables={base.cables} palette={palette} unitM={t('unit.m')} avoid={cableAvoid} />
+            <FurnitureLabels furniture={base.furniture} palette={palette} showNames={showNames} lang={lang} sizesPos={sizesPos} />
+            <TextNotes texts={base.texts} palette={palette} />
+            <DimensionsLayerContent dims={base.dimensions} palette={palette} unit={t('unit.m')} px={px} />
+          </Group>
+        )}
+        </Group>
+
+        {/* Cable trays (wiring layer) */}
+        <TraysLayerContent trays={act.trays} palette={palette} highlightId={hoveredTray?.id ?? selectedTray?.id} />
+        {selectedTray && <CableHandles cable={{ id: selectedTray.id, points: selectedTray.points, color: palette.accent }} palette={palette} px={px} />}
 
         {/* Wall preview */}
         {startNode && previewPt && (
@@ -1018,17 +1134,20 @@ export function EditorStage() {
         )}
 
         {/* Furniture */}
-        {sortByZ(floor.furniture).map(item => (
+        {sortByZ(act.furniture).map(item => (
           <FurnitureVisual key={item.id} item={item} palette={palette} onImageLoaded={onImageLoaded} />
         ))}
 
         {/* Cables (above furniture) */}
-        <CablesLayerContent cables={floor.cables} palette={palette} unitM={t('unit.m')} avoid={cableAvoid} />
+        <CablesLayerContent cables={act.cables} palette={palette} unitM={t('unit.m')} avoid={cableAvoid}
+          highlight={trayCables ? new Set(trayCables.map(c => c.id)) : undefined} />
         {cableDraft && (
-          <CableLine points={cablePreview ? [...cableDraft, cablePreview] : cableDraft} color={nextCableColor} palette={palette} dashed />
+          <CableLine points={cablePreview ? [...cableDraft, cablePreview] : cableDraft}
+            color={tool === Tool.Tray ? palette.accent : nextCableColor}
+            width={tool === Tool.Tray ? DEFAULT_TRAY_WIDTH : undefined} palette={palette} dashed />
         )}
         {cableDraft && cableDraft.map((q, i) => <Circle key={`cd${i}`} x={q.x} y={q.y} radius={4 * px} fill={nextCableColor} />)}
-        {selectedCable && <CableHandles cable={selectedCable} palette={palette} px={px} />}
+        {selectedCable && <CableHandles cable={selectedCable} shown={cablePaths.get(selectedCable.id)} palette={palette} px={px} />}
 
         {/* Free space around the selected item */}
         {selectedItem && showGaps && (
@@ -1037,12 +1156,12 @@ export function EditorStage() {
         )}
 
         {/* Labels, sizes and text notes */}
-        <FurnitureLabels furniture={floor.furniture} palette={palette} showNames={showNames} lang={lang} sizesPos={sizesPos} />
-        <TextNotes texts={floor.texts} palette={palette} hideId={textEdit?.id} />
+        <FurnitureLabels furniture={act.furniture} palette={palette} showNames={showNames} lang={lang} sizesPos={sizesPos} />
+        <TextNotes texts={act.texts} palette={palette} hideId={textEdit?.id} />
         {selectedNote && !textEdit && <TextSelection note={selectedNote} palette={palette} px={px} />}
 
         {/* Ruler measurements */}
-        <DimensionsLayerContent dims={floor.dimensions} palette={palette} unit={t('unit.m')} px={px} />
+        <DimensionsLayerContent dims={act.dimensions} palette={palette} unit={t('unit.m')} px={px} />
         {selectedDim && (
           <Group>
             <DimensionLine d={selectedDim} palette={palette} unit={t('unit.m')} px={px} preview />
@@ -1054,10 +1173,10 @@ export function EditorStage() {
         {snapMark && <SnapMarker x={snapMark.x} y={snapMark.y} palette={palette} px={px} />}
 
         {/* Group selection outlines */}
-        {multi && floor.furniture.filter(f => selection.includes(f.id)).map(f => (
+        {multi && act.furniture.filter(f => selection.includes(f.id)).map(f => (
           <ItemOutline key={`o${f.id}`} x={f.x} y={f.y} w={f.w} h={f.h} rot={f.rot} palette={palette} px={px} />
         ))}
-        {multi && floor.texts.filter(n => selection.includes(n.id)).map(n => (
+        {multi && act.texts.filter(n => selection.includes(n.id)).map(n => (
           <TextSelection key={`o${n.id}`} note={n} palette={palette} px={px} />
         ))}
 
@@ -1077,6 +1196,7 @@ export function EditorStage() {
         )}
       </Layer>
     </Stage>
+    </>
   );
 }
 

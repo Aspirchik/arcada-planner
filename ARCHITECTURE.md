@@ -291,6 +291,14 @@ Files use `.arcada` extension (JSON content). Current format version **2.1.0** (
 
 ---
 
+## Wiring mode and layers (`src/layers.ts`)
+
+- Furniture, texts, dimensions and cables have an optional `layer: 'wiring'`; trays always belong to the wiring layer. `layerView(floor, 'main' | 'wiring')` splits a floor.
+- `store.mode` is `'plan'` or `'wiring'`. New objects get `layer: 'wiring'` while in Wiring mode (`curLayer()` in the store); `setLayer()` moves an object.
+- `EditorStage` edits only the current layer (`act`); in Wiring mode the main plan (`base`) is drawn under it at 30 % opacity and walls / nodes are not interactive.
+- Trays (`Tray`: points, width, label) are drawn by `TraysLayerContent`; `cablesInTray()` lists cables with ≥ 20 cm inside a tray band. Cables snap to tray centre lines.
+- Export: `layers` = `plan` (main only), `all`, `wiring` (main drawn with `fadePalette()` colours, wiring on top).
+
 ## Export (`src/export`)
 
 - `planSvg.ts` (pure, tested) builds one floor as an SVG string in world units (1 = 1 cm): walls with lengths, furniture (sprites inlined as nested `<svg>`; their classes and ids are prefixed by `prepareSprite()` so styles of different sprites don't clash), labels, sizes, texts, dimensions. `contentBounds()` gives the area: `room` = walls that enclose rooms, `all` = everything.

@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { Tool, METER } from './constants';
-import type { FurnitureItem, FloorState, CatalogItem, Dimension, TextNote, Wall, LabelPos, Cable } from './types';
+import type { FurnitureItem, FloorState, CatalogItem, Dimension, TextNote, Wall, LabelPos, Cable, Tray, Layer } from './types';
 import { translate, type TKey, type TParams } from './i18n';
 
 const HISTORY_LIMIT = 50;
@@ -10,6 +10,11 @@ export const DEFAULT_Z = 100;
 export const DEFAULT_TEXT_SIZE = 20;
 export const DEFAULT_CABLE_COLOR = '#1a73e8';
 export const DEFAULT_CABLE_WIDTH = 3;
+export const DEFAULT_TRAY_WIDTH = 10;
+
+export type EditMode = 'plan' | 'wiring';
+
+const layerOf = (o: object) => ((o as { layer?: unknown }).layer === 'wiring' ? { layer: 'wiring' as Layer } : {});
 /** Share of the door picture height taken by the frame band along its top edge (door.svg: 25 of 133) */
 export const DOOR_FRAME_RATIO = 25 / 133;
 
@@ -23,7 +28,7 @@ export interface History {
 }
 
 function emptyFloor(): FloorState {
-  return { nodes: [], walls: [], furniture: [], dimensions: [], texts: [], cables: [] };
+  return { nodes: [], walls: [], furniture: [], dimensions: [], texts: [], cables: [], trays: [] };
 }
 
 function emptyHistory(): History {
@@ -92,12 +97,13 @@ export function parseProject(json: string): ParsedProject {
       ...(it.flipX === true ? { flipX: true } : {}),
       ...(it.textMode === 'on' || it.textMode === 'off' ? { textMode: it.textMode as 'on' | 'off' } : {}),
       ...(it.sizeMode === 'on' || it.sizeMode === 'off' ? { sizeMode: it.sizeMode as 'on' | 'off' } : {}),
+      ...layerOf(it),
       ...(it.flipY === true ? { flipY: true } : {}),
     }));
 
     const dimensions = (Array.isArray(f.dimensions) ? f.dimensions : []).filter((dm): dm is Dimension =>
       !!dm && isNum(dm.id) && isNum(dm.x1) && isNum(dm.y1) && isNum(dm.x2) && isNum(dm.y2)
-    ).map(dm => ({ id: dm.id, x1: dm.x1, y1: dm.y1, x2: dm.x2, y2: dm.y2, ...(typeof dm.color === 'string' ? { color: dm.color } : {}) }));
+    ).map(dm => ({ id: dm.id, x1: dm.x1, y1: dm.y1, x2: dm.x2, y2: dm.y2, ...(typeof dm.color === 'string' ? { color: dm.color } : {}), ...layerOf(dm) }));
 
     const texts = (Array.isArray(f.texts) ? f.texts : []).filter((tx): tx is Record<string, unknown> & { id: number; x: number; y: number; text: string } =>
       !!tx && isNum(tx.id) && isNum(tx.x) && isNum(tx.y) && typeof tx.text === 'string'
@@ -107,6 +113,7 @@ export function parseProject(json: string): ParsedProject {
       rot: isNum(tx.rot) ? tx.rot : 0,
       bold: tx.bold === true,
       color: typeof tx.color === 'string' ? tx.color : null,
+      ...layerOf(tx),
     }));
 
     const cables = (Array.isArray(f.cables) ? f.cables : []).filter((c): c is Record<string, unknown> & { id: number; points: unknown[] } =>
@@ -119,10 +126,23 @@ export function parseProject(json: string): ParsedProject {
       ...(isNum(c.width) && c.width > 0 ? { width: c.width } : {}),
       ...(typeof c.label === 'string' && c.label ? { label: c.label } : {}),
       ...(c.showLength === true ? { showLength: true } : {}),
+      ...(typeof c.from === 'string' && c.from ? { from: c.from } : {}),
+      ...(typeof c.to === 'string' && c.to ? { to: c.to } : {}),
+      ...layerOf(c),
     })).filter(c => c.points.length >= 2);
 
-    for (const o of [...nodes, ...walls, ...furniture, ...dimensions, ...texts, ...cables]) maxId = Math.max(maxId, o.id);
-    return { nodes, walls, furniture, dimensions, texts, cables };
+    const trays = (Array.isArray(f.trays) ? f.trays : []).filter((t): t is Record<string, unknown> & { id: number; points: unknown[] } =>
+      !!t && isNum(t.id) && Array.isArray(t.points)
+    ).map((t): Tray => ({
+      id: t.id,
+      points: t.points.filter((p): p is { x: number; y: number } => !!p && isNum((p as { x: unknown }).x) && isNum((p as { y: unknown }).y))
+        .map(p => ({ x: p.x, y: p.y })),
+      width: isNum(t.width) && t.width > 0 ? t.width : DEFAULT_TRAY_WIDTH,
+      ...(typeof t.label === 'string' && t.label ? { label: t.label } : {}),
+    })).filter(t => t.points.length >= 2);
+
+    for (const o of [...nodes, ...walls, ...furniture, ...dimensions, ...texts, ...cables, ...trays]) maxId = Math.max(maxId, o.id);
+    return { nodes, walls, furniture, dimensions, texts, cables, trays };
   });
 
   const nextId = Math.max(isNum(d.nextId) ? d.nextId : 1, maxId + 1);
@@ -131,7 +151,7 @@ export function parseProject(json: string): ParsedProject {
 }
 
 export function isProjectEmpty(floors: FloorState[]): boolean {
-  return floors.every(f => f.nodes.length === 0 && f.furniture.length === 0 && f.dimensions.length === 0 && f.texts.length === 0 && f.cables.length === 0);
+  return floors.every(f => f.nodes.length === 0 && f.furniture.length === 0 && f.dimensions.length === 0 && f.texts.length === 0 && f.cables.length === 0 && f.trays.length === 0);
 }
 
 // ── Store ──────────────────────────────────────────────────────
@@ -156,6 +176,8 @@ interface Store {
   fileCreatedAt: string | null;
   /** True when there are changes not saved to a file or quick save */
   dirty: boolean;
+  /** Plan or Wiring mode: in Wiring mode the main plan is dimmed and new objects go to the wiring layer */
+  mode: EditMode;
   /** Text note being edited in place: existing note (id) or a new one at (x, y) */
   textEdit: { id: number | null; x: number; y: number } | null;
 
@@ -168,6 +190,9 @@ interface Store {
   setWallStart(id: number | null): void;
   setStageTransform(x: number, y: number, scale: number): void;
   setTextEdit(edit: { id: number | null; x: number; y: number } | null): void;
+  setMode(mode: EditMode): void;
+  /** Moves an object (furniture, text, dimension, cable) to the main plan or the wiring layer */
+  setLayer(id: number, layer: Layer | undefined): void;
 
   /** Starts a gesture: all changes until endGesture() become a single undo step */
   beginGesture(): void;
@@ -206,6 +231,9 @@ interface Store {
   addCable(points: { x: number; y: number }[], color: string): number;
   updateCable(id: number, changes: Partial<Omit<Cable, 'id'>>): void;
   deleteCable(id: number): void;
+  addTray(points: { x: number; y: number }[], width?: number): number;
+  updateTray(id: number, changes: Partial<Omit<Tray, 'id'>>): void;
+  deleteTray(id: number): void;
 
   addText(x: number, y: number, text: string): number;
   updateText(id: number, changes: Partial<Omit<TextNote, 'id'>>): void;
@@ -272,6 +300,11 @@ export const useStore = create<Store>((set, get) => {
     try { return fn(); } finally { endGesture(); }
   }
 
+  /** Layer for new objects: the wiring layer while in Wiring mode */
+  function curLayer(): { layer?: Layer } {
+    return get().mode === 'wiring' ? { layer: 'wiring' } : {};
+  }
+
   function sel(ids: number[]) {
     const unique = [...new Set(ids)];
     return { selection: unique, selectedId: unique.length === 1 ? unique[0] : null };
@@ -300,6 +333,7 @@ export const useStore = create<Store>((set, get) => {
     fileCreatedAt: null,
     dirty: false,
     textEdit: null,
+    mode: 'plan',
 
     setTool: (tool) => set({ tool, wallStartId: null, selectedId: null, selection: [] }),
     setSnapSize: (snapSize) => set({ snapSize }),
@@ -312,6 +346,18 @@ export const useStore = create<Store>((set, get) => {
     setWallStart: (id) => set({ wallStartId: id }),
     setStageTransform: (x, y, scale) => set({ stageX: x, stageY: y, stageScale: scale }),
     setTextEdit: (textEdit) => set({ textEdit }),
+    setMode: (mode) => set({ mode, selectedId: null, selection: [], wallStartId: null, textEdit: null }),
+    setLayer(id, layer) {
+      const L = layer ? { layer } : { layer: undefined };
+      upFloor(f => ({
+        ...f,
+        furniture: f.furniture.map(o => o.id === id ? { ...o, ...L } : o),
+        texts: f.texts.map(o => o.id === id ? { ...o, ...L } : o),
+        dimensions: f.dimensions.map(o => o.id === id ? { ...o, ...L } : o),
+        cables: f.cables.map(o => o.id === id ? { ...o, ...L } : o),
+      }));
+      set(sel([]));
+    },
 
     beginGesture,
     endGesture,
@@ -439,6 +485,7 @@ export const useStore = create<Store>((set, get) => {
           rot: 0,
           zi: item.zIndex ?? DEFAULT_Z,
           name: item.name,
+          ...curLayer(),
         }],
       }));
       set({ ...sel([id]), tool: Tool.Select });
@@ -493,7 +540,7 @@ export const useStore = create<Store>((set, get) => {
 
     addDimension(x1, y1, x2, y2) {
       const id = newId();
-      upFloor(f => ({ ...f, dimensions: [...f.dimensions, { id, x1, y1, x2, y2 }] }));
+      upFloor(f => ({ ...f, dimensions: [...f.dimensions, { id, x1, y1, x2, y2, ...curLayer() }] }));
       return id;
     },
 
@@ -515,7 +562,7 @@ export const useStore = create<Store>((set, get) => {
 
     addCable(points, color) {
       const id = newId();
-      upFloor(f => ({ ...f, cables: [...f.cables, { id, points: points.map(p => ({ x: p.x, y: p.y })), color }] }));
+      upFloor(f => ({ ...f, cables: [...f.cables, { id, points: points.map(p => ({ x: p.x, y: p.y })), color, ...curLayer() }] }));
       return id;
     },
 
@@ -527,9 +574,23 @@ export const useStore = create<Store>((set, get) => {
       upFloor(f => ({ ...f, cables: f.cables.filter(c => c.id !== id) }));
     },
 
+    addTray(points, width = DEFAULT_TRAY_WIDTH) {
+      const id = newId();
+      upFloor(f => ({ ...f, trays: [...f.trays, { id, points: points.map(p => ({ x: p.x, y: p.y })), width }] }));
+      return id;
+    },
+
+    updateTray(id, changes) {
+      upFloor(f => ({ ...f, trays: f.trays.map(t => t.id === id ? { ...t, ...changes } : t) }));
+    },
+
+    deleteTray(id) {
+      upFloor(f => ({ ...f, trays: f.trays.filter(t => t.id !== id) }));
+    },
+
     addText(x, y, text) {
       const id = newId();
-      upFloor(f => ({ ...f, texts: [...f.texts, { id, x, y, text, size: DEFAULT_TEXT_SIZE, rot: 0, bold: false, color: null }] }));
+      upFloor(f => ({ ...f, texts: [...f.texts, { id, x, y, text, size: DEFAULT_TEXT_SIZE, rot: 0, bold: false, color: null, ...curLayer() }] }));
       return id;
     },
 
@@ -552,6 +613,7 @@ export const useStore = create<Store>((set, get) => {
           else if (f.walls.some(w => w.id === id)) get().deleteWall(id);
           else if (f.dimensions.some(d => d.id === id)) get().deleteDimension(id);
           else if (f.cables.some(c => c.id === id)) get().deleteCable(id);
+          else if (f.trays.some(t => t.id === id)) get().deleteTray(id);
         }
       });
       set(sel([]));

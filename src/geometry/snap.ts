@@ -29,6 +29,10 @@ export function snapTargets(floor: FloorState, geom: FloorWallGeom, excludeDimId
     if (c.id === excludeCableId) continue;
     points.push(...c.points);
   }
+  for (const t of floor.trays) {
+    points.push(...t.points);
+    for (let i = 1; i < t.points.length; i++) segments.push({ a: t.points[i - 1], b: t.points[i] });
+  }
   for (const d of floor.dimensions) {
     if (d.id === excludeDimId) continue;
     points.push({ x: d.x1, y: d.y1 }, { x: d.x2, y: d.y2 });

@@ -281,6 +281,27 @@ describe('cables', () => {
   });
 });
 
+describe('wiring mode and trays', () => {
+  it('objects created in wiring mode go to the wiring layer; layers can be switched; trays save', () => {
+    st().setMode('wiring');
+    const c = st().addCable([{ x: 0, y: 0 }, { x: 100, y: 0 }], '#000');
+    const f = st().addFurniture(chair, 0, 0);
+    st().setMode('plan');
+    const f2 = st().addFurniture(chair, 0, 0);
+    expect(floor().cables[0].layer).toBe('wiring');
+    expect(floor().furniture.find(x => x.id === f)!.layer).toBe('wiring');
+    expect(floor().furniture.find(x => x.id === f2)!.layer).toBeUndefined();
+    st().setLayer(f, undefined);
+    expect(floor().furniture.find(x => x.id === f)!.layer).toBeUndefined();
+
+    const t = st().addTray([{ x: 0, y: 0 }, { x: 300, y: 0 }], 12);
+    st().updateCable(c, { from: 'Server room', to: 'User 1' });
+    st().load(st().save());
+    expect(floor().trays[0]).toMatchObject({ id: t, width: 12 });
+    expect(floor().cables[0]).toMatchObject({ from: 'Server room', to: 'User 1', layer: 'wiring' });
+  });
+});
+
 describe('parseProject', () => {
   it('rejects broken files with a readable message', () => {
     expect(() => parseProject('not json')).toThrow(/JSON/);
@@ -302,6 +323,7 @@ describe('parseProject', () => {
     expect(p.floors[0].dimensions).toEqual([]);
     expect(p.floors[0].texts).toEqual([]);
     expect(p.floors[0].cables).toEqual([]);
+    expect(p.floors[0].trays).toEqual([]);
     expect(p.nextId).toBe(8);
   });
 });

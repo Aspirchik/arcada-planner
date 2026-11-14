@@ -9,6 +9,7 @@ import { computeWallGeometry, type FloorWallGeom } from '../geometry/walls';
 import { rectCorners, type Pt } from '../geometry/hit';
 import { wallLabelSpecs, formatMeters, LABEL_SIZE } from '../geometry/wallLabels';
 import { sortByZ } from '../helpers';
+import { layerView, type LayerView, type LayerChoice } from '../layers';
 import { furnitureLabel, sizesCorner } from '../labels';
 import { cableLabel, layoutCables, placeCableLabels, labelObstacles } from '../geometry/cable';
 
@@ -38,6 +39,8 @@ export interface PlanSvgOptions {
   measure?: Measure;
   /** Extra CSS (e.g. @font-face) put into <defs><style> */
   css?: string;
+  /** Layers to output (default: everything) */
+  layers?: LayerChoice;
   /** Pixel size written to the root element (PNG); the viewBox stays in cm */
   pixelWidth?: number;
   pixelHeight?: number;
@@ -46,8 +49,26 @@ export interface PlanSvgOptions {
 export interface Bounds { minX: number; minY: number; maxX: number; maxY: number }
 
 // ── Small helpers ───────────────────────────────────────────────
+/** Mixes a #rrggbb colour towards `to` (amount = how much of the original stays) */
+export function fadeHex(hex: string, to: string, amount = 0.3): string {
+  const parse = (h: string) => {
+    let x = h.replace('#', '');
+    if (x.length === 3) x = x.split('').map(c => c + c).join('');
+    return [0, 2, 4].map(i => parseInt(x.slice(i, i + 2), 16));
+  };
+  if (!/^#[0-9a-f]{3}([0-9a-f]{3})?$/i.test(hex) || !/^#[0-9a-f]{3}([0-9a-f]{3})?$/i.test(to)) return hex;
+  const a = parse(hex), b = parse(to);
+  return '#' + a.map((v, i) => Math.round(v * amount + b[i] * (1 - amount)).toString(16).padStart(2, '0')).join('');
+}
+
+function fadePalette(p: Palette): Palette {
+  const out = { ...p } as Record<string, unknown>;
+  for (const [k, v] of Object.entries(p)) if (typeof v === 'string' && k !== 'paper') out[k] = fadeHex(v, p.paper);
+  return out as unknown as Palette;
+}
+
 const f = (n: number) => String(Math.round(n * 100) / 100);
-const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+const esc = (s: string) => s.replace(/→/g, '»').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const pts = (p: Pt[]) => p.map(q => `${f(q.x)},${f(q.y)}`).join(' ');
 
 function grow(b: Bounds | null, p: Pt): Bounds {
@@ -147,6 +168,7 @@ export function contentBounds(floor: FloorState, geom: FloorWallGeom, area: Expo
   for (const n of floor.texts) { const s = noteSize(n, measure); for (const p of rectCorners(n.x, n.y, s.w, s.h, n.rot)) b = grow(b, p); }
   for (const d of floor.dimensions) { b = grow(b, { x: d.x1, y: d.y1 }); b = grow(b, { x: d.x2, y: d.y2 }); }
   for (const c of floor.cables) for (const p of c.points) b = grow(b, p);
+  for (const t of floor.trays) for (const p of t.points) b = grow(b, p);
   for (const n of floor.nodes) b = grow(b, n);
   return b;
 }
@@ -230,67 +252,84 @@ export function buildPlanSvg(floor: FloorState, sprites: Map<string, SpriteDef>,
   parts.push(`<rect x="${f(b.minX)}" y="${f(b.minY)}" width="${f(W)}" height="${f(Hh)}" fill="${p.paper}"/>`);
 
   // Walls: fills, joint hubs, face outlines, square ends
-  for (const g of geom.walls) {
-    const fill = g.wall.exterior ? p.wallExterior : p.wallInterior;
-    parts.push(`<polygon points="${pts(g.polygon)}" fill="${fill}" stroke="${fill}" stroke-width="0.6"/>`);
-  }
-  for (const h of geom.hubs) {
-    const fill = h.exterior ? p.wallExterior : p.wallInterior;
-    parts.push(`<polygon points="${pts(h.polygon)}" fill="${fill}" stroke="${fill}" stroke-width="0.6"/>`);
-  }
-  const line = (a: Pt, c: Pt) => `<line x1="${f(a.x)}" y1="${f(a.y)}" x2="${f(c.x)}" y2="${f(c.y)}" stroke="${p.wallStroke}" stroke-width="1"/>`;
-  for (const g of geom.walls) {
-    parts.push(line(g.left.a, g.left.b), line(g.right.a, g.right.b));
-    if (g.freeA) parts.push(line(g.left.a, g.right.a));
-    if (g.freeB) parts.push(line(g.left.b, g.right.b));
-  }
-  for (const g of geom.walls)
-    for (const l of wallLabelSpecs(g, opts.wallLabels))
-      parts.push(alongText(l.p, l.angle, formatMeters(l.length, opts.unitM), LABEL_SIZE, p.wallLabel));
-
-  // Furniture
-  for (const it of sortByZ(floor.furniture)) {
-    const tr = `translate(${f(it.x)} ${f(it.y)}) rotate(${f(it.rot)})`;
-    const sp = it.simple ? undefined : sprites.get(it.path);
-    if (!sp) {
-      const stroke = it.simple ? p.wallStroke : p.placeholderStroke;
-      parts.push(`<g transform="${tr}"><rect width="${f(it.w)}" height="${f(it.h)}" fill="${it.simple ? p.paper : p.placeholderFill}" stroke="${stroke}" stroke-width="1.5"/></g>`);
-      continue;
+  const walls = (pal: Palette): string => {
+    const out: string[] = [];
+    for (const g of geom.walls) {
+      const fill = g.wall.exterior ? pal.wallExterior : pal.wallInterior;
+      out.push(`<polygon points="${pts(g.polygon)}" fill="${fill}" stroke="${fill}" stroke-width="0.6"/>`);
     }
-    const flip = it.flipX || it.flipY
-      ? ` transform="translate(${f(it.flipX ? it.w : 0)} ${f(it.flipY ? it.h : 0)}) scale(${it.flipX ? -1 : 1} ${it.flipY ? -1 : 1})"`
-      : '';
-    parts.push(`<g transform="${tr}"><g${flip}><svg x="0" y="0" width="${f(it.w)}" height="${f(it.h)}" viewBox="${sp.viewBox}" preserveAspectRatio="none" overflow="hidden"${sp.fill ? ` fill="${sp.fill}"` : ''}>${sp.body}</svg></g></g>`);
-  }
+    for (const h of geom.hubs) {
+      const fill = h.exterior ? pal.wallExterior : pal.wallInterior;
+      out.push(`<polygon points="${pts(h.polygon)}" fill="${fill}" stroke="${fill}" stroke-width="0.6"/>`);
+    }
+    const line = (a: Pt, c: Pt) => `<line x1="${f(a.x)}" y1="${f(a.y)}" x2="${f(c.x)}" y2="${f(c.y)}" stroke="${pal.wallStroke}" stroke-width="1"/>`;
+    for (const g of geom.walls) {
+      out.push(line(g.left.a, g.left.b), line(g.right.a, g.right.b));
+      if (g.freeA) out.push(line(g.left.a, g.right.a));
+      if (g.freeB) out.push(line(g.left.b, g.right.b));
+    }
+    for (const g of geom.walls)
+      for (const l of wallLabelSpecs(g, opts.wallLabels))
+        out.push(alongText(l.p, l.angle, formatMeters(l.length, opts.unitM), LABEL_SIZE, pal.wallLabel));
+    return out.join('');
+  };
 
-  // Cables (above furniture): shared runs side by side, labels kept apart
-  const cablePaths = layoutCables(floor.cables);
-  const cableTexts = new Map(floor.cables.map(c => [c.id, cableLabel(c, opts.unitM)] as [number, string]).filter(([, l]) => !!l));
-  const cableSpots = placeCableLabels(floor.cables, cablePaths, cableTexts, LABEL_SIZE, t => measure(t, LABEL_SIZE, false),
-    labelObstacles(geom, opts.wallLabels, floor.furniture));
-  for (const c of floor.cables) {
-    const path = cablePaths.get(c.id) ?? c.points;
-    if (path.length < 2) continue;
-    parts.push(`<polyline points="${pts(path)}" fill="none" stroke="${c.color}" stroke-width="${f(c.width ?? 3)}" stroke-linecap="round" stroke-linejoin="round"/>`);
-  }
-  for (const c of floor.cables) {
-    const label = cableTexts.get(c.id), at = cableSpots.get(c.id);
-    if (label && at) parts.push(alongText(at.p, at.angle, label, LABEL_SIZE, c.color, p.paper));
-  }
+  // Objects of one layer: furniture, cables, labels, texts, rulers
+  const objects = (v: LayerView, pal: Palette, faded: boolean): string => {
+    const out: string[] = [];
+    for (const it of sortByZ(v.furniture)) {
+      const tr = `translate(${f(it.x)} ${f(it.y)}) rotate(${f(it.rot)})`;
+      const sp = it.simple ? undefined : sprites.get(it.path);
+      if (!sp) {
+        const stroke = it.simple ? pal.wallStroke : pal.placeholderStroke;
+        out.push(`<g transform="${tr}"><rect width="${f(it.w)}" height="${f(it.h)}" fill="${it.simple ? pal.paper : pal.placeholderFill}" stroke="${stroke}" stroke-width="1.5"/></g>`);
+        continue;
+      }
+      const flip = it.flipX || it.flipY
+        ? ` transform="translate(${f(it.flipX ? it.w : 0)} ${f(it.flipY ? it.h : 0)}) scale(${it.flipX ? -1 : 1} ${it.flipY ? -1 : 1})"`
+        : '';
+      out.push(`<g transform="${tr}"${faded ? ' opacity="0.3"' : ''}><g${flip}><svg x="0" y="0" width="${f(it.w)}" height="${f(it.h)}" viewBox="${sp.viewBox}" preserveAspectRatio="none" overflow="hidden"${sp.fill ? ` fill="${sp.fill}"` : ''}>${sp.body}</svg></g></g>`);
+    }
+    // Cable trays
+    for (const t of v.trays) {
+      const tp = pts(t.points);
+      out.push(`<polyline points="${tp}" fill="none" stroke="${pal.trayStroke}" stroke-width="${f(t.width + 2)}" stroke-linejoin="miter"/>`);
+      out.push(`<polyline points="${tp}" fill="none" stroke="${pal.trayFill}" stroke-width="${f(t.width)}" stroke-linejoin="miter"/>`);
+    }
+    // Cables (above furniture): shared runs side by side, labels kept apart
+    const cablePaths = layoutCables(v.cables);
+    const cableTexts = new Map(v.cables.map(c => [c.id, cableLabel(c, opts.unitM)] as [number, string]).filter(([, l]) => !!l));
+    const cableSpots = placeCableLabels(v.cables, cablePaths, cableTexts, LABEL_SIZE, t => measure(t, LABEL_SIZE, false),
+      labelObstacles(geom, opts.wallLabels, floor.furniture));
+    for (const c of v.cables) {
+      const path = cablePaths.get(c.id) ?? c.points;
+      if (path.length < 2) continue;
+      out.push(`<polyline points="${pts(path)}" fill="none" stroke="${faded ? fadeHex(c.color, pal.paper) : c.color}" stroke-width="${f(c.width ?? 3)}" stroke-linecap="round" stroke-linejoin="round"/>`);
+    }
+    for (const c of v.cables) {
+      const label = cableTexts.get(c.id), at = cableSpots.get(c.id);
+      if (label && at) out.push(alongText(at.p, at.angle, label, LABEL_SIZE, faded ? fadeHex(c.color, pal.paper) : c.color, pal.paper));
+    }
+    // Furniture labels and sizes
+    const lo = { palette: pal, showNames: opts.showNames, sizesPos: opts.sizesPos, lang: opts.lang, measure };
+    for (const it of v.furniture) out.push(furnitureLabels(it, lo));
+    // Text notes
+    for (const n of v.texts) {
+      const lines = (n.text || '').split('\n');
+      const inner = lines.map((l, i) => textEl(0, i * n.size * LINE_HEIGHT + n.size * 0.82, l, n.size, n.color ?? pal.text, { anchor: 'start', bold: n.bold })).join('');
+      out.push(`<g transform="translate(${f(n.x)} ${f(n.y)}) rotate(${f(n.rot)})">${inner}</g>`);
+    }
+    // Ruler measurements
+    for (const d of v.dimensions) out.push(dimension(d, pal, opts.unitM));
+    return out.join('');
+  };
 
-  // Furniture labels and sizes
-  const lo = { palette: p, showNames: opts.showNames, sizesPos: opts.sizesPos, lang: opts.lang, measure };
-  for (const it of floor.furniture) parts.push(furnitureLabels(it, lo));
-
-  // Text notes
-  for (const n of floor.texts) {
-    const lines = (n.text || '').split('\n');
-    const inner = lines.map((l, i) => textEl(0, i * n.size * LINE_HEIGHT + n.size * 0.82, l, n.size, n.color ?? p.text, { anchor: 'start', bold: n.bold })).join('');
-    parts.push(`<g transform="translate(${f(n.x)} ${f(n.y)}) rotate(${f(n.rot)})">${inner}</g>`);
-  }
-
-  // Ruler measurements
-  for (const d of floor.dimensions) parts.push(dimension(d, p, opts.unitM));
+  const layers = opts.layers ?? 'all';
+  // A dimmed plan is drawn in colours mixed with the paper (opacity on groups is not reliable in PDF)
+  const dim = layers === 'wiring';
+  const mainPal = dim ? fadePalette(p) : p;
+  parts.push(walls(mainPal), objects(layerView(floor, 'main'), mainPal, dim));
+  if (layers !== 'plan') parts.push(objects(layerView(floor, 'wiring'), p, false));
 
   const size = opts.pixelWidth && opts.pixelHeight ? ` width="${Math.round(opts.pixelWidth)}" height="${Math.round(opts.pixelHeight)}"` : ` width="${f(W)}" height="${f(Hh)}"`;
   const defs = opts.css ? `<defs><style>${opts.css}</style></defs>` : '';

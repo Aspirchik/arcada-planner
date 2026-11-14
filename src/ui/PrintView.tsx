@@ -8,7 +8,8 @@ import { LIGHT } from '../theme';
 import { WallsLayerContent } from './WallsLayer';
 import { getSprite, spriteSettled } from './images';
 import { DimensionsLayerContent } from './DimensionsLayer';
-import { CablesLayerContent } from './CablesLayer';
+import { CablesLayerContent, TraysLayerContent } from './CablesLayer';
+import { layerView, type LayerView } from '../layers';
 import { labelObstacles } from '../geometry/cable';
 import { FurnitureLabels, TextNotes, SimpleFurniture, measureNote } from './AnnotationsLayer';
 import { useT } from '../i18n';
@@ -83,6 +84,7 @@ function PrintFloor({ floor, index }: { floor: FloorState; index: number }) {
   const sizesPos = usePrefs(s => s.sizesPos);
   const t = useT();
   const geom = useMemo(() => computeWallGeometry(floor.nodes, floor.walls), [floor.nodes, floor.walls]);
+  const wiring = useStore(s => s.mode) === 'wiring';
 
   if (!bounds) {
     return (
@@ -101,6 +103,27 @@ function PrintFloor({ floor, index }: { floor: FloorState; index: number }) {
   const offsetX = PAD + (drawW - contentW * scaleVal) / 2 - bounds.minX * scaleVal;
   const offsetY = PAD + 40 + (drawH - contentH * scaleVal) / 2 - bounds.minY * scaleVal;
 
+  const layerContent = (v: LayerView) => (
+    <Group>
+      {ready && sortByZ(v.furniture).map(f => {
+        if (f.simple) return <SimpleFurniture key={f.id} item={f} palette={LIGHT} />;
+        const img = getSprite(f.path, false, () => {});
+        return (
+          <Group key={f.id} x={f.x} y={f.y} rotation={f.rot}>
+            {img ? <KImage image={img} width={f.w} height={f.h}
+              x={f.flipX ? f.w : 0} y={f.flipY ? f.h : 0} scaleX={f.flipX ? -1 : 1} scaleY={f.flipY ? -1 : 1} /> : <Rect width={f.w} height={f.h} fill="#eee" stroke="#ccc" strokeWidth={1} />}
+          </Group>
+        );
+      })}
+      <TraysLayerContent trays={v.trays} palette={LIGHT} />
+      <CablesLayerContent cables={v.cables} palette={LIGHT} unitM={t('unit.m')} avoid={labelObstacles(geom, wallLabels, floor.furniture)} />
+      {ready && <FurnitureLabels furniture={v.furniture} palette={LIGHT} showNames={showNames} lang={lang} sizesPos={sizesPos} />}
+      <TextNotes texts={v.texts} palette={LIGHT} />
+      <DimensionsLayerContent dims={v.dimensions} palette={LIGHT} unit={t('unit.m')} px={1 / scaleVal} />
+    </Group>
+  );
+
+
   return (
     <div className="print-page">
       <h2 style={{ textAlign: 'center', fontSize: 16, fontWeight: 600, padding: '12px 0 4px', margin: 0 }}>
@@ -111,27 +134,9 @@ function PrintFloor({ floor, index }: { floor: FloorState; index: number }) {
           {/* Walls (print is always light) */}
           <WallsLayerContent geom={geom} palette={LIGHT} labels={wallLabels} unit={t('unit.m')} />
 
-          {/* Furniture */}
-          {ready && sortByZ(floor.furniture).map(f => {
-            if (f.simple) return <SimpleFurniture key={f.id} item={f} palette={LIGHT} />;
-            const img = getSprite(f.path, false, () => {});
-            return (
-              <Group key={f.id} x={f.x} y={f.y} rotation={f.rot}>
-                {img ? <KImage image={img} width={f.w} height={f.h}
-                  x={f.flipX ? f.w : 0} y={f.flipY ? f.h : 0} scaleX={f.flipX ? -1 : 1} scaleY={f.flipY ? -1 : 1} /> : <Rect width={f.w} height={f.h} fill="#eee" stroke="#ccc" strokeWidth={1} />}
-              </Group>
-            );
-          })}
-
-          {/* Cables */}
-          <CablesLayerContent cables={floor.cables} palette={LIGHT} unitM={t('unit.m')} avoid={labelObstacles(geom, wallLabels, floor.furniture)} />
-
-          {/* Labels and text notes */}
-          {ready && <FurnitureLabels furniture={floor.furniture} palette={LIGHT} showNames={showNames} lang={lang} sizesPos={sizesPos} />}
-          <TextNotes texts={floor.texts} palette={LIGHT} />
-
-          {/* Ruler measurements: constant size on paper */}
-          <DimensionsLayerContent dims={floor.dimensions} palette={LIGHT} unit={t('unit.m')} px={1 / scaleVal} />
+          {/* Main plan (dimmed when printing in Wiring mode), then the wiring layer */}
+          <Group opacity={wiring ? 0.3 : 1}>{layerContent(layerView(floor, 'main'))}</Group>
+          {wiring && layerContent(layerView(floor, 'wiring'))}
         </Layer>
       </Stage>
     </div>

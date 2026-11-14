@@ -1,5 +1,5 @@
 /** Cable polyline helpers (pure) */
-import type { Cable, FurnitureItem } from '../types';
+import type { Cable, FurnitureItem, Tray } from '../types';
 import type { FloorWallGeom } from './walls';
 import type { WallLabelMode } from '../prefs';
 import { rectCorners } from './hit';
@@ -33,10 +33,12 @@ export function midAlong(points: Pt[]): { p: Pt; angle: number } {
   return pointAlong(points, 0.5);
 }
 
-/** Text shown along the cable: its label and/or length */
+/** Text shown along the cable: its label, route (from → to) and/or length */
 export function cableLabel(c: Cable, unitM: string): string {
   const parts: string[] = [];
   if (c.label?.trim()) parts.push(c.label.trim());
+  const route = cableRoute(c);
+  if (route) parts.push(route);
   if (c.showLength) parts.push(formatMeters(pathLength(c.points), unitM));
   return parts.join(' · ');
 }
@@ -223,4 +225,44 @@ export function labelObstacles(geom: FloorWallGeom, mode: WallLabelMode, furnitu
     out.push({ x0: Math.min(...c.map(p => p.x)), y0: Math.min(...c.map(p => p.y)), x1: Math.max(...c.map(p => p.x)), y1: Math.max(...c.map(p => p.y)) });
   }
   return out;
+}
+
+// ── Trays ──
+
+/** Shortest distance from p to the polyline */
+export function distToPath(points: Pt[], p: Pt): number {
+  let best = Infinity;
+  for (let i = 1; i < points.length; i++)
+    best = Math.min(best, distToSegment(p.x, p.y, points[i - 1].x, points[i - 1].y, points[i].x, points[i].y));
+  return best;
+}
+
+/** Length of the cable that runs inside the tray band (sampled every `step` cm) */
+export function lengthInTray(cable: Pt[], tray: Tray, step = 5): number {
+  const half = tray.width / 2 + 2; // a little tolerance for cables on the tray edge
+  let inside = 0;
+  for (let i = 1; i < cable.length; i++) {
+    const a = cable[i - 1], b = cable[i];
+    const len = Math.hypot(b.x - a.x, b.y - a.y);
+    const n = Math.max(1, Math.ceil(len / step));
+    for (let k = 0; k < n; k++) {
+      const t = (k + 0.5) / n;
+      if (distToPath(tray.points, { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t }) <= half) inside += len / n;
+    }
+  }
+  return inside;
+}
+
+/** Cables that run in the tray for at least `minLength` cm, in list order */
+export function cablesInTray(tray: Tray, cables: Cable[], minLength = 20): Cable[] {
+  return cables.filter(c => lengthInTray(c.points, tray) >= minLength);
+}
+
+/** "from → to" for a cable, or '' */
+export function cableRoute(c: Cable): string {
+  const from = c.from?.trim(), to = c.to?.trim();
+  if (!from && !to) return '';
+  if (!from) return `→ ${to}`;
+  if (!to) return `${from} →`;
+  return `${from} → ${to}`;
 }

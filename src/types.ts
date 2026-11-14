@@ -13,6 +13,9 @@ export interface Wall {
   thickness?: number;
 }
 
+/** Second plan layer, shown and edited only in Wiring mode (missing = main plan) */
+export type Layer = 'wiring';
+
 /** Where a label sits on an item: centre, sides or corners */
 export type LabelPos = 'c' | 't' | 'b' | 'l' | 'r' | 'tl' | 'tr' | 'bl' | 'br';
 
@@ -46,6 +49,7 @@ export interface FurnitureItem {
   flipX?: boolean;
   /** Mirror the picture top ↕ bottom (doors: opens to the other side of the wall) */
   flipY?: boolean;
+  layer?: Layer;
 }
 
 /** Free text note placed on the plan */
@@ -60,6 +64,7 @@ export interface TextNote {
   bold: boolean;
   /** null = theme text colour */
   color: string | null;
+  layer?: Layer;
 }
 
 /** Ruler measurement kept on the plan (a dimension line between two points) */
@@ -71,6 +76,7 @@ export interface Dimension {
   y2: number;
   /** Line colour; missing = theme ruler colour */
   color?: string;
+  layer?: Layer;
 }
 
 /** Cable run: a polyline with its own colour and label */
@@ -83,6 +89,19 @@ export interface Cable {
   label?: string;
   /** Show the run length next to the label */
   showLength?: boolean;
+  /** Where the cable starts and ends, e.g. "Server room" → "User 1" */
+  from?: string;
+  to?: string;
+  layer?: Layer;
+}
+
+/** Cable tray: a wide band along a polyline that cables run in (always on the wiring layer) */
+export interface Tray {
+  id: number;
+  points: { x: number; y: number }[];
+  /** Tray width in cm */
+  width: number;
+  label?: string;
 }
 
 export interface FloorState {
@@ -92,6 +111,7 @@ export interface FloorState {
   dimensions: Dimension[];
   texts: TextNote[];
   cables: Cable[];
+  trays: Tray[];
 }
 
 export interface CatalogItem {
