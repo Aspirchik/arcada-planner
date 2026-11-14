@@ -1,9 +1,13 @@
 import { Stage, Layer, Rect, Line, Text, Image as KImage, Circle, Group } from 'react-konva';
 import { useStore } from '../store';
-import { WALL_THICKNESS, INTERIOR_WALL_THICKNESS, METER } from '../constants';
-import { dist, angleDeg, sortByZ } from '../helpers';
+import { WALL_THICKNESS } from '../constants';
+import { sortByZ } from '../helpers';
+import { computeWallGeometry } from '../geometry/walls';
+import { usePrefs } from '../prefs';
+import { LIGHT } from '../theme';
+import { WallsLayerContent } from './WallsLayer';
 import type { FloorState } from '../types';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 const PAGE_W = 794;  // A4 at 96dpi
 const PAGE_H = 1123;
@@ -67,6 +71,8 @@ function floorBounds(floor: FloorState): { minX: number; minY: number; maxX: num
 function PrintFloor({ floor, index }: { floor: FloorState; index: number }) {
   const ready = useFloorImages(floor);
   const bounds = floorBounds(floor);
+  const wallLabels = usePrefs(s => s.wallLabels);
+  const geom = useMemo(() => computeWallGeometry(floor.nodes, floor.walls), [floor.nodes, floor.walls]);
 
   if (!bounds) {
     return (
@@ -92,25 +98,8 @@ function PrintFloor({ floor, index }: { floor: FloorState; index: number }) {
       </h2>
       <Stage width={PAGE_W} height={PAGE_H - 40} x={offsetX} y={offsetY - 40} scaleX={scaleVal} scaleY={scaleVal}>
         <Layer listening={false}>
-          {/* Walls */}
-          {floor.walls.map(w => {
-            const na = floor.nodes.find(n => n.id === w.a);
-            const nb = floor.nodes.find(n => n.id === w.b);
-            if (!na || !nb) return null;
-            const length = dist(na.x, na.y, nb.x, nb.y);
-            const angle = angleDeg(na.x, na.y, nb.x, nb.y);
-            const thick = w.exterior ? WALL_THICKNESS : INTERIOR_WALL_THICKNESS;
-            const fill = w.exterior ? '#b8a89a' : '#d4c4b8';
-            const meters = Math.max(0, (length - WALL_THICKNESS) / METER).toFixed(2);
-            return (
-              <Group key={w.id} x={na.x} y={na.y} rotation={angle}>
-                <Rect x={0} y={-thick / 2} width={length} height={thick} fill={fill} stroke="#1a1a1a" strokeWidth={1} />
-                {length > 30 && (
-                  <Text text={meters + ' m'} fontSize={11} fill="#555" x={length / 2} y={thick / 2 + 4} offsetX={meters.length * 3} />
-                )}
-              </Group>
-            );
-          })}
+          {/* Walls (print is always light) */}
+          <WallsLayerContent geom={geom} palette={LIGHT} labels={wallLabels} unit="m" />
 
           {/* Nodes */}
           {floor.nodes.map(n => (

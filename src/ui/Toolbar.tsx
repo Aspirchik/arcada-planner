@@ -5,6 +5,7 @@ import {
   Save, FolderOpen, HelpCircle,
 } from 'lucide-react';
 import { useStore } from '../store';
+import { usePrefs, type WallLabelMode } from '../prefs';
 import { Tool, AUTOSAVE_KEY } from '../constants';
 
 function saveToFile(data: string) {
@@ -27,7 +28,9 @@ function loadFromFile(onLoad: (json: string) => void) {
 }
 
 export function Toolbar() {
-  const { tool, setTool, snapSize, setSnapSize, labelsVisible, fi, toggleLabels, changeFloor, removeFloor, save, load, markSaved } = useStore();
+  const { tool, setTool, snapSize, setSnapSize, fi, changeFloor, removeFloor, save, load, markSaved } = useStore();
+  const wallLabels = usePrefs(s => s.wallLabels);
+  const setPref = usePrefs(s => s.set);
 
   const loadProject = (json: string) => {
     if (useStore.getState().dirty && !confirm('You have unsaved changes. Open another project anyway?')) return;
@@ -108,7 +111,20 @@ export function Toolbar() {
               <option value={50}>50 cm</option>
             </select>
           </div>
-          {toggleBtn(<Tag size={20} />, 'Labels', labelsVisible, toggleLabels)}
+          <div className={'snap-btn-wrap' + (wallLabels !== 'off' ? ' active' : '')} title="Wall lengths">
+            <Tag size={20} />
+            <span className="snap-label">Lengths</span>
+            <select
+              className="snap-select"
+              value={wallLabels}
+              onChange={e => setPref('wallLabels', e.target.value as WallLabelMode)}
+            >
+              <option value="off">Off</option>
+              <option value="interior">Inside</option>
+              <option value="both">Both</option>
+              <option value="axis">Axis</option>
+            </select>
+          </div>
         </div>
 
         <div className="tool-group toolbar-bottom">

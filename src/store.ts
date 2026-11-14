@@ -80,7 +80,6 @@ export function isProjectEmpty(floors: FloorState[]): boolean {
 interface Store {
   tool: Tool;
   snapSize: number; // 0 = off, otherwise world units (e.g. 10 = 10cm)
-  labelsVisible: boolean;
   floors: FloorState[];
   /** Undo/redo history, one entry per floor (same index as `floors`) */
   histories: History[];
@@ -99,7 +98,6 @@ interface Store {
 
   setTool(t: Tool): void;
   setSnapSize(s: number): void;
-  toggleLabels(): void;
   select(id: number | null): void;
   setWallStart(id: number | null): void;
   setStageTransform(x: number, y: number, scale: number): void;
@@ -190,7 +188,6 @@ export const useStore = create<Store>((set, get) => {
   return {
     tool: Tool.Select,
     snapSize: 10, // 10 world units = 10cm default
-    labelsVisible: true,
     floors: [emptyFloor()],
     histories: [emptyHistory()],
     fi: 0,
@@ -206,7 +203,6 @@ export const useStore = create<Store>((set, get) => {
 
     setTool: (tool) => set({ tool, wallStartId: null, selectedId: null }),
     setSnapSize: (snapSize) => set({ snapSize }),
-    toggleLabels: () => set(s => ({ labelsVisible: !s.labelsVisible })),
     select: (id) => set({ selectedId: id }),
     setWallStart: (id) => set({ wallStartId: id }),
     setStageTransform: (x, y, scale) => set({ stageX: x, stageY: y, stageScale: scale }),

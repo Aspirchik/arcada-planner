@@ -3,8 +3,13 @@ import { Stage, Layer, Rect, Line, Text, Image as KImage, Circle, Group } from '
 import type Konva from 'konva';
 import type { KonvaEventObject } from 'konva/lib/Node';
 import { useStore } from '../store';
-import { Tool, WALL_THICKNESS, INTERIOR_WALL_THICKNESS, WORLD, METER, AUTOSAVE_KEY } from '../constants';
-import { dist, angleDeg, localToWorld, worldToLocal, sortByZ } from '../helpers';
+import { Tool, WORLD, AUTOSAVE_KEY } from '../constants';
+import { localToWorld, worldToLocal, sortByZ } from '../helpers';
+import { dist, pointInRotatedRect, distToSegment } from '../geometry/hit';
+import { computeWallGeometry, wallThickness } from '../geometry/walls';
+import { usePrefs } from '../prefs';
+import { usePalette } from '../theme';
+import { WallsLayerContent, AlongText, formatMeters } from './WallsLayer';
 import type { WallNode, Wall, FurnitureItem } from '../types';
 
 const TOOLBAR_W = 80;
@@ -26,26 +31,6 @@ function getGridInterval(scale: number, minPx: number) {
 function gridSnap(v: number, iv: number) { return Math.round(v / iv) * iv; }
 function doSnap(x: number, y: number, snapSz: number) {
   return snapSz > 0 ? { x: gridSnap(x, snapSz), y: gridSnap(y, snapSz) } : { x: Math.round(x), y: Math.round(y) };
-}
-
-// ── Hit detection math ────────────────────────────────────────
-function pointInRotatedRect(px: number, py: number, rx: number, ry: number, rw: number, rh: number, rotDeg: number): boolean {
-  const rad = -rotDeg * Math.PI / 180;
-  const cos = Math.cos(rad);
-  const sin = Math.sin(rad);
-  const dx = px - rx;
-  const dy = py - ry;
-  const localX = dx * cos - dy * sin;
-  const localY = dx * sin + dy * cos;
-  return localX >= 0 && localX <= rw && localY >= 0 && localY <= rh;
-}
-
-function distToSegment(px: number, py: number, ax: number, ay: number, bx: number, by: number): number {
-  const dx = bx - ax, dy = by - ay;
-  const len2 = dx * dx + dy * dy;
-  if (len2 === 0) return dist(px, py, ax, ay);
-  const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / len2));
-  return dist(px, py, ax + t * dx, ay + t * dy);
 }
 
 // ── Handle definitions ────────────────────────────────────────
@@ -104,10 +89,12 @@ export function EditorStage() {
   const store         = useStore();
   const tool          = useStore(s => s.tool);
   const snapSize      = useStore(s => s.snapSize);
-  const labelsVisible = useStore(s => s.labelsVisible);
+  const wallLabels    = usePrefs(s => s.wallLabels);
+  const palette       = usePalette();
   const wallStartId   = useStore(s => s.wallStartId);
   const selectedId    = useStore(s => s.selectedId);
   const floor         = useStore(s => s.floors[s.fi]);
+  const wallGeom      = useMemo(() => computeWallGeometry(floor.nodes, floor.walls), [floor.nodes, floor.walls]);
 
   function updateStage(x: number, y: number, s: number) {
     setPos({ x, y });
@@ -242,7 +229,7 @@ export function EditorStage() {
       const na = floor.nodes.find(n => n.id === w.a);
       const nb = floor.nodes.find(n => n.id === w.b);
       if (!na || !nb) continue;
-      const thick = w.exterior ? WALL_THICKNESS : INTERIOR_WALL_THICKNESS;
+      const thick = wallThickness(w);
       if (distToSegment(wx, wy, na.x, na.y, nb.x, nb.y) < thick / 2 + 4) return w;
     }
     return null;
@@ -630,48 +617,36 @@ export function EditorStage() {
     >
       {/* Grid */}
       <Layer listening={false}>
-        <Rect x={0} y={0} width={WORLD} height={WORLD} fill="white" />
-        {mxT.map(t => <Line key={`vx${t}`} points={[t, viewT, t, viewB]} stroke={majSet.has(t) ? '#d0d0d0' : '#ebebeb'} strokeWidth={majSet.has(t) ? 0.8 : 0.5} />)}
-        {myT.map(t => <Line key={`hy${t}`} points={[viewL, t, viewR, t]} stroke={majSet.has(t) ? '#d0d0d0' : '#ebebeb'} strokeWidth={majSet.has(t) ? 0.8 : 0.5} />)}
+        <Rect x={0} y={0} width={WORLD} height={WORLD} fill={palette.paper} />
+        {mxT.map(t => <Line key={`vx${t}`} points={[t, viewT, t, viewB]} stroke={majSet.has(t) ? palette.gridMajor : palette.gridMinor} strokeWidth={majSet.has(t) ? 0.8 : 0.5} />)}
+        {myT.map(t => <Line key={`hy${t}`} points={[viewL, t, viewR, t]} stroke={majSet.has(t) ? palette.gridMajor : palette.gridMinor} strokeWidth={majSet.has(t) ? 0.8 : 0.5} />)}
       </Layer>
 
       {/* All shapes */}
       <Layer listening={false}>
         {/* Walls */}
-        {floor.walls.map(w => {
-          const na = floor.nodes.find(n => n.id === w.a);
-          const nb = floor.nodes.find(n => n.id === w.b);
-          if (!na || !nb) return null;
-          const length = dist(na.x, na.y, nb.x, nb.y);
-          const angle = angleDeg(na.x, na.y, nb.x, nb.y);
-          const thick = w.exterior ? WALL_THICKNESS : INTERIOR_WALL_THICKNESS;
-          const fill = w.exterior ? '#b8a89a' : '#d4c4b8';
-          const meters = Math.max(0, (length - WALL_THICKNESS) / METER).toFixed(2);
-          return (
-            <Group key={w.id} x={na.x} y={na.y} rotation={angle}>
-              <Rect x={0} y={-thick / 2} width={length} height={thick} fill={fill} stroke="#1a1a1a" strokeWidth={1} />
-              {labelsVisible && length > 30 && (
-                <Text text={meters + ' m'} fontSize={11} fill="#555" x={length / 2} y={thick / 2 + 4} offsetX={meters.length * 3} />
-              )}
-            </Group>
-          );
-        })}
+        <WallsLayerContent geom={wallGeom} palette={palette} labels={wallLabels} unit="m" />
 
         {/* Nodes */}
         {floor.nodes.map(n => {
           const isStart = n.id === wallStartId;
           return (
             <Circle key={n.id} x={n.x} y={n.y} radius={NODE_RADIUS}
-              fill={isStart ? '#1a73e8' : '#444'}
-              stroke={isStart ? '#fff' : '#222'}
+              fill={isStart ? palette.accent : palette.node}
+              stroke={isStart ? palette.paper : palette.nodeStroke}
               strokeWidth={isStart ? 2 : 1} />
           );
         })}
 
         {/* Wall preview */}
         {startNode && previewPt && (
-          <Line points={[startNode.x, startNode.y, previewPt.x, previewPt.y]}
-            stroke="#1a73e8" strokeWidth={1.5} dash={[6, 4]} />
+          <>
+            <Line points={[startNode.x, startNode.y, previewPt.x, previewPt.y]}
+              stroke={palette.accent} strokeWidth={1.5} dash={[6, 4]} />
+            {dist(startNode.x, startNode.y, previewPt.x, previewPt.y) > 1 && (
+              <PreviewLength a={startNode} b={previewPt} scale={scale} color={palette.accent} bg={palette.paper} />
+            )}
+          </>
         )}
 
         {/* Furniture */}
@@ -683,6 +658,21 @@ export function EditorStage() {
         {selectedItem && <SelectionHandles item={selectedItem} scale={scale} />}
       </Layer>
     </Stage>
+  );
+}
+
+// ── Live length of the wall being drawn ───────────────────────
+function PreviewLength({ a, b, scale, color, bg }: { a: { x: number; y: number }; b: { x: number; y: number }; scale: number; color: string; bg: string }) {
+  const len = dist(a.x, a.y, b.x, b.y);
+  const angle = Math.atan2(b.y - a.y, b.x - a.x) * 180 / Math.PI;
+  const nx = -(b.y - a.y) / len, ny = (b.x - a.x) / len;
+  const off = 14 / scale;
+  const size = 12 / scale;
+  const p = { x: (a.x + b.x) / 2 + nx * off, y: (a.y + b.y) / 2 + ny * off };
+  return (
+    <Group>
+      <AlongText p={p} angleDeg={angle} text={formatMeters(len, 'm')} color={color} size={size} halo={bg} />
+    </Group>
   );
 }
 
