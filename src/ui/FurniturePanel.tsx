@@ -3,6 +3,8 @@ import { Sofa, X } from 'lucide-react';
 import { useStore } from '../store';
 import catalog from '../catalog.json';
 import type { CatalogItem } from '../types';
+import { usePrefs } from '../prefs';
+import { catalogName } from '../i18n';
 
 const TOOLBAR_W = 80;
 const PANEL_W   = 260;
@@ -25,7 +27,8 @@ export function FurniturePanel() {
   const stageX     = useStore(s => s.stageX);
   const stageY     = useStore(s => s.stageY);
   const stageScale = useStore(s => s.stageScale);
-  const visibleCats = catalog.categories.map(c => c.name === 'Wall' ? { ...c, name: 'Openings' } : c);
+  const lang = usePrefs(s => s.lang);
+  const visibleCats = catalog.categories;
   const current = visibleCats[catIndex];
 
   const addItem = useCallback((item: CatalogItem) => {
@@ -63,15 +66,15 @@ export function FurniturePanel() {
               className={'cat-list-btn' + (i === catIndex ? ' active' : '')}
               onClick={() => setCatIndex(i)}
             >
-              {c.name}
+              {catalogName(lang, 'cat', c.name)}
             </button>
           ))}
         </div>
         <div className="items-grid">
           {current.items.map(item => (
             <button key={item.name} className="furniture-item" onClick={() => addItem(item as unknown as CatalogItem)}>
-              <img src={`${import.meta.env.BASE_URL}assets/2d/${item.imagePath}.svg`} alt={item.name} />
-              <span>{item.name}</span>
+              <img src={`${import.meta.env.BASE_URL}assets/2d/${item.imagePath}.svg`} alt={catalogName(lang, 'item', item.name)} />
+              <span>{catalogName(lang, 'item', item.name)}</span>
             </button>
           ))}
         </div>

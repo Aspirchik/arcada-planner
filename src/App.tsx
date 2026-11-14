@@ -5,6 +5,9 @@ import { Toolbar } from './ui/Toolbar';
 import { FurniturePanel } from './ui/FurniturePanel';
 import { PrintView } from './ui/PrintView';
 import { useStore, parseProject, isProjectEmpty } from './store';
+import { usePrefs } from './prefs';
+import { useT, HTML_LANG } from './i18n';
+import { projectErrorText } from './ui/Toolbar';
 import { METER, AUTOSAVE_KEY } from './constants';
 import './App.css';
 
@@ -73,6 +76,7 @@ function SelectionPanel() {
   const bringToFront = useStore(s => s.bringToFront);
   const sendToBack   = useStore(s => s.sendToBack);
   const select       = useStore(s => s.select);
+  const t            = useT();
 
   if (selectedId === null) return null;
   const item = floors[fi].furniture.find(f => f.id === selectedId);
@@ -99,19 +103,19 @@ function SelectionPanel() {
 
   return (
     <div className="selection-panel" style={{ left: Math.max(8, Math.min(sx - 200, window.innerWidth - 400)), top: Math.min(window.innerHeight - (window.innerWidth < 768 ? 110 : 50), Math.max(8, sy)) }}>
-      <label>W <NumField key={`w${item.id}`} value={wCm} min={1}
-        onCommit={v => updateFurniture(item.id, { w: v / 100 * METER })} /> cm</label>
-      <label>H <NumField key={`h${item.id}`} value={hCm} min={1}
-        onCommit={v => updateFurniture(item.id, { h: v / 100 * METER })} /> cm</label>
-      <label>R <NumField key={`r${item.id}`} value={rot}
+      <label>{t('sel.w')} <NumField key={`w${item.id}`} value={wCm} min={1}
+        onCommit={v => updateFurniture(item.id, { w: v / 100 * METER })} /> {t('unit.cm')}</label>
+      <label>{t('sel.h')} <NumField key={`h${item.id}`} value={hCm} min={1}
+        onCommit={v => updateFurniture(item.id, { h: v / 100 * METER })} /> {t('unit.cm')}</label>
+      <label>{t('sel.r')} <NumField key={`r${item.id}`} value={rot}
         onCommit={v => updateFurniture(item.id, { rot: v })} /> °</label>
-      <button className="sel-btn" title="Bring to front" onClick={() => bringToFront(item.id)}>
+      <button className="sel-btn" title={t('sel.front')} onClick={() => bringToFront(item.id)}>
         <BringToFront size={14} />
       </button>
-      <button className="sel-btn" title="Send to back" onClick={() => sendToBack(item.id)}>
+      <button className="sel-btn" title={t('sel.back')} onClick={() => sendToBack(item.id)}>
         <SendToBack size={14} />
       </button>
-      <button className="sel-delete" title="Delete" onClick={() => { deleteFurniture(item.id); select(null); }}>
+      <button className="sel-delete" title={t('sel.delete')} onClick={() => { deleteFurniture(item.id); select(null); }}>
         <Trash2 size={14} />
       </button>
     </div>
@@ -120,6 +124,7 @@ function SelectionPanel() {
 
 /** Offers to restore the project from the last quick save / autosave */
 function RestoreDialog() {
+  const t = useT();
   const [saved, setSaved] = useState<string | null>(() => {
     try {
       const json = localStorage.getItem(AUTOSAVE_KEY);
@@ -132,7 +137,7 @@ function RestoreDialog() {
   if (!saved) return null;
 
   const restore = () => {
-    try { useStore.getState().load(saved); } catch (err) { alert('Could not restore: ' + (err instanceof Error ? err.message : String(err))); }
+    try { useStore.getState().load(saved); } catch (err) { alert(t('msg.restoreError', { error: projectErrorText(err) })); }
     setSaved(null);
   };
   const discard = () => {
@@ -143,11 +148,11 @@ function RestoreDialog() {
   return (
     <div className="help-overlay">
       <div className="help-box">
-        <h3>Restore previous project?</h3>
-        <p className="dialog-text">A project from your last session was found in this browser.</p>
+        <h3>{t('restore.title')}</h3>
+        <p className="dialog-text">{t('restore.text')}</p>
         <div className="dialog-actions">
-          <button className="secondary" onClick={discard}>Start new</button>
-          <button onClick={restore}>Restore</button>
+          <button className="secondary" onClick={discard}>{t('restore.new')}</button>
+          <button onClick={restore}>{t('restore.restore')}</button>
         </div>
       </div>
     </div>
@@ -155,6 +160,9 @@ function RestoreDialog() {
 }
 
 export default function App() {
+  const lang = usePrefs(s => s.lang);
+  useEffect(() => { document.documentElement.lang = HTML_LANG[lang]; }, [lang]);
+
   // Warn before leaving only when there are unsaved changes
   useEffect(() => {
     const fn = (e: BeforeUnloadEvent) => {

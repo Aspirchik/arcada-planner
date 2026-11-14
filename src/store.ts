@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { Tool, METER } from './constants';
 import type { FurnitureItem, FloorState, CatalogItem } from './types';
+import { translate, type TKey, type TParams } from './i18n';
 
 const HISTORY_LIMIT = 50;
 export const FILE_VERSION = '2.0.0';
@@ -26,25 +27,32 @@ export interface ParsedProject {
   createdAt: string | null;
 }
 
+/** Error with a translation key, so the UI can show it in the current language */
+export class ProjectError extends Error {
+  constructor(public key: TKey, public params?: TParams) {
+    super(translate('en', key, params));
+  }
+}
+
 const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
 
-/** Parses and validates a .arcada file. Throws an Error with a readable message if the file is invalid. */
+/** Parses and validates a .arcada file. Throws a ProjectError (translatable) if the file is invalid. */
 export function parseProject(json: string): ParsedProject {
   let data: unknown;
   try {
     data = JSON.parse(json);
   } catch {
-    throw new Error('The file is not valid JSON.');
+    throw new ProjectError('err.json');
   }
-  if (!data || typeof data !== 'object') throw new Error('The file does not contain a project.');
+  if (!data || typeof data !== 'object') throw new ProjectError('err.noProject');
   const d = data as Record<string, unknown>;
-  if (!Array.isArray(d.floors) || d.floors.length === 0) throw new Error('The file has no floors.');
+  if (!Array.isArray(d.floors) || d.floors.length === 0) throw new ProjectError('err.noFloors');
 
   let maxId = 0;
   const floors: FloorState[] = d.floors.map((raw, i) => {
     const f = (raw ?? {}) as Record<string, unknown>;
     if (!Array.isArray(f.nodes) || !Array.isArray(f.walls) || !Array.isArray(f.furniture))
-      throw new Error(`Floor ${i} is damaged (missing nodes, walls or furniture).`);
+      throw new ProjectError('err.floorDamaged', { n: i });
 
     const nodes = f.nodes.filter((n): n is { id: number; x: number; y: number } =>
       !!n && isNum(n.id) && isNum(n.x) && isNum(n.y)

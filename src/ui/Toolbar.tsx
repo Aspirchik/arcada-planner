@@ -2,14 +2,17 @@ import { useState } from 'react';
 import {
   MousePointer2, Eraser, Minus, Grid3X3,
   Tag, ChevronUp, ChevronDown, Trash2, Printer,
-  Save, FolderOpen, HelpCircle,
+  Save, FolderOpen, HelpCircle, Languages,
 } from 'lucide-react';
-import { useStore } from '../store';
-import { usePrefs, type WallLabelMode } from '../prefs';
+import { useStore, ProjectError } from '../store';
+import { usePrefs, LANGS, type WallLabelMode, type Lang } from '../prefs';
+import { useT, t as tNow, LANG_NAMES, type TKey } from '../i18n';
 import { Tool, AUTOSAVE_KEY } from '../constants';
 
+const HELP_KEYS = ['select', 'wall', 'split', 'exterior', 'lengths', 'measure', 'text', 'gaps', 'pan', 'snap', 'keys'] as const;
+
 function saveToFile(data: string) {
-  localStorage.setItem(AUTOSAVE_KEY, data);
+  try { localStorage.setItem(AUTOSAVE_KEY, data); } catch { /* storage unavailable */ }
   const blob = new Blob([data], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -27,49 +30,45 @@ function loadFromFile(onLoad: (json: string) => void) {
   input.click();
 }
 
+/** Readable, translated message for an error thrown while loading a project */
+export function projectErrorText(err: unknown): string {
+  if (err instanceof ProjectError) return tNow(err.key, err.params);
+  return err instanceof Error ? err.message : String(err);
+}
+
 export function Toolbar() {
   const { tool, setTool, snapSize, setSnapSize, fi, changeFloor, removeFloor, save, load, markSaved } = useStore();
   const wallLabels = usePrefs(s => s.wallLabels);
+  const lang = usePrefs(s => s.lang);
   const setPref = usePrefs(s => s.set);
+  const t = useT();
+  const [showHelp, setShowHelp] = useState(false);
 
   const loadProject = (json: string) => {
-    if (useStore.getState().dirty && !confirm('You have unsaved changes. Open another project anyway?')) return;
+    if (useStore.getState().dirty && !confirm(t('msg.unsavedOpen'))) return;
     try {
       load(json);
     } catch (err) {
-      alert('Could not open the file: ' + (err instanceof Error ? err.message : String(err)));
+      alert(t('msg.loadError', { error: projectErrorText(err) }));
     }
   };
-  const [showHelp, setShowHelp] = useState(false);
 
-  const toolBtn = (icon: React.ReactNode, label: string, t: Tool) => (
+  const toolBtn = (icon: React.ReactNode, key: TKey, tl: Tool) => (
     <button
-      key={label}
-      title={label}
-      className={'tool-btn' + (tool === t ? ' active' : '')}
-      onClick={() => setTool(t)}
+      key={key}
+      title={t(key)}
+      className={'tool-btn' + (tool === tl ? ' active' : '')}
+      onClick={() => setTool(tl)}
     >
       {icon}
-      <span>{label}</span>
+      <span>{t(key)}</span>
     </button>
   );
 
-  const toggleBtn = (icon: React.ReactNode, label: string, active: boolean, onClick: () => void) => (
-    <button
-      key={label}
-      title={label}
-      className={'tool-btn' + (active ? ' active' : '')}
-      onClick={onClick}
-    >
+  const actionBtn = (icon: React.ReactNode, key: TKey, onClick: () => void) => (
+    <button key={key} title={t(key)} className="tool-btn" onClick={onClick}>
       {icon}
-      <span>{label}</span>
-    </button>
-  );
-
-  const actionBtn = (icon: React.ReactNode, label: string, onClick: () => void) => (
-    <button key={label} title={label} className="tool-btn" onClick={onClick}>
-      {icon}
-      <span>{label}</span>
+      <span>{t(key)}</span>
     </button>
   );
 
@@ -79,17 +78,17 @@ export function Toolbar() {
         <div className="toolbar-logo">A</div>
 
         <div className="tool-group">
-          {toolBtn(<MousePointer2 size={20} />, 'Select', Tool.Select)}
-          {toolBtn(<Minus size={20} />,         'Wall',   Tool.WallAdd)}
-          {toolBtn(<Eraser size={20} />,        'Erase',  Tool.Remove)}
+          {toolBtn(<MousePointer2 size={20} />, 'tool.select', Tool.Select)}
+          {toolBtn(<Minus size={20} />,         'tool.wall',   Tool.WallAdd)}
+          {toolBtn(<Eraser size={20} />,        'tool.erase',  Tool.Remove)}
         </div>
 
         <div className="tool-group">
           <div className="floor-controls">
-            <button className="floor-arrow" title="Floor up"   onClick={() => changeFloor(1)}><ChevronUp size={14} /></button>
+            <button className="floor-arrow" title={t('floor.up')}   onClick={() => changeFloor(1)}><ChevronUp size={14} /></button>
             <span className="floor-num">{fi}</span>
-            <button className="floor-arrow" title="Floor down" onClick={() => changeFloor(-1)}><ChevronDown size={14} /></button>
-            <button className="floor-arrow floor-del" title="Delete floor" onClick={() => { if (!removeFloor()) alert('Cannot delete the only floor.'); }}>
+            <button className="floor-arrow" title={t('floor.down')} onClick={() => changeFloor(-1)}><ChevronDown size={14} /></button>
+            <button className="floor-arrow floor-del" title={t('floor.delete')} onClick={() => { if (!removeFloor()) alert(t('floor.cantDelete')); }}>
               <Trash2 size={12} />
             </button>
           </div>
@@ -98,62 +97,60 @@ export function Toolbar() {
         <div className="tool-group">
           <div className={'snap-btn-wrap' + (snapSize > 0 ? ' active' : '')}>
             <Grid3X3 size={20} />
-            <span className="snap-label">Snap</span>
+            <span className="snap-label">{t('snap.label')}</span>
             <select
               className="snap-select"
               value={snapSize}
               onChange={e => setSnapSize(+e.target.value)}
             >
-              <option value={0}>Off</option>
-              <option value={5}>5 cm</option>
-              <option value={10}>10 cm</option>
-              <option value={25}>25 cm</option>
-              <option value={50}>50 cm</option>
+              <option value={0}>{t('snap.off')}</option>
+              {[5, 10, 25, 50].map(v => <option key={v} value={v}>{v} {t('unit.cm')}</option>)}
             </select>
           </div>
-          <div className={'snap-btn-wrap' + (wallLabels !== 'off' ? ' active' : '')} title="Wall lengths">
+          <div className={'snap-btn-wrap' + (wallLabels !== 'off' ? ' active' : '')} title={t('lengths.title')}>
             <Tag size={20} />
-            <span className="snap-label">Lengths</span>
+            <span className="snap-label">{t('lengths.label')}</span>
             <select
               className="snap-select"
               value={wallLabels}
               onChange={e => setPref('wallLabels', e.target.value as WallLabelMode)}
             >
-              <option value="off">Off</option>
-              <option value="interior">Inside</option>
-              <option value="both">Both</option>
-              <option value="axis">Axis</option>
+              <option value="off">{t('lengths.off')}</option>
+              <option value="interior">{t('lengths.interior')}</option>
+              <option value="both">{t('lengths.both')}</option>
+              <option value="axis">{t('lengths.axis')}</option>
             </select>
           </div>
         </div>
 
         <div className="tool-group toolbar-bottom">
-          {actionBtn(<Save size={20} />,       'Save',  () => { saveToFile(save()); markSaved(); })}
-          {actionBtn(<FolderOpen size={20} />, 'Load',  () => loadFromFile(loadProject))}
-          {actionBtn(<Printer size={20} />,    'Print', () => window.print())}
-          {actionBtn(<HelpCircle size={20} />, 'Help',  () => setShowHelp(true))}
+          <div className="snap-btn-wrap" title={t('lang.label')}>
+            <Languages size={20} />
+            <select
+              className="snap-select"
+              value={lang}
+              onChange={e => setPref('lang', e.target.value as Lang)}
+            >
+              {LANGS.map(l => <option key={l} value={l}>{LANG_NAMES[l]}</option>)}
+            </select>
+          </div>
+          {actionBtn(<Save size={20} />,       'action.save',  () => { saveToFile(save()); markSaved(); })}
+          {actionBtn(<FolderOpen size={20} />, 'action.load',  () => loadFromFile(loadProject))}
+          {actionBtn(<Printer size={20} />,    'action.print', () => window.print())}
+          {actionBtn(<HelpCircle size={20} />, 'action.help',  () => setShowHelp(true))}
         </div>
       </nav>
 
       {showHelp && (
         <div className="help-overlay" onClick={() => setShowHelp(false)}>
           <div className="help-box" onClick={e => e.stopPropagation()}>
-            <h3>Quick help</h3>
+            <h3>{t('help.title')}</h3>
             <ul>
-              <li><b>Select tool:</b> Click furniture to select, drag to move, drag handles to resize/rotate. Drag wall nodes to reshape.</li>
-              <li><b>Draw wall:</b> Wall tool → click to place nodes → click a node again to end</li>
-              <li><b>Split wall:</b> Wall tool → click on an existing wall</li>
-              <li><b>Toggle exterior:</b> Right-click on wall</li>
-              <li><b>Pan:</b> Right-click drag</li>
-              <li><b>Zoom:</b> Scroll wheel</li>
-              <li><b>Snap:</b> Configurable grid snap (Off / 5 / 10 / 25 / 50 cm)</li>
-              <li><b>Escape:</b> Return to Select tool</li>
-              <li><b>Ctrl+S:</b> Quick save</li>
-              <li><b>Ctrl+Z / Ctrl+Shift+Z:</b> Undo / Redo</li>
-              <li><b>Ctrl+C / Ctrl+V / Ctrl+X:</b> Copy / Paste / Cut</li>
-              <li><b>Delete:</b> Remove selected furniture</li>
+              {HELP_KEYS.map(k => (
+                <li key={k}><b>{t(`help.${k}.title` as TKey)}</b> {t(`help.${k}.text` as TKey)}</li>
+              ))}
             </ul>
-            <button onClick={() => setShowHelp(false)}>Close</button>
+            <button onClick={() => setShowHelp(false)}>{t('help.close')}</button>
           </div>
         </div>
       )}

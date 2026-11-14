@@ -135,7 +135,7 @@ describe('parseProject', () => {
   it('rejects broken files with a readable message', () => {
     expect(() => parseProject('not json')).toThrow(/JSON/);
     expect(() => parseProject('{}')).toThrow(/no floors/);
-    expect(() => parseProject('{"floors":[{}]}')).toThrow(/Floor 0/);
+    expect(() => parseProject('{"floors":[{}]}')).toThrow(/floor 0/);
   });
 
   it('fills defaults, drops dangling walls and fixes nextId', () => {

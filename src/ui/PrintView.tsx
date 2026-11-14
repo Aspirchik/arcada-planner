@@ -6,6 +6,7 @@ import { computeWallGeometry } from '../geometry/walls';
 import { usePrefs } from '../prefs';
 import { LIGHT } from '../theme';
 import { WallsLayerContent } from './WallsLayer';
+import { useT } from '../i18n';
 import type { FloorState } from '../types';
 import { useEffect, useMemo, useState } from 'react';
 
@@ -72,13 +73,14 @@ function PrintFloor({ floor, index }: { floor: FloorState; index: number }) {
   const ready = useFloorImages(floor);
   const bounds = floorBounds(floor);
   const wallLabels = usePrefs(s => s.wallLabels);
+  const t = useT();
   const geom = useMemo(() => computeWallGeometry(floor.nodes, floor.walls), [floor.nodes, floor.walls]);
 
   if (!bounds) {
     return (
       <div className="print-page">
-        <h2>Floor {index}</h2>
-        <p style={{ color: '#999' }}>Empty floor</p>
+        <h2>{t('floor.title', { n: index })}</h2>
+        <p style={{ color: '#999' }}>{t('floor.empty')}</p>
       </div>
     );
   }
@@ -94,12 +96,12 @@ function PrintFloor({ floor, index }: { floor: FloorState; index: number }) {
   return (
     <div className="print-page">
       <h2 style={{ textAlign: 'center', fontSize: 16, fontWeight: 600, padding: '12px 0 4px', margin: 0 }}>
-        Floor {index}
+        {t('floor.title', { n: index })}
       </h2>
       <Stage width={PAGE_W} height={PAGE_H - 40} x={offsetX} y={offsetY - 40} scaleX={scaleVal} scaleY={scaleVal}>
         <Layer listening={false}>
           {/* Walls (print is always light) */}
-          <WallsLayerContent geom={geom} palette={LIGHT} labels={wallLabels} unit="m" />
+          <WallsLayerContent geom={geom} palette={LIGHT} labels={wallLabels} unit={t('unit.m')} />
 
           {/* Nodes */}
           {floor.nodes.map(n => (

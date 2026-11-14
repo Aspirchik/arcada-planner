@@ -9,6 +9,7 @@ import { dist, pointInRotatedRect, distToSegment } from '../geometry/hit';
 import { computeWallGeometry, wallThickness } from '../geometry/walls';
 import { usePrefs } from '../prefs';
 import { usePalette } from '../theme';
+import { useT } from '../i18n';
 import { WallsLayerContent, AlongText, formatMeters } from './WallsLayer';
 import type { WallNode, Wall, FurnitureItem } from '../types';
 
@@ -91,6 +92,7 @@ export function EditorStage() {
   const snapSize      = useStore(s => s.snapSize);
   const wallLabels    = usePrefs(s => s.wallLabels);
   const palette       = usePalette();
+  const t             = useT();
   const wallStartId   = useStore(s => s.wallStartId);
   const selectedId    = useStore(s => s.selectedId);
   const floor         = useStore(s => s.floors[s.fi]);
@@ -625,7 +627,7 @@ export function EditorStage() {
       {/* All shapes */}
       <Layer listening={false}>
         {/* Walls */}
-        <WallsLayerContent geom={wallGeom} palette={palette} labels={wallLabels} unit="m" />
+        <WallsLayerContent geom={wallGeom} palette={palette} labels={wallLabels} unit={t('unit.m')} />
 
         {/* Nodes */}
         {floor.nodes.map(n => {
@@ -644,7 +646,7 @@ export function EditorStage() {
             <Line points={[startNode.x, startNode.y, previewPt.x, previewPt.y]}
               stroke={palette.accent} strokeWidth={1.5} dash={[6, 4]} />
             {dist(startNode.x, startNode.y, previewPt.x, previewPt.y) > 1 && (
-              <PreviewLength a={startNode} b={previewPt} scale={scale} color={palette.accent} bg={palette.paper} />
+              <PreviewLength a={startNode} b={previewPt} scale={scale} color={palette.accent} bg={palette.paper} unit={t('unit.m')} />
             )}
           </>
         )}
@@ -662,7 +664,7 @@ export function EditorStage() {
 }
 
 // ── Live length of the wall being drawn ───────────────────────
-function PreviewLength({ a, b, scale, color, bg }: { a: { x: number; y: number }; b: { x: number; y: number }; scale: number; color: string; bg: string }) {
+function PreviewLength({ a, b, scale, color, bg, unit }: { a: { x: number; y: number }; b: { x: number; y: number }; scale: number; color: string; bg: string; unit: string }) {
   const len = dist(a.x, a.y, b.x, b.y);
   const angle = Math.atan2(b.y - a.y, b.x - a.x) * 180 / Math.PI;
   const nx = -(b.y - a.y) / len, ny = (b.x - a.x) / len;
@@ -671,7 +673,7 @@ function PreviewLength({ a, b, scale, color, bg }: { a: { x: number; y: number }
   const p = { x: (a.x + b.x) / 2 + nx * off, y: (a.y + b.y) / 2 + ny * off };
   return (
     <Group>
-      <AlongText p={p} angleDeg={angle} text={formatMeters(len, 'm')} color={color} size={size} halo={bg} />
+      <AlongText p={p} angleDeg={angle} text={formatMeters(len, unit)} color={color} size={size} halo={bg} />
     </Group>
   );
 }
