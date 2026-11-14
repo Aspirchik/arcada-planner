@@ -121,7 +121,6 @@ function PrintFloor({ floor, index }: { floor: FloorState; index: number }) {
           </Group>
         );
       })}
-      <TraysLayerContent trays={v.trays} palette={LIGHT} textSize={ws.trayText} />
       <CablesLayerContent cables={styleCables(v.cables, ws, itemNamer(floor.furniture, lang))} palette={LIGHT} unitM={t('unit.m')} avoid={labelObstacles(geom, wallLabels, floor.furniture)}
         labelSize={ws.cableText} showLabels={ws.cableLabels} groupOrder={groupOrder} />
       {ready && <FurnitureLabels furniture={v.furniture} palette={LIGHT} showNames={showNames} lang={lang} sizesPos={sizesPos} />}
@@ -141,8 +140,11 @@ function PrintFloor({ floor, index }: { floor: FloorState; index: number }) {
           {/* Walls and the main plan (print is always light; dimmed when printing in Wiring mode), then the wiring layer */}
           <Group opacity={passes.dim ? ws.planDim / 100 : 1}>
             <WallsLayerContent geom={geom} palette={LIGHT} labels={wallLabels} unit={t('unit.m')} />
-            {layerContent(passes.main)}
+            <TraysLayerContent trays={passes.main.trays} palette={LIGHT} textSize={ws.trayText} />
           </Group>
+          {/* All trays before any furniture: sockets often sit in a tray */}
+          {passes.wiring && <TraysLayerContent trays={passes.wiring.trays} palette={LIGHT} textSize={ws.trayText} />}
+          <Group opacity={passes.dim ? ws.planDim / 100 : 1}>{layerContent(passes.main)}</Group>
           {passes.wiring && layerContent(passes.wiring)}
         </Layer>
       </Stage>

@@ -272,9 +272,26 @@ export function buildPlanSvg(floor: FloorState, sprites: Map<string, SpriteDef>,
     return out.join('');
   };
 
-  // Objects of one layer: furniture, cables, labels, texts, rulers
   const ws = opts.wiring ?? DEFAULT_WIRING;
   const dimBy = ws.planDim / 100;
+  // Cable trays of one layer — drawn for all layers before any furniture, since sockets often sit in a tray
+  const traysSvg = (v: LayerView, pal: Palette): string => {
+    const out: string[] = [];
+    for (const t of v.trays) {
+      const tp = pts(t.points);
+      const edge = t.color ?? pal.trayStroke;
+      out.push(`<polyline points="${tp}" fill="none" stroke="${edge}" stroke-width="${f(t.width + 2)}" stroke-linejoin="miter"/>`);
+      out.push(`<polyline points="${tp}" fill="none" stroke="${t.color ? mixHex(t.color, pal.paper, 0.18) : pal.trayFill}" stroke-width="${f(t.width)}" stroke-linejoin="miter"/>`);
+    }
+    for (const t of v.trays) {
+      if (!t.label) continue;
+      const mid = midAlong(t.points);
+      out.push(alongText(mid.p, mid.angle, t.label, ws.trayText, t.color ?? pal.trayStroke, pal.paper));
+    }
+    return out.join('');
+  };
+
+  // Objects of one layer: furniture, cables, labels, texts, rulers
   const objects = (v: LayerView, pal: Palette, faded: boolean): string => {
     const fade = (c: string) => (faded ? fadeHex(c, pal.paper, dimBy) : c);
     const out: string[] = [];
@@ -291,18 +308,6 @@ export function buildPlanSvg(floor: FloorState, sprites: Map<string, SpriteDef>,
         ? ` transform="translate(${f(it.flipX ? it.w : 0)} ${f(it.flipY ? it.h : 0)}) scale(${it.flipX ? -1 : 1} ${it.flipY ? -1 : 1})"`
         : '';
       out.push(`<g transform="${tr}"${faded ? ` opacity="${f(dimBy)}"` : ''}><g${flip}><svg x="0" y="0" width="${f(it.w)}" height="${f(it.h)}" viewBox="${sp.viewBox}" preserveAspectRatio="none" overflow="hidden"${sp.fill ? ` fill="${sp.fill}"` : ''}>${sp.body}</svg></g></g>`);
-    }
-    // Cable trays
-    for (const t of v.trays) {
-      const tp = pts(t.points);
-      const edge = t.color ?? pal.trayStroke;
-      out.push(`<polyline points="${tp}" fill="none" stroke="${edge}" stroke-width="${f(t.width + 2)}" stroke-linejoin="miter"/>`);
-      out.push(`<polyline points="${tp}" fill="none" stroke="${t.color ? mixHex(t.color, pal.paper, 0.18) : pal.trayFill}" stroke-width="${f(t.width)}" stroke-linejoin="miter"/>`);
-    }
-    for (const t of v.trays) {
-      if (!t.label) continue;
-      const mid = midAlong(t.points);
-      out.push(alongText(mid.p, mid.angle, t.label, ws.trayText, t.color ?? pal.trayStroke, pal.paper));
     }
     // Cables (above furniture): shared runs side by side, labels kept apart
     const cables = styleCables(v.cables, ws, itemNamer(floor.furniture, opts.lang));
@@ -338,7 +343,9 @@ export function buildPlanSvg(floor: FloorState, sprites: Map<string, SpriteDef>,
   // A dimmed plan is drawn in colours mixed with the paper (opacity on groups is not reliable in PDF)
   const passes = layerPasses(floor, layers);
   const mainPal = passes.dim ? fadePalette(p, dimBy) : p;
-  parts.push(walls(mainPal), objects(passes.main, mainPal, passes.dim));
+  parts.push(walls(mainPal), traysSvg(passes.main, mainPal));
+  if (passes.wiring) parts.push(traysSvg(passes.wiring, p));
+  parts.push(objects(passes.main, mainPal, passes.dim));
   if (passes.wiring) parts.push(objects(passes.wiring, p, false));
 
   const size = opts.pixelWidth && opts.pixelHeight ? ` width="${Math.round(opts.pixelWidth)}" height="${Math.round(opts.pixelHeight)}"` : ` width="${f(W)}" height="${f(Hh)}"`;

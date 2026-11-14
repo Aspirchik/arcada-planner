@@ -89,6 +89,13 @@ describe('export content', () => {
     expect(svg).not.toContain('Cat6');
   });
 
+  it('trays are drawn under the furniture (sockets in a tray stay visible)', () => {
+    const wf = { ...floor, furniture: [{ ...floor.furniture[1], x: 100, y: 40, w: 15, h: 15, layer: 'wiring' as const }],
+      trays: [{ id: 56, points: [{ x: 20, y: 47 }, { x: 300, y: 47 }], width: 20 }] };
+    const svg = buildPlanSvg(wf, new Map(), { ...base, area: 'room', layers: 'all' })!.svg;
+    expect(svg.indexOf(`stroke="${LIGHT.trayFill}"`)).toBeLessThan(svg.indexOf('<rect width="15"'));
+  });
+
   it('draws a ruler in its own colour', () => {
     const r = buildPlanSvg({ ...floor, dimensions: [{ ...floor.dimensions[0], color: '#188038' }] }, new Map(), { ...base, area: 'room' })!;
     expect(r.svg).toContain('stroke="#188038"');
