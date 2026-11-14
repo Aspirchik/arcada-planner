@@ -210,6 +210,18 @@ describe('selection and groups', () => {
   });
 });
 
+describe('simple view', () => {
+  it('is set for several items in one step and survives save / load', () => {
+    const a = st().addFurniture(chair, 0, 0);
+    const b = st().addFurniture(chair, 100, 0);
+    const before = undoLen();
+    st().updateFurnitureMany([a, b], { simple: true });
+    expect(undoLen()).toBe(before + 1);
+    st().load(st().save());
+    expect(floor().furniture.every(f => f.simple)).toBe(true);
+  });
+});
+
 describe('wall settings', () => {
   it('custom thickness is kept when splitting; length moves the free end', () => {
     const a = st().addNode(0, 0);

@@ -98,6 +98,15 @@ export function FurnitureLabels({ furniture, palette, showNames, lang, sizesPos 
   );
 }
 
+/** Simple view: the item as a plain rectangle (editor and print) */
+export function SimpleFurniture({ item, palette }: { item: FurnitureItem; palette: Palette }) {
+  return (
+    <Group x={item.x} y={item.y} rotation={item.rot}>
+      <Rect width={item.w} height={item.h} fill={palette.paper} stroke={palette.wallStroke} strokeWidth={1.5} />
+    </Group>
+  );
+}
+
 /** Dashed outline around an item that is part of a multi-selection */
 export function ItemOutline({ x, y, w, h, rot, palette, px }: { x: number; y: number; w: number; h: number; rot: number; palette: Palette; px: number }) {
   return (

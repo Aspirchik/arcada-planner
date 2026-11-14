@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 120" width="480" height="120">
+	<title>Wooden wardrobe with sliding doors, 4 sections (top view)</title>
+	<style>
+		.s0 { fill: #ffffff; stroke: #000000; stroke-width: 2.2 }
+		.s1 { fill: none; stroke: #000000; stroke-width: 1.1; stroke-linecap: round }
+		.s3 { fill: none; stroke: #000000; stroke-width: 1.1; stroke-dasharray: 5 3 }
+	</style>
+	<rect class="s0" x="2" y="2" width="476" height="116" rx="3"/>
+	<path class="s1" d="M10.0 18 C43.0 12 73.0 26 116.0 18"/>
+	<path class="s1" d="M10.0 70 C53.0 76 83.0 62 116.0 72"/>
+	<path class="s1" d="M128.0 18 C161.0 12 191.0 26 234.0 18"/>
+	<path class="s1" d="M128.0 70 C171.0 76 201.0 62 234.0 72"/>
+	<path class="s1" d="M246.0 18 C279.0 12 309.0 26 352.0 18"/>
+	<path class="s1" d="M246.0 70 C289.0 76 319.0 62 352.0 72"/>
+	<path class="s1" d="M364.0 18 C397.0 12 427.0 26 470.0 18"/>
+	<path class="s1" d="M364.0 70 C407.0 76 437.0 62 470.0 72"/>
+	<path class="s1" d="M122.0 4 V92"/>
+	<path class="s1" d="M240.0 4 V92"/>
+	<path class="s1" d="M358.0 4 V92"/>
+	<path class="s3" d="M8 46 H472"/>
+	<rect class="s0" x="4.0" y="96" width="121.0" height="9" rx="1"/>
+	<path class="s1" d="M50.5 100.5 H78.5 M50.5 100.5 l4 -3 M50.5 100.5 l4 3 M78.5 100.5 l-4 -3 M78.5 100.5 l-4 3"/>
+	<rect class="s0" x="119.0" y="106" width="124.0" height="9" rx="1"/>
+	<path class="s1" d="M167.0 110.5 H195.0 M167.0 110.5 l4 -3 M167.0 110.5 l4 3 M195.0 110.5 l-4 -3 M195.0 110.5 l-4 3"/>
+	<rect class="s0" x="237.0" y="96" width="124.0" height="9" rx="1"/>
+	<path class="s1" d="M285.0 100.5 H313.0 M285.0 100.5 l4 -3 M285.0 100.5 l4 3 M313.0 100.5 l-4 -3 M313.0 100.5 l-4 3"/>
+	<rect class="s0" x="355.0" y="106" width="121.0" height="9" rx="1"/>
+	<path class="s1" d="M401.5 110.5 H429.5 M401.5 110.5 l4 -3 M401.5 110.5 l4 3 M429.5 110.5 l-4 -3 M429.5 110.5 l-4 3"/>
+</svg>

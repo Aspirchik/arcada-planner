@@ -36,6 +36,8 @@ export interface FurnitureItem {
   labelBold?: boolean;
   /** null / missing = theme text colour */
   labelColor?: string | null;
+  /** Draw as a plain rectangle instead of the detailed picture */
+  simple?: boolean;
 }
 
 /** Free text note placed on the plan */

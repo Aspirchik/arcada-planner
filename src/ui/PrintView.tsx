@@ -8,7 +8,7 @@ import { LIGHT } from '../theme';
 import { WallsLayerContent } from './WallsLayer';
 import { getSprite, spriteSettled } from './images';
 import { DimensionsLayerContent } from './DimensionsLayer';
-import { FurnitureLabels, TextNotes, measureNote } from './AnnotationsLayer';
+import { FurnitureLabels, TextNotes, SimpleFurniture, measureNote } from './AnnotationsLayer';
 import { useT } from '../i18n';
 import type { FloorState } from '../types';
 import { useEffect, useMemo, useState } from 'react';
@@ -20,7 +20,7 @@ const PAD = 60;
 /** True once every sprite on the floor has loaded (or failed — those print as grey boxes) */
 function useFloorImages(floor: FloorState): boolean {
   const [, bump] = useState(0);
-  const paths = [...new Set(floor.furniture.map(f => f.path))];
+  const paths = [...new Set(floor.furniture.filter(f => !f.simple).map(f => f.path))];
   for (const p of paths) getSprite(p, false, () => bump(c => c + 1));
   return paths.every(p => spriteSettled(p, false));
 }
@@ -106,6 +106,7 @@ function PrintFloor({ floor, index }: { floor: FloorState; index: number }) {
 
           {/* Furniture */}
           {ready && sortByZ(floor.furniture).map(f => {
+            if (f.simple) return <SimpleFurniture key={f.id} item={f} palette={LIGHT} />;
             const img = getSprite(f.path, false, () => {});
             return (
               <Group key={f.id} x={f.x} y={f.y} rotation={f.rot}>

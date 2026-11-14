@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Trash2, BringToFront, SendToBack, Bold, Pencil, Type } from 'lucide-react';
+import { Trash2, BringToFront, SendToBack, Bold, Pencil, Type, Square, Image as ImageIcon } from 'lucide-react';
 import { EditorStage } from './ui/EditorStage';
 import { Toolbar } from './ui/Toolbar';
 import { FurniturePanel } from './ui/FurniturePanel';
@@ -159,8 +159,16 @@ function SelectionPanel() {
     ];
     if (pts.length === 0) return null;
     return (
-      <div className="selection-panel" style={at(pts, 200)}>
+      <div className="selection-panel" style={at(pts, 260)}>
         <span className="sel-title">{t('sel.count', { n: selection.length })}</span>
+        {floor.furniture.some(f => selection.includes(f.id)) && (
+          <>
+            <button className="sel-btn" title={t('sel.simple')}
+              onClick={() => st.updateFurnitureMany(selection, { simple: true })}><Square size={14} /></button>
+            <button className="sel-btn" title={t('sel.detailed')}
+              onClick={() => st.updateFurnitureMany(selection, { simple: undefined })}><ImageIcon size={14} /></button>
+          </>
+        )}
         <button className="sel-delete" title={t('sel.delete')} onClick={st.deleteSelected}><Trash2 size={14} /></button>
       </div>
     );
@@ -241,6 +249,10 @@ function SelectionPanel() {
         onCommit={v => st.updateFurniture(item.id, { h: v / 100 * METER })} /> {t('unit.cm')}</label>
       <label>{t('sel.r')} <NumField key={`r${item.id}`} value={rot}
         onCommit={v => st.updateFurniture(item.id, { rot: v })} /> °</label>
+      <button className={'sel-btn' + (item.simple ? ' active' : '')} title={item.simple ? t('sel.detailed') : t('sel.simple')}
+        onClick={() => st.updateFurniture(item.id, { simple: item.simple ? undefined : true })}>
+        {item.simple ? <ImageIcon size={14} /> : <Square size={14} />}
+      </button>
       <button className="sel-btn" title={t('sel.front')} onClick={() => st.bringToFront(item.id)}>
         <BringToFront size={14} />
       </button>

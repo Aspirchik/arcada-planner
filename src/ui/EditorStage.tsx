@@ -17,6 +17,7 @@ import { WallsLayerContent, AlongText, formatMeters } from './WallsLayer';
 import { DimensionLine, DimensionsLayerContent, SnapMarker } from './DimensionsLayer';
 import { FurnitureLabels, TextNotes, TextSelection, ItemOutline, measureNote } from './AnnotationsLayer';
 import { GapsLayerContent } from './GapsLayer';
+import { SimpleFurniture } from './AnnotationsLayer';
 import type { WallNode, Wall, FurnitureItem, Dimension, TextNote } from '../types';
 
 const TOOLBAR_W = 80;
@@ -1008,6 +1009,7 @@ function SelectionHandles({ item, scale, palette }: { item: FurnitureItem; scale
 
 // ── Purely visual furniture ───────────────────────────────────
 function FurnitureVisual({ item, palette, onImageLoaded }: { item: FurnitureItem; palette: Palette; onImageLoaded: () => void }) {
+  if (item.simple) return <SimpleFurniture item={item} palette={palette} />;
   const img = getSprite(item.path, palette.dark, onImageLoaded);
 
   return (

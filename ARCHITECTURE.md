@@ -271,6 +271,7 @@ Files use `.arcada` extension (JSON content). Current format version **2.1.0** (
 
 - `name` — English catalog name (shown translated when *Names* is on); `label` — the user's own label.
 - `labelPos` — `c`, `t`, `b`, `l`, `r`, `tl`, `tr`, `bl`, `br`; labels are drawn in the item's frame (they turn with it, flipped back when upside down). `labelSize` missing = fitted automatically.
+- `simple: true` draws the item as a plain rectangle (`SimpleFurniture`) instead of its sprite.
 - Wall `thickness` is optional; without it 20 cm (exterior) or 16 cm (interior) is used (`wallThickness()`).
 - `color: null` on a text means "theme text colour".
 

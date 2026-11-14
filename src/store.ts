@@ -84,6 +84,7 @@ export function parseProject(json: string): ParsedProject {
       ...(isNum(it.labelSize) && it.labelSize > 0 ? { labelSize: it.labelSize } : {}),
       ...(it.labelBold === true ? { labelBold: true } : {}),
       ...(typeof it.labelColor === 'string' ? { labelColor: it.labelColor } : {}),
+      ...(it.simple === true ? { simple: true } : {}),
     }));
 
     const dimensions = (Array.isArray(f.dimensions) ? f.dimensions : []).filter((dm): dm is Dimension =>
@@ -169,6 +170,8 @@ interface Store {
   addFurniture(item: CatalogItem, cx: number, cy: number): number;
   deleteFurniture(id: number): void;
   updateFurniture(id: number, changes: Partial<FurnitureItem>): void;
+  /** Same change for several items, one undo step */
+  updateFurnitureMany(ids: number[], changes: Partial<FurnitureItem>): void;
   bringToFront(id: number): void;
   sendToBack(id: number): void;
 
@@ -422,6 +425,10 @@ export const useStore = create<Store>((set, get) => {
 
     updateFurniture(id, changes) {
       upFloor(f => ({ ...f, furniture: f.furniture.map(it => it.id === id ? { ...it, ...changes } : it) }));
+    },
+
+    updateFurnitureMany(ids, changes) {
+      upFloor(f => ({ ...f, furniture: f.furniture.map(it => ids.includes(it.id) ? { ...it, ...changes } : it) }));
     },
 
     bringToFront(id) {
