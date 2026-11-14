@@ -95,7 +95,7 @@ export function parseProject(json: string): ParsedProject {
 
     const dimensions = (Array.isArray(f.dimensions) ? f.dimensions : []).filter((dm): dm is Dimension =>
       !!dm && isNum(dm.id) && isNum(dm.x1) && isNum(dm.y1) && isNum(dm.x2) && isNum(dm.y2)
-    ).map(dm => ({ id: dm.id, x1: dm.x1, y1: dm.y1, x2: dm.x2, y2: dm.y2 }));
+    ).map(dm => ({ id: dm.id, x1: dm.x1, y1: dm.y1, x2: dm.x2, y2: dm.y2, ...(typeof dm.color === 'string' ? { color: dm.color } : {}) }));
 
     const texts = (Array.isArray(f.texts) ? f.texts : []).filter((tx): tx is Record<string, unknown> & { id: number; x: number; y: number; text: string } =>
       !!tx && isNum(tx.id) && isNum(tx.x) && isNum(tx.y) && typeof tx.text === 'string'

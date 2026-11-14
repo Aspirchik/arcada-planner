@@ -9,7 +9,7 @@ import { AlongText, formatMeters } from './WallsLayer';
  * `px` = world units per screen pixel (1 / zoom), so the line looks the same at any zoom.
  */
 export function DimensionLine({ d, palette, unit, px, preview = false }: {
-  d: Pick<Dimension, 'x1' | 'y1' | 'x2' | 'y2'>;
+  d: Pick<Dimension, 'x1' | 'y1' | 'x2' | 'y2' | 'color'>;
   palette: Palette;
   unit: string;
   px: number;
@@ -20,7 +20,7 @@ export function DimensionLine({ d, palette, unit, px, preview = false }: {
   const ux = (d.x2 - d.x1) / len, uy = (d.y2 - d.y1) / len;
   const nx = -uy, ny = ux;
   const tick = 6 * px;
-  const color = preview ? palette.accent : palette.dimension;
+  const color = preview ? palette.accent : (d.color ?? palette.dimension);
   const angle = Math.atan2(uy, ux) * 180 / Math.PI;
   // Label sits on the side of the normal that points "up" on screen, so it is never under the line
   const side = ny > 0 || (ny === 0 && nx > 0) ? -1 : 1;

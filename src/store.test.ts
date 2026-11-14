@@ -142,9 +142,10 @@ describe('dimensions', () => {
   });
 
   it('are saved and loaded', () => {
-    st().addDimension(1, 2, 3, 4);
+    const id = st().addDimension(1, 2, 3, 4);
+    st().updateDimension(id, { color: '#1a73e8' });
     st().load(st().save());
-    expect(floor().dimensions).toEqual([expect.objectContaining({ x1: 1, y1: 2, x2: 3, y2: 4 })]);
+    expect(floor().dimensions).toEqual([expect.objectContaining({ x1: 1, y1: 2, x2: 3, y2: 4, color: '#1a73e8' })]);
   });
 });
 

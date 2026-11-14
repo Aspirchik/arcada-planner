@@ -69,6 +69,8 @@ export interface Dimension {
   y1: number;
   x2: number;
   y2: number;
+  /** Line colour; missing = theme ruler colour */
+  color?: string;
 }
 
 export interface FloorState {

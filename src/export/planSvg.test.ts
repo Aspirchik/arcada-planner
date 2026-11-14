@@ -55,6 +55,11 @@ describe('export content', () => {
     expect(r.svg).toContain('font-family="Roboto"');
   });
 
+  it('draws a ruler in its own colour', () => {
+    const r = buildPlanSvg({ ...floor, dimensions: [{ ...floor.dimensions[0], color: '#188038' }] }, new Map(), { ...base, area: 'room' })!;
+    expect(r.svg).toContain('stroke="#188038"');
+  });
+
   it('uses the chosen theme colours', () => {
     const r = buildPlanSvg(floor, new Map(), { ...base, area: 'room', palette: DARK })!;
     expect(r.svg).toContain(`fill="${DARK.paper}"`);

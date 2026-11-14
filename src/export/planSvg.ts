@@ -194,12 +194,12 @@ function furnitureLabels(item: FurnitureItem, o: Required<Pick<PlanSvgOptions, '
 }
 
 // ── Dimension line (same look as the canvas, px = 1) ────────────
-function dimension(d: { x1: number; y1: number; x2: number; y2: number }, palette: Palette, unit: string): string {
+function dimension(d: { x1: number; y1: number; x2: number; y2: number; color?: string }, palette: Palette, unit: string): string {
   const len = Math.hypot(d.x2 - d.x1, d.y2 - d.y1);
   if (len < 0.5) return '';
   const ux = (d.x2 - d.x1) / len, uy = (d.y2 - d.y1) / len;
   const nx = -uy, ny = ux;
-  const c = palette.dimension;
+  const c = d.color ?? palette.dimension;
   const arrow = Math.min(8, len / 3), half = arrow * 0.375;
   const head = (tx: number, ty: number, dir: 1 | -1) => {
     const bx = tx - ux * arrow * dir, by = ty - uy * arrow * dir;

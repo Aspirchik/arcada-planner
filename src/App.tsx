@@ -257,9 +257,10 @@ function SelectionPanel() {
   if (dim) {
     const len = Math.hypot(dim.x2 - dim.x1, dim.y2 - dim.y1);
     return (
-      <div className="selection-panel" style={at([{ x: dim.x1, y: dim.y1 }, { x: dim.x2, y: dim.y2 }], 240)}>
+      <div className="selection-panel" style={at([{ x: dim.x1, y: dim.y1 }, { x: dim.x2, y: dim.y2 }], 380)}>
         <label>{t('dim.length')} <NumField key={`d${dim.id}`} value={Math.round(len)} min={1}
           onCommit={v => st.setDimensionLength(dim.id, v)} /> {t('unit.cm')}</label>
+        <ColorSwatches value={dim.color} title={t('text.color')} onChange={c => st.updateDimension(dim.id, { color: c ?? undefined })} />
         <button className="sel-delete" title={t('sel.delete')} onClick={st.deleteSelected}><Trash2 size={14} /></button>
       </div>
     );
