@@ -92,7 +92,16 @@
       "name": "Network",
       "items": [
         { "name": "Switch 24", "width": 0.48, "height": 0.3,  "imagePath": "switch-24", "zIndex": 150 },
-        { "name": "Switch 48", "width": 0.48, "height": 0.35, "imagePath": "switch-48", "zIndex": 150 }
+        { "name": "Switch 48", "width": 0.48, "height": 0.35, "imagePath": "switch-48", "zIndex": 150 },
+        { "name": "Entry point", "width": 0.2,  "height": 0.2,  "imagePath": "entry-point", "zIndex": 200 },
+        { "name": "LAN socket",  "width": 0.15, "height": 0.15, "imagePath": "socket-lan", "zIndex": 200 }
+      ]
+    },
+    {
+      "name": "Electric",
+      "items": [
+        { "name": "Socket 230V",           "width": 0.15, "height": 0.15, "imagePath": "socket-230", "zIndex": 200 },
+        { "name": "Emergency socket 230V", "width": 0.15, "height": 0.15, "imagePath": "socket-230-emergency", "zIndex": 200 }
       ]
     },
     {

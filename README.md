@@ -45,7 +45,7 @@ Select several items with **Ctrl/Shift+click** or a **Ctrl/Shift+drag** frame an
 - **Ruler** — drag between two points to add a dimension line. Ends snap to wall corners and faces, furniture and other dimensions; hold **Shift** for straight / 45° lines. Dimensions stay on the plan and print with it.
 - **Text** — click anywhere to add a note, edit it in place; set size, rotation, bold and colour in the panel.
 - **Names** — show the (translated) catalog name on every item without its own label.
-- **Cable** — draw cable runs point by point anywhere (double-click or Enter to finish); each cable has its own colour, label, width and optional length. Network switches (24 / 48 ports) are in the *Network* category.
+- **Cable** — draw cable runs point by point anywhere (double-click or Enter to finish); each cable has its own colour, label, width and optional length. Cables sharing a run are drawn side by side so every one stays visible, and their labels avoid each other. Network switches (24 / 48 ports), cable entry points and LAN sockets are in the *Network* category, 230 V and emergency sockets in *Electric*.
 
 ### 6. Multiple floors
 

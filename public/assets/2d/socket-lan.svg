@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 60 60" width="60" height="60">
+	<title>Network (LAN, RJ45) socket</title>
+	<style>
+		.s0 { fill: #ffffff; stroke: #000000; stroke-width: 3 }
+		.s1 { fill: none; stroke: #000000; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round }
+		.s2 { fill: #000000; stroke: none }
+		.r0 { fill: #d0021b; stroke: #d0021b; stroke-width: 3 }
+		.r1 { fill: #ffffff; stroke: #d0021b; stroke-width: 3 }
+	</style>
+	<rect class="s0" x="3" y="3" width="54" height="54" rx="6"/>
+	<path class="s0" d="M16 20 H44 V40 H38 V44 H22 V40 H16 Z"/>
+	<path class="s1" d="M21 25 V30 M25.5 25 V30 M30 25 V30 M34.5 25 V30 M39 25 V30"/>
+</svg>

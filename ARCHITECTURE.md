@@ -277,6 +277,7 @@ Files use `.arcada` extension (JSON content). Current format version **2.1.0** (
 - Wall `thickness` is optional; without it 20 cm (exterior) or 16 cm (interior) is used (`wallThickness()`).
 - `color: null` on a text means "theme text colour".
 - `cables`: `{ id, points: [{x, y}], color, width?, label?, showLength? }` — polylines drawn above furniture (`ui/CablesLayer.tsx`, helpers in `geometry/cable.ts`). The Cable tool keeps the unfinished run in component state and stores it with one `addCable()` (one undo step).
+  Display paths come from `layoutCables()`: segments of different cables that are parallel, within 4 cm sideways and overlapping are put into lanes (ordered by cable list order, spaced by width + 1.5 cm) and joined with mitred corners. Labels are placed by `placeCableLabels()` along each path, avoiding earlier labels and `labelObstacles()` (wall length labels, small equipment).
 
 ---
 

@@ -18,7 +18,7 @@ import { DimensionLine, DimensionsLayerContent, SnapMarker } from './DimensionsL
 import { FurnitureLabels, TextNotes, TextSelection, ItemOutline, measureNote } from './AnnotationsLayer';
 import { GapsLayerContent } from './GapsLayer';
 import { CablesLayerContent, CableLine, CableHandles } from './CablesLayer';
-import { hitSegment, hitVertex, dedupePoints } from '../geometry/cable';
+import { hitSegment, hitVertex, dedupePoints, labelObstacles } from '../geometry/cable';
 import { SimpleFurniture } from './AnnotationsLayer';
 import type { WallNode, Wall, FurnitureItem, Dimension, TextNote, Cable } from '../types';
 
@@ -146,6 +146,7 @@ export function EditorStage() {
   const selection     = useStore(s => s.selection);
   const floor         = useStore(s => s.floors[s.fi]);
   const wallGeom      = useMemo(() => computeWallGeometry(floor.nodes, floor.walls), [floor.nodes, floor.walls]);
+  const cableAvoid    = useMemo(() => labelObstacles(wallGeom, wallLabels, floor.furniture), [wallGeom, wallLabels, floor.furniture]);
 
   function updateStage(x: number, y: number, s: number) {
     setPos({ x, y });
@@ -1022,7 +1023,7 @@ export function EditorStage() {
         ))}
 
         {/* Cables (above furniture) */}
-        <CablesLayerContent cables={floor.cables} palette={palette} unitM={t('unit.m')} />
+        <CablesLayerContent cables={floor.cables} palette={palette} unitM={t('unit.m')} avoid={cableAvoid} />
         {cableDraft && (
           <CableLine points={cablePreview ? [...cableDraft, cablePreview] : cableDraft} color={nextCableColor} palette={palette} dashed />
         )}

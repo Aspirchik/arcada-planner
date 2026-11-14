@@ -153,6 +153,7 @@
   "cat.Structural": "Konstrukcja",
   "cat.Wall": "Otwory",
   "cat.Network": "Sieć",
+  "cat.Electric": "Elektryka",
   "item.Double bed": "Łóżko podwójne",
   "item.Single bed": "Łóżko pojedyncze",
   "item.Bedside table": "Szafka nocna",
@@ -228,5 +229,9 @@
   "item.Window": "Okno",
   "item.Door": "Drzwi",
   "item.Switch 24": "Switch 24",
-  "item.Switch 48": "Switch 48"
+  "item.Switch 48": "Switch 48",
+  "item.Entry point": "Punkt wejścia",
+  "item.LAN socket": "Gniazdo LAN",
+  "item.Socket 230V": "Gniazdo 230V",
+  "item.Emergency socket 230V": "Gniazdo awar. 230V"
 }

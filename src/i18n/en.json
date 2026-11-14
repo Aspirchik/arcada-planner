@@ -153,6 +153,7 @@
   "cat.Structural": "Structure",
   "cat.Wall": "Openings",
   "cat.Network": "Network",
+  "cat.Electric": "Electric",
   "item.Double bed": "Double bed",
   "item.Single bed": "Single bed",
   "item.Bedside table": "Bedside table",
@@ -228,5 +229,9 @@
   "item.Window": "Window",
   "item.Door": "Door",
   "item.Switch 24": "Switch 24",
-  "item.Switch 48": "Switch 48"
+  "item.Switch 48": "Switch 48",
+  "item.Entry point": "Entry point",
+  "item.LAN socket": "LAN socket",
+  "item.Socket 230V": "Socket 230V",
+  "item.Emergency socket 230V": "Emergency 230V"
 }

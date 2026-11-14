@@ -9,6 +9,7 @@ import { WallsLayerContent } from './WallsLayer';
 import { getSprite, spriteSettled } from './images';
 import { DimensionsLayerContent } from './DimensionsLayer';
 import { CablesLayerContent } from './CablesLayer';
+import { labelObstacles } from '../geometry/cable';
 import { FurnitureLabels, TextNotes, SimpleFurniture, measureNote } from './AnnotationsLayer';
 import { useT } from '../i18n';
 import type { FloorState } from '../types';
@@ -123,7 +124,7 @@ function PrintFloor({ floor, index }: { floor: FloorState; index: number }) {
           })}
 
           {/* Cables */}
-          <CablesLayerContent cables={floor.cables} palette={LIGHT} unitM={t('unit.m')} />
+          <CablesLayerContent cables={floor.cables} palette={LIGHT} unitM={t('unit.m')} avoid={labelObstacles(geom, wallLabels, floor.furniture)} />
 
           {/* Labels and text notes */}
           {ready && <FurnitureLabels furniture={floor.furniture} palette={LIGHT} showNames={showNames} lang={lang} sizesPos={sizesPos} />}

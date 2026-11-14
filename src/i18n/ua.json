@@ -153,6 +153,7 @@
   "cat.Structural": "Конструкції",
   "cat.Wall": "Отвори",
   "cat.Network": "Мережа",
+  "cat.Electric": "Електрика",
   "item.Double bed": "Двоспальне ліжко",
   "item.Single bed": "Односпальне ліжко",
   "item.Bedside table": "Тумбочка",
@@ -228,5 +229,9 @@
   "item.Window": "Вікно",
   "item.Door": "Двері",
   "item.Switch 24": "Світч 24",
-  "item.Switch 48": "Світч 48"
+  "item.Switch 48": "Світч 48",
+  "item.Entry point": "Точка входу",
+  "item.LAN socket": "Розетка LAN",
+  "item.Socket 230V": "Розетка 230В",
+  "item.Emergency socket 230V": "Розетка авар. 230В"
 }

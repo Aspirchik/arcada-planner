@@ -26,6 +26,8 @@ function darkHex(hex: string): string {
   let h = hex.slice(1);
   if (h.length === 3) h = h.split('').map(c => c + c).join('');
   const r = parseInt(h.slice(0, 2), 16), g = parseInt(h.slice(2, 4), 16), b = parseInt(h.slice(4, 6), 16);
+  // Only greys are inverted; real colours (e.g. a red emergency socket) keep their meaning
+  if (Math.max(r, g, b) - Math.min(r, g, b) > 48) return hex;
   return '#' + hex2(darkChannel(r)) + hex2(darkChannel(g)) + hex2(darkChannel(b));
 }
 

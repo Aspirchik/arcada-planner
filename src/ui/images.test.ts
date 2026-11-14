@@ -12,6 +12,10 @@ describe('darkSvg', () => {
     expect(out).toContain('href="#abc"');
   });
 
+  it('keeps real colours (only greys are inverted)', () => {
+    expect(darkSvg('<svg fill="none"><path fill="#d0021b" stroke="#888888"/></svg>')).toContain('fill="#d0021b"');
+  });
+
   it('adds a recoloured default fill to the root element', () => {
     expect(darkSvg('<svg viewBox="0 0 1 1"><path d="M0 0"/></svg>')).toContain('<svg viewBox="0 0 1 1" fill="#e0e0e0">');
     expect(darkSvg('<svg fill="none"><path/></svg>')).toContain('<svg fill="none">');

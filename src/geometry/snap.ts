@@ -21,6 +21,8 @@ export function snapTargets(floor: FloorState, geom: FloorWallGeom, excludeDimId
   for (const f of floor.furniture) {
     const c = rectCorners(f.x, f.y, f.w, f.h, f.rot);
     points.push(...c);
+    // Centre — cables end in the middle of sockets, entry points, switches
+    points.push({ x: (c[0].x + c[2].x) / 2, y: (c[0].y + c[2].y) / 2 });
     for (let i = 0; i < 4; i++) segments.push({ a: c[i], b: c[(i + 1) % 4] });
   }
   for (const c of floor.cables) {

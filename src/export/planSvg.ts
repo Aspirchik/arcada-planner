@@ -10,7 +10,7 @@ import { rectCorners, type Pt } from '../geometry/hit';
 import { wallLabelSpecs, formatMeters, LABEL_SIZE } from '../geometry/wallLabels';
 import { sortByZ } from '../helpers';
 import { furnitureLabel, sizesCorner } from '../labels';
-import { midAlong, cableLabel } from '../geometry/cable';
+import { cableLabel, layoutCables, placeCableLabels, labelObstacles } from '../geometry/cable';
 
 export const EXPORT_FONT = 'Roboto';
 const LINE_HEIGHT = 1.2;
@@ -263,20 +263,19 @@ export function buildPlanSvg(floor: FloorState, sprites: Map<string, SpriteDef>,
     parts.push(`<g transform="${tr}"><g${flip}><svg x="0" y="0" width="${f(it.w)}" height="${f(it.h)}" viewBox="${sp.viewBox}" preserveAspectRatio="none" overflow="hidden"${sp.fill ? ` fill="${sp.fill}"` : ''}>${sp.body}</svg></g></g>`);
   }
 
-  // Cables (above furniture)
+  // Cables (above furniture): shared runs side by side, labels kept apart
+  const cablePaths = layoutCables(floor.cables);
+  const cableTexts = new Map(floor.cables.map(c => [c.id, cableLabel(c, opts.unitM)] as [number, string]).filter(([, l]) => !!l));
+  const cableSpots = placeCableLabels(floor.cables, cablePaths, cableTexts, LABEL_SIZE, t => measure(t, LABEL_SIZE, false),
+    labelObstacles(geom, opts.wallLabels, floor.furniture));
   for (const c of floor.cables) {
-    if (c.points.length < 2) continue;
-    const w = c.width ?? 3;
-    parts.push(`<polyline points="${pts(c.points)}" fill="none" stroke="${c.color}" stroke-width="${f(w)}" stroke-linecap="round" stroke-linejoin="round"/>`);
-    const label = cableLabel(c, opts.unitM);
-    if (label) {
-      const mid = midAlong(c.points);
-      const rad = mid.angle * Math.PI / 180;
-      const nx = -Math.sin(rad), ny = Math.cos(rad);
-      const side = ny > 0 || (ny === 0 && nx > 0) ? -1 : 1;
-      const off = w / 2 + LABEL_SIZE / 2 + 2;
-      parts.push(alongText({ x: mid.p.x + nx * off * side, y: mid.p.y + ny * off * side }, mid.angle, label, LABEL_SIZE, c.color, p.paper));
-    }
+    const path = cablePaths.get(c.id) ?? c.points;
+    if (path.length < 2) continue;
+    parts.push(`<polyline points="${pts(path)}" fill="none" stroke="${c.color}" stroke-width="${f(c.width ?? 3)}" stroke-linecap="round" stroke-linejoin="round"/>`);
+  }
+  for (const c of floor.cables) {
+    const label = cableTexts.get(c.id), at = cableSpots.get(c.id);
+    if (label && at) parts.push(alongText(at.p, at.angle, label, LABEL_SIZE, c.color, p.paper));
   }
 
   // Furniture labels and sizes
