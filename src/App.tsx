@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Trash2, BringToFront, SendToBack, Bold, Pencil, Type, Square, Image as ImageIcon, FlipHorizontal2, FlipVertical2, Ruler, Layers, Palette as PaletteIcon } from 'lucide-react';
+import { Trash2, BringToFront, SendToBack, Bold, Pencil, Type, Square, Image as ImageIcon, FlipHorizontal2, FlipVertical2, Ruler, Layers, Palette as PaletteIcon, GitBranchPlus, Link2, Unlink } from 'lucide-react';
 import { EditorStage } from './ui/EditorStage';
 import { Toolbar } from './ui/Toolbar';
 import { FurniturePanel } from './ui/FurniturePanel';
@@ -11,7 +11,8 @@ import { useStore, parseProject, isProjectEmpty } from './store';
 import { onLayer, styleCables, trayLayer } from './layers';
 import { itemNamer } from './labels';
 import { CableGroupChips } from './ui/GroupsPanel';
-import { cablesInTray, cableRoute, pathLength } from './geometry/cable';
+import { cablesInTray, cableRouteText, cableLength } from './geometry/cable';
+import { chainMembers, collapseToChains } from './geometry/chain';
 import { formatMeters } from './geometry/wallLabels';
 import { setNextCableColor } from './ui/EditorStage';
 import { usePrefs } from './prefs';
@@ -301,7 +302,8 @@ function SelectionPanel() {
   // ── Tray ──
   const tray = floor.trays.find(x => x.id === selectedId);
   if (tray) {
-    const inside = cablesInTray(tray, styleCables(floor.cables.filter(c => onLayer(c, 'wiring')), st.wiring, itemNamer(floor.furniture, lang)));
+    const styled = styleCables(floor.cables.filter(c => onLayer(c, 'wiring')), st.wiring, itemNamer(floor.furniture, lang));
+    const inside = collapseToChains(cablesInTray(tray, styled), styled).shown;
     return (
       <div className="selection-panel" style={at(tray.points, 460)}>
         <TextField key={`tl${tray.id}`} value={tray.label ?? ''} placeholder={t('sel.label')}
@@ -317,8 +319,8 @@ function SelectionPanel() {
           {inside.map(c => (
             <div key={c.id} className="tray-tip-row">
               <span className="tray-tip-dot" style={{ background: c.color }} />
-              <span>{[c.label, cableRoute(c)].filter(Boolean).join(' · ') || '—'}</span>
-              <span className="tray-tip-len">{formatMeters(pathLength(c.points), t('unit.m'))}</span>
+              <span>{[c.label, cableRouteText(c)].filter(Boolean).join(' · ') || '—'}</span>
+              <span className="tray-tip-len">{formatMeters(cableLength(c), t('unit.m'))}</span>
             </div>
           ))}
         </div>
@@ -332,25 +334,45 @@ function SelectionPanel() {
     const nameOf = itemNamer(floor.furniture, lang);
     const autoFrom = cable.fromLink ? nameOf(cable.fromLink.id) : undefined;
     const autoTo = cable.toLink ? nameOf(cable.toLink.id) : undefined;
+    // Chain: this cable and the cables continued from it / it continues
+    const layerCables = floor.cables.filter(c => onLayer(c, st.mode === 'wiring' ? 'wiring' : 'main'));
+    const chain = chainMembers(floor.cables, cable.id);
+    const chainView = chain.length > 1 ? collapseToChains([cable], styleCables(layerCables, st.wiring, nameOf)).shown[0] : undefined;
     return (
       <div className="selection-panel" style={at(cable.points, 620)}>
+        {chainView && (
+          <>
+            <span className="sel-chain" title={t('chain.title')}>{cableRouteText(chainView) || '—'} · {formatMeters(cableLength(chainView), t('unit.m'))}</span>
+            <div className="sel-break" />
+          </>
+        )}
         <TextField key={`cl${cable.id}`} value={cable.label ?? ''} placeholder={t('sel.label')}
           onCommit={v => st.updateCable(cable.id, { label: v.trim() || undefined })} />
-        <span className={'sel-link' + (cable.fromLink ? ' on' : '')} title={cable.fromLink ? t('cable.linked', { name: autoFrom ?? '?' }) : t('cable.notLinked')}>●</span>
-        <TextField key={`cf${cable.id}`} value={cable.from ?? ''} placeholder={autoFrom ?? t('cable.from')}
-          onCommit={v => st.updateCable(cable.id, { from: v.trim() || undefined })} />
+        {cable.parent === undefined && (
+          <>
+            <span className={'sel-link' + (cable.fromLink ? ' on' : '')} title={cable.fromLink ? t('cable.linked', { name: autoFrom ?? '?' }) : t('cable.notLinked')}>●</span>
+            <TextField key={`cf${cable.id}`} value={cable.from ?? ''} placeholder={autoFrom ?? t('cable.from')}
+              onCommit={v => st.updateCable(cable.id, { from: v.trim() || undefined })} />
+          </>
+        )}
         <span className="sel-arrow">→</span>
         <TextField key={`ct${cable.id}`} value={cable.to ?? ''} placeholder={autoTo ?? t('cable.to')}
           onCommit={v => st.updateCable(cable.id, { to: v.trim() || undefined })} />
         <span className={'sel-link' + (cable.toLink ? ' on' : '')} title={cable.toLink ? t('cable.linked', { name: autoTo ?? '?' }) : t('cable.notLinked')}>●</span>
         <div className="sel-break" />
         <ColorSwatches value={cable.color} title={t('text.color')} colors={CABLE_COLORS}
-          onChange={c => { if (c) { setNextCableColor(c); st.updateCable(cable.id, { color: c }); } }} />
+          onChange={c => { if (c) { setNextCableColor(c); st.updateChain(cable.id, { color: c }); } }} />
         <label>{t('cable.width')} <NumField key={`cw${cable.id}`} value={cable.width ?? st.wiring.cableWidth} min={0.5}
-          onCommit={v => st.updateCable(cable.id, { width: v })} /> {t('unit.cm')}</label>
+          onCommit={v => st.updateChain(cable.id, { width: v })} /> {t('unit.cm')}</label>
         <button className={'sel-btn' + (cable.showLength ? ' active' : '')} title={t('cable.showLength')}
-          onClick={() => st.updateCable(cable.id, { showLength: cable.showLength ? undefined : true })}><Ruler size={14} /></button>
-        <LayerButton id={cable.id} layer={cable.layer} />
+          onClick={() => st.updateChain(cable.id, { showLength: cable.showLength ? undefined : true })}><Ruler size={14} /></button>
+        <LayerButton ids={chain} layer={cable.layer} />
+        <button className="sel-btn" title={t('chain.continue')} onClick={() => st.setChainPick({ id: cable.id, mode: 'continue' })}>
+          <GitBranchPlus size={14} />
+        </button>
+        {cable.parent === undefined
+          ? <button className="sel-btn" title={t('chain.attach')} onClick={() => st.setChainPick({ id: cable.id, mode: 'attach' })}><Link2 size={14} /></button>
+          : <button className="sel-btn" title={t('chain.detach')} onClick={() => st.detachCable(cable.id)}><Unlink size={14} /></button>}
         <button className="sel-delete" title={t('sel.delete')} onClick={st.deleteSelected}><Trash2 size={14} /></button>
         <div className="sel-break" />
         <span className="sel-title">{t('cable.groups')}</span>

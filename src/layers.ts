@@ -1,5 +1,6 @@
 /** Plan layers: the main plan and the wiring layer (pure) */
 import type { FloorState, FurnitureItem, TextNote, Dimension, Cable, Tray, WiringSettings, Layer } from './types';
+import { chainInfos, chainRoots, chainRoute } from './geometry/chain';
 
 export interface LayerView {
   furniture: FurnitureItem[];
@@ -44,7 +45,14 @@ export function trayLayer(t: { layer?: 'plan' | 'both' }): Layer | undefined {
  * when From / To is empty, the name of the item the end is connected to.
  */
 export function styleCables(cables: Cable[], ws: WiringSettings, nameOf?: (id: number) => string | undefined): Cable[] {
+  // Chains: the first cable carries the route through all consumers and the total length; the others only their own label
+  const infos = chainInfos(cables, nameOf);
+  const roots = chainRoots(cables);
   return cables.map(c => {
+    const info = infos.get(c.id);
+    if (info) return { ...c, width: c.width ?? ws.cableWidth, ...(ws.cableLengths ? { showLength: true } : {}), route: chainRoute(info), totalLength: info.length };
+    const root = roots.get(c.id);
+    if (root !== undefined && root !== c.id) return { ...c, width: c.width ?? ws.cableWidth, showLength: false, route: '' };
     const from = c.from || (c.fromLink && nameOf?.(c.fromLink.id));
     const to = c.to || (c.toLink && nameOf?.(c.toLink.id));
     return {

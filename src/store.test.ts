@@ -392,6 +392,33 @@ describe('cable connections and groups', () => {
     expect(floor().trays[0].layer).toBe('both');
   });
 
+  it('continue, attach, detach and delete keep the chain consistent', () => {
+    const a = st().addCable([{ x: 0, y: 0 }, { x: 300, y: 0 }], '#d0021b');
+    st().updateCable(a, { width: 6 });
+    const b = st().addCable([{ x: 100, y: 0 }, { x: 100, y: 80 }], '#000', a);
+    expect(floor().cables.find(c => c.id === b)).toMatchObject({ parent: a, color: '#d0021b', width: 6 });
+    const c = st().addCable([{ x: 200, y: 5 }, { x: 200, y: 80 }], '#188038');
+    expect(st().attachCable(c, a)).toBe(true);
+    expect(floor().cables.find(x => x.id === c)).toMatchObject({ parent: a, color: '#d0021b' });
+    expect(floor().cables.find(x => x.id === c)!.points[0]).toEqual({ x: 200, y: 0 });
+    // no cycles
+    expect(st().attachCable(a, b)).toBe(false);
+    st().updateChain(b, { color: '#1a73e8' });
+    expect(floor().cables.every(x => x.color === '#1a73e8')).toBe(true);
+    const g = st().addGroup('local', 'Emergency');
+    st().toggleCableGroup(c, g);
+    expect(floor().cables.every(x => x.groups?.includes(g))).toBe(true);
+    // moving the parent keeps the continuations on it
+    st().updateCable(a, { points: [{ x: 0, y: 20 }, { x: 300, y: 20 }] });
+    expect(floor().cables.find(x => x.id === b)!.points[0]).toEqual({ x: 100, y: 20 });
+    st().detachCable(c);
+    expect(floor().cables.find(x => x.id === c)!.parent).toBeUndefined();
+    st().deleteCable(a);
+    expect(floor().cables.find(x => x.id === b)!.parent).toBeUndefined();
+    st().load(st().save());
+    expect(floor().cables).toHaveLength(2);
+  });
+
   it('tidy is one undo step and keeps cable ends', () => {
     st().addCable([{ x: 0, y: 0 }, { x: 200, y: 80 }], '#000');
     const before = floor().cables[0].points;

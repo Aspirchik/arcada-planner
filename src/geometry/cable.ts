@@ -37,11 +37,17 @@ export function midAlong(points: Pt[]): { p: Pt; angle: number } {
 export function cableLabel(c: Cable, unitM: string): string {
   const parts: string[] = [];
   if (c.label?.trim()) parts.push(c.label.trim());
-  const route = cableRoute(c);
+  const route = c.route !== undefined ? c.route : cableRoute(c);
   if (route) parts.push(route);
-  if (c.showLength) parts.push(formatMeters(pathLength(c.points), unitM));
+  if (c.showLength) parts.push(formatMeters(cableLength(c), unitM));
   return parts.join(' · ');
 }
+
+/** Length shown for a cable: the whole chain for its first cable */
+export const cableLength = (c: Cable) => c.totalLength ?? pathLength(c.points);
+
+/** Route shown for a cable (the chain route on its first cable, nothing on the others) */
+export const cableRouteText = (c: Cable) => (c.route !== undefined ? c.route : cableRoute(c));
 
 /** Index of the segment (i → i+1) closest to p within `thr`, or -1 */
 export function hitSegment(points: Pt[], p: Pt, thr: number): number {

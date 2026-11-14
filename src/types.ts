@@ -117,6 +117,11 @@ export interface Cable {
   toLink?: CableLink;
   /** Cable groups (local to the floor or common to the project) this cable belongs to */
   groups?: number[];
+  /** Cable this one continues from (it starts on that cable): together they are one chain */
+  parent?: number;
+  /** Display only (set by styleCables, never saved): route text of the chain and its total length */
+  route?: string;
+  totalLength?: number;
   layer?: Layer;
 }
 

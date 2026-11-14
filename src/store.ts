@@ -2,7 +2,8 @@ import { create } from 'zustand';
 import { Tool, METER } from './constants';
 import type { FurnitureItem, FloorState, CatalogItem, Dimension, TextNote, Wall, LabelPos, Cable, Tray, Layer, WiringSettings, CableGroup, CableLink } from './types';
 import { relink, syncLinks } from './geometry/links';
-import { tidyCables } from './geometry/tidy';
+import { tidyCables, orthogonal, simplify } from './geometry/tidy';
+import { chainMembers, subtree, projectOnPath } from './geometry/chain';
 import { DEFAULT_WIRING, onLayer, trayLayer } from './layers';
 import { translate, type TKey, type TParams } from './i18n';
 
@@ -172,6 +173,7 @@ export function parseProject(json: string): ParsedProject {
       ...(linkOf(c.fromLink) ? { fromLink: linkOf(c.fromLink) } : {}),
       ...(linkOf(c.toLink) ? { toLink: linkOf(c.toLink) } : {}),
       ...(Array.isArray(c.groups) && c.groups.some(isNum) ? { groups: c.groups.filter(isNum) } : {}),
+      ...(isNum(c.parent) && c.parent !== c.id ? { parent: c.parent } : {}),
       ...layerOf(c),
     })).filter(c => c.points.length >= 2);
 
@@ -297,7 +299,17 @@ interface Store {
   /** Keeps the first end, moves the second along the line */
   setDimensionLength(id: number, length: number): void;
 
-  addCable(points: { x: number; y: number }[], color: string): number;
+  /** New cable; with `parent` it continues that cable (same colour, width, layer and groups) */
+  addCable(points: { x: number; y: number }[], color: string, parent?: number): number;
+  /** Makes the cable a continuation of another one: its start moves onto that cable, the style is taken from it */
+  attachCable(id: number, parentId: number): boolean;
+  /** Makes the cable a separate run again */
+  detachCable(id: number): void;
+  /** Same change for every cable of the chain */
+  updateChain(id: number, changes: Partial<Pick<Cable, 'color' | 'width' | 'showLength'>>): void;
+  /** Waiting for a click on a cable: where to continue it from, or which cable to attach it to */
+  chainPick: { id: number; mode: 'continue' | 'attach' } | null;
+  setChainPick(pick: { id: number; mode: 'continue' | 'attach' } | null): void;
   updateCable(id: number, changes: Partial<Omit<Cable, 'id'>>): void;
   deleteCable(id: number): void;
   addTray(points: { x: number; y: number }[], width?: number): number;
@@ -371,12 +383,22 @@ export const useStore = create<Store>((set, get) => {
     try { return fn(); } finally { endGesture(); }
   }
 
-  /** Cable with its end links updated: ends on an item of the current layer get connected to it */
+  /** Cable with its end links updated: ends on an item get connected to it */
   function withLinks(c: Cable, f: FloorState): Cable {
-    const items = f.furniture.filter(it => onLayer(it, get().mode === 'wiring' ? 'wiring' : 'main'));
-    const { fromLink, toLink } = relink(c, items);
+    // Any item can be a consumer (e.g. a desk of the main plan seen under the wiring); the smallest one under the end wins
+    const { fromLink, toLink } = relink(c, f.furniture);
     const { fromLink: _a, toLink: _b, ...rest } = c;
-    return { ...rest, ...(fromLink ? { fromLink } : {}), ...(toLink ? { toLink } : {}) };
+    // A continuation starts on its parent cable, not on an item
+    return { ...rest, ...(fromLink && c.parent === undefined ? { fromLink } : {}), ...(toLink ? { toLink } : {}) };
+  }
+
+  /** What a continuation takes from the cable it continues */
+  function chainStyle(up: Cable): Partial<Cable> {
+    return {
+      ...(up.width !== undefined ? { width: up.width } : {}),
+      ...(up.groups ? { groups: [...up.groups] } : {}),
+      ...(up.layer ? { layer: up.layer } : {}),
+    };
   }
 
   /** Layer for new objects: the wiring layer while in Wiring mode */
@@ -416,6 +438,8 @@ export const useStore = create<Store>((set, get) => {
     wiring: DEFAULT_WIRING,
     commonGroups: [],
     litGroups: [],
+    chainPick: null,
+    setChainPick: (chainPick) => set({ chainPick }),
 
     setTool: (tool) => set({ tool, wallStartId: null, selectedId: null, selection: [] }),
     setSnapSize: (snapSize) => set({ snapSize }),
@@ -428,7 +452,7 @@ export const useStore = create<Store>((set, get) => {
     setWallStart: (id) => set({ wallStartId: id }),
     setStageTransform: (x, y, scale) => set({ stageX: x, stageY: y, stageScale: scale }),
     setTextEdit: (textEdit) => set({ textEdit }),
-    setMode: (mode) => set({ mode, selectedId: null, selection: [], wallStartId: null, textEdit: null }),
+    setMode: (mode) => set({ mode, selectedId: null, selection: [], wallStartId: null, textEdit: null, chainPick: null }),
     setLayer(id, layer) {
       get().setLayerMany([id], layer);
     },
@@ -488,12 +512,15 @@ export const useStore = create<Store>((set, get) => {
       set(s => ({ litGroups: s.litGroups.filter(g => g !== id) }));
     },
     toggleCableGroup(cableId, groupId) {
-      upFloor(f => ({ ...f, cables: f.cables.map(c => {
-        if (c.id !== cableId) return c;
-        const has = c.groups?.includes(groupId);
-        const groups = has ? c.groups!.filter(g => g !== groupId) : [...(c.groups ?? []), groupId];
-        return { ...c, groups: groups.length ? groups : undefined };
-      }) }));
+      upFloor(f => {
+        const has = !!f.cables.find(c => c.id === cableId)?.groups?.includes(groupId);
+        const ids = new Set(chainMembers(f.cables, cableId));
+        return { ...f, cables: f.cables.map(c => {
+          if (!ids.has(c.id)) return c;
+          const groups = has ? (c.groups ?? []).filter(g => g !== groupId) : [...new Set([...(c.groups ?? []), groupId])];
+          return { ...c, groups: groups.length ? groups : undefined };
+        }) };
+      });
     },
     toggleLit: (groupId) => set(s => ({ litGroups: s.litGroups.includes(groupId) ? s.litGroups.filter(g => g !== groupId) : [...s.litGroups, groupId] })),
 
@@ -503,6 +530,21 @@ export const useStore = create<Store>((set, get) => {
         const mine = f.cables.filter(c => onLayer(c, mode === 'wiring' ? 'wiring' : 'main'));
         if (mine.length === 0) return f;
         const paths = tidyCables(mine, mode === 'wiring' ? f.trays : []);
+        // Continuations start on the new path of their parent (parents first)
+        const done = new Set<number>();
+        const place = (c: Cable) => {
+          if (done.has(c.id)) return;
+          done.add(c.id);
+          const up = c.parent !== undefined ? mine.find(x => x.id === c.parent) : undefined;
+          const own = paths.get(c.id);
+          if (!up || !own) return;
+          place(up);
+          const upPath = paths.get(up.id) ?? up.points;
+          if (projectOnPath(up.points, c.points[0]).dist > 1) return;
+          const start = projectOnPath(upPath, own[0]).p;
+          paths.set(c.id, simplify(orthogonal([start, ...own.slice(1)])));
+        };
+        mine.forEach(place);
         let changed = false;
         const cables = f.cables.map(c => {
           const p = paths.get(c.id);
@@ -720,25 +762,72 @@ export const useStore = create<Store>((set, get) => {
       get().updateDimension(id, { x2: d.x1 + ux * length, y2: d.y1 + uy * length });
     },
 
-    addCable(points, color) {
+    addCable(points, color, parent) {
       const id = newId();
       upFloor(f => {
-        const c: Cable = { id, points: points.map(p => ({ x: p.x, y: p.y })), color, ...curLayer() };
+        const up = parent !== undefined ? f.cables.find(c => c.id === parent) : undefined;
+        const c: Cable = up
+          ? { id, points: points.map(p => ({ x: p.x, y: p.y })), color: up.color, parent: up.id, ...chainStyle(up) }
+          : { id, points: points.map(p => ({ x: p.x, y: p.y })), color, ...curLayer() };
         return { ...f, cables: [...f.cables, withLinks(c, f)] };
       });
       return id;
     },
 
     updateCable(id, changes) {
-      upFloor(f => ({ ...f, cables: f.cables.map(c => {
-        if (c.id !== id) return c;
-        const next = { ...c, ...changes };
-        return changes.points ? withLinks(next, f) : next;
+      upFloor(f => {
+        const old = f.cables.find(c => c.id === id);
+        let cables = f.cables.map(c => {
+          if (c.id !== id) return c;
+          const next = { ...c, ...changes };
+          return changes.points ? withLinks(next, f) : next;
+        });
+        // Continuations that started on the moved cable stay on it
+        if (old && changes.points) {
+          const now = cables.find(c => c.id === id)!;
+          cables = cables.map(k => {
+            if (k.parent !== id || k.points.length < 2) return k;
+            const at = projectOnPath(old.points, k.points[0]);
+            if (at.dist > 1) return k;
+            const p = projectOnPath(now.points, k.points[0]).p;
+            return { ...k, points: [p, ...k.points.slice(1)] };
+          });
+        }
+        return { ...f, cables };
+      });
+    },
+
+    attachCable(id, parentId) {
+      const f = get().floors[get().fi];
+      const c = f.cables.find(x => x.id === id), up = f.cables.find(x => x.id === parentId);
+      if (!c || !up || subtree(f.cables, id).has(parentId)) return false;
+      const start = projectOnPath(up.points, c.points[0]).p;
+      const members = new Set(subtree(f.cables, id));
+      upFloor(fl => ({ ...fl, cables: fl.cables.map(x => {
+        if (x.id === id) {
+          const { fromLink: _l, ...rest } = x;
+          return { ...rest, parent: parentId, color: up.color, ...chainStyle(up), points: [start, ...x.points.slice(1)] };
+        }
+        return members.has(x.id) ? { ...x, color: up.color, ...chainStyle(up) } : x;
       }) }));
+      return true;
+    },
+
+    detachCable(id) {
+      upFloor(f => ({ ...f, cables: f.cables.map(c => (c.id === id ? { ...c, parent: undefined } : c)) }));
+    },
+
+    updateChain(id, changes) {
+      const ids = new Set(chainMembers(get().floors[get().fi].cables, id));
+      upFloor(f => ({ ...f, cables: f.cables.map(c => (ids.has(c.id) ? { ...c, ...changes } : c)) }));
     },
 
     deleteCable(id) {
-      upFloor(f => ({ ...f, cables: f.cables.filter(c => c.id !== id) }));
+      // Continuations of a deleted cable continue its parent (or become separate runs)
+      upFloor(f => {
+        const gone = f.cables.find(c => c.id === id);
+        return { ...f, cables: f.cables.filter(c => c.id !== id).map(c => (c.parent === id ? { ...c, parent: gone?.parent } : c)) };
+      });
     },
 
     addTray(points, width = get().wiring.trayWidth) {
@@ -901,6 +990,7 @@ export const useStore = create<Store>((set, get) => {
         wiring: p.wiring,
         commonGroups: p.groups,
         litGroups: [],
+        chainPick: null,
         dirty: false,
       });
     },

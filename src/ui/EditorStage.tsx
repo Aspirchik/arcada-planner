@@ -18,10 +18,11 @@ import { DimensionLine, DimensionsLayerContent, SnapMarker } from './DimensionsL
 import { FurnitureLabels, TextNotes, TextSelection, ItemOutline, measureNote } from './AnnotationsLayer';
 import { GapsLayerContent } from './GapsLayer';
 import { CablesLayerContent, CableLine, CableHandles, TraysLayerContent } from './CablesLayer';
-import { hitSegment, hitVertex, dedupePoints, labelObstacles, layoutCables, distToPath, cablesInTray, cableRoute, pathLength } from '../geometry/cable';
+import { hitSegment, hitVertex, dedupePoints, labelObstacles, layoutCables, distToPath, cablesInTray, cableRouteText, cableLength } from '../geometry/cable';
 import { SimpleFurniture } from './AnnotationsLayer';
 import type { WallNode, Wall, FurnitureItem, Dimension, TextNote, Cable, Tray } from '../types';
 import { layerView, styleCables, cablesInGroups } from '../layers';
+import { chainMembers, projectOnPath, collapseToChains } from '../geometry/chain';
 import { itemNamer } from '../labels';
 
 const TOOLBAR_W = 80;
@@ -39,6 +40,8 @@ const DIM_LINE_HIT_PX = 6;
 /** Items closer than this (screen px) to a wall / neighbour snap flush against it */
 const FLUSH_SNAP_PX = 10;
 const CABLE_HIT_PX = 6;
+/** How far from a cable a click still picks the point to continue it from (screen px) */
+const CHAIN_PICK_PX = 30;
 const CABLE_VERTEX_HIT_PX = 9;
 
 /** Colour for the next new cable (the last one chosen) */
@@ -117,17 +120,22 @@ export function EditorStage() {
   const [cableDraft, setCableDraftState] = useState<Pt[] | null>(null);
   const cableDraftRef = useRef<Pt[] | null>(null);
   const [cablePreview, setCablePreview] = useState<Pt | null>(null);
-  function setCableDraft(d: Pt[] | null) { cableDraftRef.current = d; setCableDraftState(d); if (!d) setCablePreview(null); }
+  function setCableDraft(d: Pt[] | null) { cableDraftRef.current = d; setCableDraftState(d); if (!d) { setCablePreview(null); draftParentRef.current = null; } }
+  /** Cable the draft continues (it starts on that cable), or null */
+  const draftParentRef = useRef<number | null>(null);
+  /** Set when switching to the cable tool with a draft already started, so the tool change keeps it */
+  const keepDraftRef = useRef(false);
 
   /** Ends the cable being drawn: saves it if it has at least two distinct points */
   function finishCableDraft() {
     const draft = cableDraftRef.current;
+    const parent = draftParentRef.current;
     setCableDraft(null);
     if (!draft) return;
     const pts = dedupePoints(draft);
     if (pts.length >= 2) {
       const st = useStore.getState();
-      const id = st.tool === Tool.Tray ? st.addTray(pts) : st.addCable(pts, nextCableColor);
+      const id = st.tool === Tool.Tray ? st.addTray(pts) : st.addCable(pts, nextCableColor, parent ?? undefined);
       st.select(id);
     }
   }
@@ -235,6 +243,7 @@ export function EditorStage() {
         if (moves.length) { e.preventDefault(); st.moveItems(moves); }
       }
       if (cableDraftRef.current && (e.code === 'Enter' || e.code === 'NumpadEnter')) { e.preventDefault(); finishCableDraft(); return; }
+      if (e.code === 'Escape' && st.chainPick) { st.setChainPick(null); return; }
       if (e.code === 'Escape' && cableDraftRef.current) { setCableDraft(null); return; }
       if (e.code === 'Escape') { st.setWallStart(null); st.select(null); st.setTool(Tool.Select); setMeasurePreview(null); setSnapMark(null); }
     };
@@ -245,7 +254,10 @@ export function EditorStage() {
   }, []);
 
   // Leaving the Cable tool drops an unfinished cable
-  useEffect(() => { setCableDraft(null); }, [tool]);
+  useEffect(() => {
+    if (keepDraftRef.current) { keepDraftRef.current = false; return; }
+    setCableDraft(null);
+  }, [tool]);
 
   // Safety net: pointer released outside the canvas — finish the gesture so undo keeps working
   useEffect(() => {
@@ -457,6 +469,35 @@ export function EditorStage() {
     if (useStore.getState().textEdit) return;
     // Everything that happens until pointer-up is one undo step
     store.beginGesture();
+
+    // Waiting for a click on a cable: continue it from that point, or attach the selected cable to it
+    const pick = useStore.getState().chainPick;
+    if (pick) {
+      if (pick.mode === 'continue') {
+        const ids = new Set(chainMembers(act.cables, pick.id));
+        let best: { c: Cable; p: Pt; d: number } | null = null;
+        for (const c of act.cables) {
+          if (!ids.has(c.id)) continue;
+          const pr = projectOnPath(c.points, pt);
+          if (!best || pr.dist < best.d) best = { c, p: { x: Math.round(pr.p.x * 10) / 10, y: Math.round(pr.p.y * 10) / 10 }, d: pr.dist };
+        }
+        if (best && best.d <= CHAIN_PICK_PX / scale) {
+          store.setChainPick(null);
+          setNextCableColor(best.c.color);
+          if (tool !== Tool.Cable) { keepDraftRef.current = true; store.setTool(Tool.Cable); }
+          setCableDraft([best.p]);
+          draftParentRef.current = best.c.id;
+          setCablePreview(best.p);
+        }
+        return;
+      }
+      const cab = hitCable(pt.x, pt.y);
+      if (cab && cab.cable.id !== pick.id && store.attachCable(pick.id, cab.cable.id)) {
+        store.setChainPick(null);
+        store.select(pick.id);
+      }
+      return;
+    }
 
     // Remove tool
     if (tool === Tool.Remove) {
@@ -1059,7 +1100,10 @@ export function EditorStage() {
   const selectedCable = selectedId !== null ? act.cables.find(c => c.id === selectedId) : null;
   const selectedTray = selectedId !== null ? act.trays.find(t => t.id === selectedId) : null;
   const hoveredTray = hoverTray ? act.trays.find(t => t.id === hoverTray.id) ?? null : null;
-  const trayCables = hoveredTray ? cablesInTray(hoveredTray, act.cables) : null;
+  // A chain is listed once (its route through all consumers); all its cables light up
+  const trayHits = hoveredTray ? collapseToChains(cablesInTray(hoveredTray, act.cables), act.cables) : null;
+  const trayCables = trayHits?.shown ?? null;
+  const chainPick = store.chainPick;
   const multi = selection.length > 1;
   const onImageLoaded = () => forceRender(c => c + 1);
   const px = 1 / scale;
@@ -1073,11 +1117,14 @@ export function EditorStage() {
         {trayCables.map(c => (
           <div key={c.id} className="tray-tip-row">
             <span className="tray-tip-dot" style={{ background: c.color }} />
-            <span>{[c.label, cableRoute(c)].filter(Boolean).join(' · ') || '—'}</span>
-            <span className="tray-tip-len">{formatMeters(pathLength(c.points), t('unit.m'))}</span>
+            <span>{[c.label, cableRouteText(c)].filter(Boolean).join(' · ') || '—'}</span>
+            <span className="tray-tip-len">{formatMeters(cableLength(c), t('unit.m'))}</span>
           </div>
         ))}
       </div>
+    )}
+    {chainPick && (
+      <div className="pick-hint">{t(chainPick.mode === 'continue' ? 'chain.pickContinue' : 'chain.pickAttach')}</div>
     )}
     <Stage
       ref={stageRef}
@@ -1156,7 +1203,7 @@ export function EditorStage() {
         {/* Cables (above furniture) */}
         <CablesLayerContent cables={act.cables} palette={palette} unitM={t('unit.m')} avoid={cableAvoid}
           labelSize={ws.cableText} showLabels={ws.cableLabels}
-          highlight={trayCables ? new Set(trayCables.map(c => c.id)) : litCables ?? undefined} />
+          highlight={trayHits ? trayHits.ids : litCables ?? undefined} />
         {cableDraft && (
           <CableLine points={cablePreview ? [...cableDraft, cablePreview] : cableDraft}
             color={tool === Tool.Tray ? palette.accent : nextCableColor}
