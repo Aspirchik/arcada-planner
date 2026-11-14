@@ -22,21 +22,37 @@ Technical documentation for developers who want to understand, modify, or extend
 ```
 arcada-v2/
 ├── public/
-│   └── assets/2d/           # SVG furniture sprites (80+ items)
+│   └── assets/2d/            # SVG furniture sprites
 ├── src/
 │   ├── main.tsx              # Entry point, renders <App />
-│   ├── App.tsx               # Root layout: EditorStage + Toolbar + FurniturePanel + SelectionPanel + PrintView
-│   ├── App.css               # All styles (single CSS file, no CSS modules)
-│   ├── constants.ts          # METER, WALL_THICKNESS, WORLD size, Tool enum
-│   ├── types.ts              # WallNode, Wall, FurnitureItem, FloorState, CatalogItem
-│   ├── helpers.ts            # Geometry utilities: dist, angleDeg, localToWorld, worldToLocal
-│   ├── store.ts              # Zustand store — single source of truth
-│   ├── catalog.json          # Furniture catalog data (categories + items)
+│   ├── App.tsx               # Root layout + SelectionPanel (furniture / text), RestoreDialog, theme & language on <html>
+│   ├── App.css               # All styles; colours are CSS variables with a dark set under [data-theme="dark"]
+│   ├── constants.ts          # METER, WALL_THICKNESS, WORLD size, AUTOSAVE_KEY, Tool enum
+│   ├── types.ts              # WallNode, Wall, FurnitureItem, Dimension, TextNote, FloorState, CatalogItem
+│   ├── helpers.ts            # localToWorld, worldToLocal, sortByZ
+│   ├── store.ts              # Zustand store (project data, undo, selection) + parseProject()
+│   ├── prefs.ts              # UI preferences remembered in the browser: language, theme, label modes, gaps
+│   ├── theme.ts              # Canvas palettes (LIGHT / DARK), useIsDark(), usePalette()
+│   ├── catalog.json          # Furniture catalog data (categories + items, English names)
+│   ├── geometry/             # Pure geometry, no React — covered by tests
+│   │   ├── hit.ts            # dist, pointInRotatedRect, distToSegment, rectCorners
+│   │   ├── walls.ts          # Wall faces with mitred joints, inside lengths, room detection
+│   │   ├── raycast.ts        # Rays to obstacles, free space (gaps) around an item
+│   │   └── snap.ts           # Ruler snapping targets, 45° constraint
+│   ├── i18n/                 # Translations
+│   │   ├── index.ts          # useT(), t(), translate(), catalogName()
+│   │   └── en.json, pl.json, ru.json, ua.json
 │   └── ui/
-│       ├── EditorStage.tsx   # Main canvas: grid, walls, nodes, furniture, hit detection, drag logic
-│       ├── Toolbar.tsx       # Left sidebar: tool buttons, floor controls, snap, save/load/print/help
+│       ├── EditorStage.tsx   # Main canvas: grid, layers, hit detection, pointer / drag logic for all tools
+│       ├── WallsLayer.tsx    # Wall outlines + length labels (editor and print)
+│       ├── DimensionsLayer.tsx # Ruler dimension lines (editor and print)
+│       ├── AnnotationsLayer.tsx # Furniture labels, text notes, text measuring (editor and print)
+│       ├── GapsLayer.tsx     # Free space around the selected item
+│       ├── TextEditor.tsx    # In-place textarea for editing text notes
+│       ├── images.ts         # Sprite loader with cache; recolours SVGs for the dark theme
+│       ├── Toolbar.tsx       # Left sidebar: tools, floors, snap, lengths, names, gaps, language, theme, save/open/print/help
 │       ├── FurniturePanel.tsx # Right sidebar: category tabs + furniture grid
-│       └── PrintView.tsx     # Hidden print-only rendering of all floors
+│       └── PrintView.tsx     # Hidden print-only rendering of all floors (always light)
 ├── vite.config.ts
 ├── tsconfig.json
 └── package.json
@@ -60,12 +76,14 @@ worldX  = (screenX - pos.x) / scale
 ### Tool enum
 
 ```typescript
-enum Tool { Select, Remove, WallAdd }
+enum Tool { Select, Remove, WallAdd, Measure, Text }
 ```
 
-- **Select** — default. Click to select furniture or wall nodes, drag to move, use handles to resize/rotate.
-- **Remove** — click any furniture, node, or wall to delete it.
-- **WallAdd** — click to place wall nodes. Click an existing node to connect. Click on a wall to split it.
+- **Select** — default. Select furniture or text, drag to move, use handles to resize/rotate, drag wall nodes and ruler ends.
+- **Remove** — click any text, dimension, furniture, node, or wall to delete it.
+- **WallAdd** — drag to draw walls (chained). Click an existing node to connect, click a wall to split it.
+- **Measure** — drag to add a dimension line; ends snap via `geometry/snap.ts`, Shift = 45° steps.
+- **Text** — click empty space to add a note, click a note to edit it (opens `TextEditor`).
 
 ### Why there is no `Tool.View` or `Tool.Edit`
 
@@ -85,10 +103,11 @@ All application state lives in a single Zustand store (`src/store.ts`). Key slic
 | `snapSize` | `number` | Snap grid size in world units (0 = off, 10 = 10cm default) |
 | `floors` | `FloorState[]` | Array of floors, each with nodes, walls, furniture |
 | `fi` | `number` | Current floor index |
-| `selectedId` | `number \| null` | Currently selected furniture item |
+| `selectedId` | `number \| null` | Currently selected furniture item or text note |
+| `textEdit` | `{ id, x, y } \| null` | Text note being edited in place |
 | `wallStartId` | `number \| null` | Node where the current wall chain starts |
 | `histories` | `{ undo, redo }[]` | Undo/redo history per floor (same index as `floors`), up to 50 steps each |
-| `clipboard` | `FurnitureItem \| null` | Copy/paste buffer |
+| `clipboard` | `{ kind: 'furniture' \| 'text', item }` | Copy/paste buffer |
 | `dirty` | `boolean` | Unsaved changes exist (controls the leave-page warning and autosave) |
 
 ### Undo/Redo
@@ -125,7 +144,7 @@ Konva's built-in hit detection uses a hidden "hit canvas" that re-renders shapes
 
 ### Hit detection pipeline
 
-On `mouseDown`, the code checks (in priority order):
+On `mouseDown` with the Select tool, the code checks (in priority order): handles, ruler ends, text notes, furniture, wall nodes. Erase checks texts, dimensions, furniture, nodes, walls. The original order was:
 
 1. **Resize/rotate handles** — distance from cursor to each handle's world position
 2. **Furniture** — `pointInRotatedRect()`: transforms cursor into item-local space, checks bounding box
@@ -165,7 +184,7 @@ type DragState =
 
 ### Image loading
 
-A global `Map<string, HTMLImageElement>` caches loaded SVG images. The `useImage()` hook returns `null` while loading (rendering a placeholder rect) and triggers a `forceRender` when the image is ready.
+`ui/images.ts` keeps one cache for the editor and print. `getSprite(path, dark, onLoad)` returns `null` while loading or if loading failed (a placeholder rect is drawn) and calls `onLoad` when the image is ready, which triggers a re-render. Light and dark variants are cached separately.
 
 ---
 
@@ -192,44 +211,56 @@ Wall thickness:
 - Exterior: `WALL_THICKNESS = 20` (20cm)
 - Interior: `INTERIOR_WALL_THICKNESS = 16` (16cm)
 
-Wall measurements displayed as labels show the clear span: `(length - WALL_THICKNESS) / METER` in meters.
+### Wall faces and inside lengths (`geometry/walls.ts`)
+
+`computeWallGeometry(nodes, walls)` returns, for every wall, its **left and right faces** (offset by half the thickness) and an outline polygon:
+
+1. Around every node the attached walls are sorted by angle. For each pair of neighbouring walls the offset lines facing each other are intersected — that point is the shared corner (a mitre). A miter limit avoids spikes at very sharp angles; a wall end with nothing attached gets a square end.
+2. Nodes where 3+ walls meet get a filler "hub" polygon.
+3. Face length is measured along the wall direction — this is the inside length shown on labels.
+4. `roomSides()` walks the faces of the planar wall graph (half-edges, always turning to the same side). Faces with positive signed area are enclosed rooms; the outer boundary has negative area. This tells which side of each wall faces a room, so the *Inside* label mode can label only room sides.
+
+Labels (`WallsLayer.tsx`): *Inside* shows room-facing faces (a wall not yet enclosing a room shows both faces, once if equal), *Both* shows both, *Axis* shows the centre-line length.
 
 ### Splitting walls
 
 Clicking on an existing wall in WallAdd mode:
-1. Projects the click point onto the wall segment (parametric `t` value)
-2. Deletes the original wall
-3. Creates a new node at the projected point
-4. Creates two new walls connecting original endpoints to the new node
-5. Preserves the exterior flag on both new segments
+1. Projects the click point onto the wall segment (parametric `t` value); if it lands on an endpoint, that node is reused and nothing is split
+2. In one atomic change (one undo step): removes the original wall, adds a node at the projected point and two walls to the original endpoints
+3. Preserves the exterior flag on both new segments
 
 ---
 
 ## Multi-floor
 
-Each floor is an independent `FloorState` (nodes + walls + furniture). Floor navigation resets undo/redo stacks and selection state. At least one floor must always exist.
+Each floor is an independent `FloorState` (nodes, walls, furniture, dimensions, texts) with its own undo/redo history. Floor navigation resets the selection. At least one floor must always exist.
 
 ---
 
 ## Save format
 
-Files use `.arcada` extension (JSON content):
+Files use `.arcada` extension (JSON content). Current format version **2.1.0** (`FILE_VERSION` in `store.ts`); 2.0.0 files load fine — `parseProject()` fills missing fields.
 
 ```json
 {
-  "version": "2.0.0",
-  "createdAt": "2024-01-15T10:30:00.000Z",
-  "lastModified": "2024-01-15T12:45:00.000Z",
+  "version": "2.1.0",
+  "createdAt": "2026-11-14T10:30:00.000Z",
+  "lastModified": "2026-11-14T12:45:00.000Z",
   "floors": [
     {
-      "nodes": [{ "id": 1, "x": 500, "y": 500 }, ...],
-      "walls": [{ "id": 10, "a": 1, "b": 2, "exterior": true }, ...],
-      "furniture": [{ "id": 20, "path": "sofa", "x": 600, "y": 400, "w": 200, "h": 80, "rot": 0, "zi": 100 }, ...]
+      "nodes": [{ "id": 1, "x": 500, "y": 500 }],
+      "walls": [{ "id": 10, "a": 1, "b": 2, "exterior": true }],
+      "furniture": [{ "id": 20, "path": "couch", "x": 600, "y": 400, "w": 240, "h": 100, "rot": 0, "zi": 100, "name": "Couch", "label": "Guest sofa" }],
+      "dimensions": [{ "id": 30, "x1": 510, "y1": 700, "x2": 890, "y2": 700 }],
+      "texts": [{ "id": 31, "x": 520, "y": 520, "text": "Living room", "size": 20, "rot": 0, "bold": true, "color": null }]
     }
   ],
-  "nextId": 25
+  "nextId": 32
 }
 ```
+
+- `name` — English catalog name (shown translated when *Names* is on); `label` — the user's own label.
+- `color: null` on a text means "theme text colour".
 
 ---
 
@@ -237,10 +268,24 @@ Files use `.arcada` extension (JSON content):
 
 `PrintView.tsx` renders all floors in a hidden `div` (`.print-view`) that becomes visible only during `@media print`. Each floor:
 
-1. Computes bounding box of all nodes and furniture (accounting for rotation)
-2. Scales to fit A4 dimensions (794 × 1123 px at 96dpi)
-3. Centers content with padding
-4. Renders walls, nodes, and furniture using Konva `<Stage>` (non-interactive)
+1. Computes the bounding box of nodes, furniture, dimensions and texts (accounting for rotation)
+2. Scales to fit A4 (794 × 1123 px at 96dpi) and centres the content
+3. Renders the same layers as the editor (`WallsLayer`, furniture, `AnnotationsLayer`, `DimensionsLayer`) with the **light** palette, regardless of the chosen theme
+
+---
+
+## Languages (`src/i18n`)
+
+- Flat key → text JSON files: `en.json`, `pl.json`, `ru.json`, `ua.json`. Placeholders look like `{n}`.
+- `useT()` in components (re-renders on language change), `t()` outside React (alerts), `catalogName(lang, 'cat' | 'item', englishName)` for the catalog.
+- Missing keys fall back to English. `i18n.test.ts` checks that all files have the same keys and placeholders and that every catalog item is translated.
+- To add a string: add the key to all four files (the test fails otherwise).
+
+## Theme
+
+- UI colours: CSS variables in `App.css`, dark values under `:root[data-theme="dark"]`; `App.tsx` sets `data-theme` from `useIsDark()` (preference *Auto* follows the OS).
+- Canvas colours: `LIGHT` / `DARK` palettes in `theme.ts` (Konva can't read CSS variables).
+- Furniture sprites in dark mode: `images.ts` fetches the SVG text, inverts its colours (`darkSvg()`), and loads it from a blob URL, so sprites stay vector-sharp. Embedded raster images inside SVGs are inverted with a CSS filter.
 
 ---
 
@@ -275,3 +320,4 @@ Files use `.arcada` extension (JSON content):
 - `zIndex` (optional, default 100) controls layering order (higher = on top): rugs use 50, doors and windows 200
 
 3. Place it under the appropriate category in the catalog JSON.
+4. Add the translation key `"item.My Item"` to all four files in `src/i18n/` (`npm run test` checks this). The SVG is recoloured automatically for the dark theme.
