@@ -1,74 +1,39 @@
 # Deploy to GitHub Pages
 
-Step-by-step guide to build and serve Arcada Planner on GitHub Pages.
+The app is published automatically: every push to `main` runs the workflow [.github/workflows/deploy.yml](.github/workflows/deploy.yml), which installs dependencies, runs the tests, builds the app and publishes `dist/` to GitHub Pages.
+
+Live site: **https://aspirchik.github.io/arcada-planner/**
 
 ---
 
-## Prerequisites
+## How it is set up
 
-- Node.js 18+
-- A GitHub repository for this project
+1. **Base path** — `vite.config.ts` has `base: '/arcada-planner/'`, matching the repository name. If the repository is renamed, change it too.
+2. **Pages source** — repository **Settings → Pages → Build and deployment → Source: GitHub Actions**.
+3. **Workflow** — `.github/workflows/deploy.yml` (build job → `upload-pages-artifact`, deploy job → `deploy-pages`). It can also be started by hand: **Actions → Deploy to GitHub Pages → Run workflow**.
 
-## 1. Set the base path
+A failing test stops the deploy, so a broken build never replaces the live site.
 
-Edit `vite.config.ts` and add the `base` field matching your repo name:
+## Checking a deploy
 
-```ts
-import { defineConfig } from 'vite';
-import react from '@vitejs/plugin-react';
+- **Actions** tab — each push shows a "Deploy to GitHub Pages" run; the deploy job links to the site.
+- From the terminal: `gh run list --workflow deploy.yml` and `gh run watch`.
 
-export default defineConfig({
-  plugins: [react()],
-  base: '/arcada-planner/',  // ← replace with your repo name
-});
-```
+## Manual deploy (alternative)
 
-## 2. Install the deploy helper
-
-```bash
-npm install -D gh-pages
-```
-
-## 3. Add a deploy script
-
-In `package.json`, add the `deploy` script:
-
-```json
-{
-  "scripts": {
-    "dev": "vite",
-    "build": "tsc && vite build",
-    "preview": "vite preview",
-    "deploy": "npm run build && gh-pages -d dist"
-  }
-}
-```
-
-## 4. Deploy
+The older way still works and pushes `dist/` to a `gh-pages` branch:
 
 ```bash
 npm run deploy
 ```
 
-This builds the project and pushes the `dist/` folder to the `gh-pages` branch.
-
-## 5. Enable GitHub Pages
-
-1. Go to your repo on GitHub
-2. **Settings → Pages**
-3. Source: **Deploy from a branch**
-4. Branch: **gh-pages** / **(root)**
-5. Click **Save**
-
-Your app will be live at `https://YOUR_USERNAME.github.io/arcada-planner/` within a couple of minutes.
-
----
+To use it, switch **Settings → Pages → Source** to *Deploy from a branch* → `gh-pages` / root.
 
 ## Troubleshooting
 
-- **Blank page after deploy:** Make sure `base` in `vite.config.ts` matches your repo name exactly (e.g., `/arcada-planner/`).
-- **Assets not loading:** Verify that SVG paths in `catalog.json` don't use absolute paths — they should be relative (e.g., `sofa`, not `/assets/2d/sofa`).
-- **404 on refresh:** GitHub Pages doesn't support client-side routing out of the box. This app is a single-page app without a router, so this shouldn't be an issue.
+- **Blank page after deploy:** make sure `base` in `vite.config.ts` matches the repository name exactly (e.g., `/arcada-planner/`).
+- **Assets not loading:** SVG paths in `catalog.json` must be relative (e.g., `sofa`, not `/assets/2d/sofa`).
+- **404 on refresh:** the app has no client-side router, so this shouldn't happen.
 
 ## Local development
 
@@ -77,7 +42,7 @@ npm install
 npm run dev
 ```
 
-Opens at [http://localhost:5173](http://localhost:5173).
+Opens at [http://localhost:5173/arcada-planner/](http://localhost:5173/arcada-planner/).
 
 ## Production build (without deploy)
 

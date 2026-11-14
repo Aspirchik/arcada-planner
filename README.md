@@ -1,5 +1,7 @@
 # Arcada Planner v2
 
+**Live: https://aspirchik.github.io/arcada-planner/**
+
 A free, browser-based 2D floor plan editor. Draw walls, furnish rooms from a catalog of 60+ items, measure, label and annotate your plan, manage multiple floors, and print — all from the browser, no install needed. Available in English, Polish, Russian and Ukrainian, with light and dark themes.
 
 > **Credit:** This project is heavily inspired by (and shares its name with) the original [Arcada](https://github.com/mehanix/arcada) floor planner. We rewrote the entire codebase from scratch with a different tech stack and added new features.

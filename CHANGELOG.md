@@ -3,6 +3,16 @@
 Все изменения проекта Arcada Planner, по порядку. Правила ведения — в [CLAUDE.md](CLAUDE.md).
 Отправная точка — исходная версия проекта 2.0.0 (до записи №1).
 
+## № 16 — 2026-11-14
+
+### Добавлено
+- Публикация на GitHub Pages: при каждом push в `main` GitHub Actions запускает тесты, собирает проект и выкладывает сайт на https://aspirchik.github.io/arcada-planner/ (.github/workflows/deploy.yml).
+
+### Изменено
+- Локальная история перенесена поверх истории форка `Aspirchik/arcada-planner` (ветка `main`) и отправлена на GitHub.
+- DEPLOY.md описывает автоматическую публикацию; ручной `npm run deploy` оставлен как запасной вариант (DEPLOY.md).
+- Правила Git: публикация на GitHub Pages происходит автоматически при push в `main` (CLAUDE.md).
+
 ## № 15 — 2026-11-14
 
 ### Добавлено
