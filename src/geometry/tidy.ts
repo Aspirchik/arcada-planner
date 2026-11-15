@@ -205,6 +205,8 @@ export function tidyCables(cables: Cable[], trays: Tray[], opts: TidyOptions = {
   const byId = new Map(cables.map(c => [c.id, c]));
   // Desks: one exit corner each for their patch cords; the desk parts are added back after the layout
   const frames = opts.desks ?? [];
+  // patch cords go only through trays with the patch cord magnet
+  const patchTrays = trays.filter(t => t.patch);
   const exits = exitCorners(cables.filter(c => c.kind === 'patch').map(c => c.points), frames);
   const deskParts = new Map<number, { head: Pt[]; tailEnd: Pt[] }>();
   const done = new Set<number>();
@@ -238,20 +240,22 @@ export function tidyCables(cables: Cable[], trays: Tray[], opts: TidyOptions = {
         let middle = a <= b ? pts.slice(a, b + 1) : [];
         if (ds >= 0 && middle.length >= 2) middle = joinAtCorner(t0, middle);
         if (de >= 0 && middle.length >= 2) middle = joinAtCorner(t1, [...middle].reverse()).reverse();
-        const viaTray = trays.length && !c.noTray ? routeViaTrays(t0, t1, trays, opts.trayReach ?? 300) : null;
+        const viaTray = patchTrays.length && !c.noTray ? routeViaTrays(t0, t1, patchTrays, opts.trayReach ?? 300) : null;
         if (viaTray && pathLength(viaTray) > 0) { out.set(c.id, joinPaths(head, viaTray, tailEnd)); return; }
         deskParts.set(c.id, { head, tailEnd });
         free.push({ ...c, points: [t0, ...middle, t1] });
         return;
       }
     }
-    const routed = trays.length && !c.noTray && c.kind !== 'patch' ? routeViaTrays(start, end, trays, opts.trayReach ?? 300) : null;
+    const own = c.kind === 'patch' ? patchTrays : trays;
+    const routed = own.length && !c.noTray ? routeViaTrays(start, end, own, opts.trayReach ?? 300) : null;
     if (routed && pathLength(routed) > 0) out.set(c.id, routed);
     else free.push(start === c.points[0] ? c : { ...c, points: [start, ...c.points.slice(1)] });
   };
   cables.forEach(visit);
   // Cables outside the trays are laid out on their own, not put onto trays
-  for (const [id, p] of tidyFree(free.filter(c => !c.noTray), trays, opts)) out.set(id, p);
+  for (const [id, p] of tidyFree(free.filter(c => !c.noTray && c.kind !== 'patch'), trays, opts)) out.set(id, p);
+  for (const [id, p] of tidyFree(free.filter(c => !c.noTray && c.kind === 'patch'), patchTrays, opts)) out.set(id, p);
   for (const [id, p] of tidyFree(free.filter(c => c.noTray), [], opts)) out.set(id, p);
   for (const [id, parts] of deskParts) {
     const mid = out.get(id);

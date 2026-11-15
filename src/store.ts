@@ -6,19 +6,14 @@ import { tidyCables, orthogonal, simplify } from './geometry/tidy';
 import { chainMembers, subtree, projectOnPath } from './geometry/chain';
 import { DEFAULT_WIRING, onLayer, trayLayer } from './layers';
 import { carryHeights } from './geometry/heights';
-import { simplifyPath, nearGuide } from './geometry/segdrag';
-
-/** One-off tray: cables this far from its edge (cm) are laid through it */
-const PULL_REACH = 60;
-/** One-off tray: how far a cable end may be from it and still be led into it (cm) */
-const PULL_ACCESS = 5000;
+import { simplifyPath } from './geometry/segdrag';
 
 /**
  * The floor's cables with `list` laid again by `tidyCables` (through `trays`, desk frames for patch cords);
  * continuations start on the new path of their parent. Null when nothing changed.
  */
-function layCables(f: FloorState, list: Cable[], trays: Tray[], trayReach?: number): Cable[] | null {
-  const paths = tidyCables(list, trays, { desks: deskFrames(f.furniture), ...(trayReach ? { trayReach } : {}) });
+function layCables(f: FloorState, list: Cable[], trays: Tray[]): Cable[] | null {
+  const paths = tidyCables(list, trays, { desks: deskFrames(f.furniture) });
   const done = new Set<number>();
   const place = (c: Cable) => {
     if (done.has(c.id)) return;
@@ -276,6 +271,7 @@ export function parseProject(json: string): ParsedProject {
       ...colorOf(t),
       ...(t.layer === 'plan' || t.layer === 'both' ? { layer: t.layer as 'plan' | 'both' } : {}),
       ...elevOf(t.elev),
+      ...(t.patch === true ? { patch: true } : {}),
     })).filter(t => t.points.length >= 2);
 
     const groups = groupsOf(f.groups);
@@ -436,8 +432,6 @@ interface Store {
   addTray(points: { x: number; y: number }[], width?: number): number;
   updateTray(id: number, changes: Partial<Omit<Tray, 'id'>>): void;
   deleteTray(id: number): void;
-  /** One-off tray: the cables running along it are pulled onto its line (route fixed), then the tray is removed */
-  pullToTray(id: number): void;
 
   addText(x: number, y: number, text: string): number;
   updateText(id: number, changes: Partial<Omit<TextNote, 'id'>>): void;
@@ -1076,20 +1070,6 @@ export const useStore = create<Store>((set, get) => {
 
     deleteTray(id) {
       upFloor(f => ({ ...f, trays: f.trays.filter(t => t.id !== id) }));
-    },
-    pullToTray(id) {
-      upFloor(f => {
-        const tr = f.trays.find(t => t.id === id);
-        if (!tr) return f;
-        const reach = tr.width / 2 + PULL_REACH;
-        // the cables near the tray are laid again, like Tidy does, but through this tray only
-        const near = f.cables.filter(c => nearGuide(c.points, tr.points, reach)).map(c => ({ ...c, noTray: undefined }));
-        const ids = new Set(near.map(c => c.id));
-        const laid = near.length ? layCables(f, near, [tr], PULL_ACCESS) : null;
-        const cables = (laid ?? f.cables).map(c => (ids.has(c.id) ? { ...c, fixed: true } : c));
-        return { ...f, cables, trays: f.trays.filter(t => t.id !== id) };
-      });
-      set({ selectedId: null });
     },
 
     addText(x, y, text) {

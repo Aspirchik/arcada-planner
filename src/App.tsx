@@ -543,7 +543,8 @@ function SelectionPanel() {
           onCommit={v => st.updateTray(tray.id, { elev: v })} /> {t('unit.cm')}</label>
         <ObjectColor value={tray.color} onChange={c => st.updateTray(tray.id, { color: c })} />
         <LayerButton id={tray.id} layer={trayLayer(tray)} />
-        <button className="sel-btn" title={t('tray.pull')} onClick={() => st.pullToTray(tray.id)}><Magnet size={14} /></button>
+        <button className={'sel-btn' + (tray.patch ? ' active' : '')} title={t(tray.patch ? 'tray.patchOn' : 'tray.patchOff')}
+          onClick={() => st.updateTray(tray.id, { patch: tray.patch ? undefined : true })}><Magnet size={14} /></button>
         <button className="sel-delete" title={t('sel.delete')} onClick={st.deleteSelected}><Trash2 size={14} /></button>
         <div className="sel-break" />
         <div className="tray-list">

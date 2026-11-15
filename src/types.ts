@@ -201,6 +201,8 @@ export interface Tray {
   layer?: 'plan' | 'both';
   /** Height above the floor (cm): cable points lying in the tray are at this height */
   elev?: number;
+  /** Patch cord magnet: Tidy lays patch cords through this tray too (other trays take ordinary cables only) */
+  patch?: boolean;
 }
 
 export interface FloorState {

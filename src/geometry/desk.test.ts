@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import type { FurnitureItem } from '../types';
 import { deskFrames, routeViaDesk, frameInset } from './desk';
-import { startSegmentDrag, dragSegment, tidyAfterDrag, simplifyPath, pullOnto } from './segdrag';
+import { startSegmentDrag, dragSegment, tidyAfterDrag, simplifyPath } from './segdrag';
+import { tidyCables } from './tidy';
 
 const desk: FurnitureItem = { id: 1, path: 'table', name: 'Desk', x: 0, y: 0, w: 160, h: 80, rot: 0, zi: 100 };
 
@@ -78,19 +79,13 @@ describe('simplifyPath', () => {
   });
 });
 
-describe('pullOnto', () => {
-  it('moves parallel parts within reach onto the guide, the ends stay', () => {
-    // cable: right along y=30, then down; guide along y=0
-    const p = pullOnto([{ x: 0, y: 30 }, { x: 200, y: 30 }, { x: 200, y: 300 }], [{ x: -50, y: 0 }, { x: 300, y: 0 }], 40);
-    expect(p).toEqual([{ x: 0, y: 30 }, { x: 0, y: 0 }, { x: 200, y: 0 }, { x: 200, y: 300 }]);
+describe('patch cord magnet on trays', () => {
+  const cord = { id: 1, points: [{ x: 0, y: 0 }, { x: 1000, y: 0 }], color: '#000', kind: 'patch' as const };
+  const tray = { id: 2, points: [{ x: 0, y: 50 }, { x: 1000, y: 50 }], width: 10 };
+  it('a patch cord is not laid into an ordinary tray', () => {
+    expect(tidyCables([cord], [tray]).get(1)!.every(p => p.y === 0)).toBe(true);
   });
-  it('leaves cables that are too far or not parallel', () => {
-    expect(pullOnto([{ x: 0, y: 100 }, { x: 200, y: 100 }], [{ x: 0, y: 0 }, { x: 200, y: 0 }], 40)).toBeNull();
-    expect(pullOnto([{ x: 0, y: 0 }, { x: 0, y: 200 }], [{ x: 0, y: 0 }, { x: 200, y: 0 }], 40)).toBeNull();
-  });
-  it('follows a bent guide', () => {
-    const p = pullOnto([{ x: 0, y: 20 }, { x: 180, y: 20 }, { x: 180, y: 200 }],
-      [{ x: 0, y: 0 }, { x: 200, y: 0 }, { x: 200, y: 200 }], 40)!;
-    expect(p).toEqual([{ x: 0, y: 20 }, { x: 0, y: 0 }, { x: 200, y: 0 }, { x: 200, y: 200 }, { x: 180, y: 200 }]);
+  it('a patch cord is laid through a tray with the patch cord magnet', () => {
+    expect(tidyCables([cord], [{ ...tray, patch: true }]).get(1)!.some(p => p.y === 50)).toBe(true);
   });
 });
