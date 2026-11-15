@@ -247,7 +247,6 @@ export function parseProject(json: string): ParsedProject {
       ...(Array.isArray(c.groups) && c.groups.some(isNum) ? { groups: c.groups.filter(isNum) } : {}),
       ...(isNum(c.parent) && c.parent !== c.id ? { parent: c.parent } : {}),
       ...(c.noTray === true ? { noTray: true } : {}),
-      ...(c.fixed === true ? { fixed: true } : {}),
       ...(c.kind === 'patch' ? { kind: 'patch' as const } : {}),
       ...(isNum(c.fromPort) && c.fromPort >= 1 ? { fromPort: Math.round(c.fromPort) } : {}),
       ...(isNum(c.toPort) && c.toPort >= 1 ? { toPort: Math.round(c.toPort) } : {}),
@@ -632,14 +631,14 @@ export const useStore = create<Store>((set, get) => {
     removeCablePoint(id, index) {
       upFloor(f => ({ ...f, cables: f.cables.map(c => {
         if (c.id !== id || index <= 0 || index >= c.points.length - 1) return c;
-        return { ...c, points: c.points.filter((_, i) => i !== index), fixed: true };
+        return { ...c, points: c.points.filter((_, i) => i !== index) };
       }) }));
     },
     simplifyCable(id) {
       upFloor(f => ({ ...f, cables: f.cables.map(c => {
         if (c.id !== id) return c;
         const pts = simplifyPath(c.points);
-        return pts.length === c.points.length ? c : { ...c, points: pts, fixed: true };
+        return pts.length === c.points.length ? c : { ...c, points: pts };
       }) }));
     },
     setCablePointHeight(id, index, z) {
@@ -776,8 +775,7 @@ export const useStore = create<Store>((set, get) => {
     tidyCables() {
       const { mode } = get();
       upFloor(f => {
-        // routes laid by hand stay as they are
-        const mine = f.cables.filter(c => onLayer(c, mode === 'wiring' ? 'wiring' : 'main') && !c.fixed);
+        const mine = f.cables.filter(c => onLayer(c, mode === 'wiring' ? 'wiring' : 'main'));
         if (mine.length === 0) return f;
         const cables = layCables(f, mine, mode === 'wiring' ? f.trays : []);
         return cables ? { ...f, cables } : f;

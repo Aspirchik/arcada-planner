@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Trash2, BringToFront, SendToBack, Bold, Pencil, Type, Square, Image as ImageIcon, FlipHorizontal2, FlipVertical2, Ruler, Layers, Palette as PaletteIcon, GitBranchPlus, Link2, Unlink, Cable as CableIcon, MoveVertical, ArrowUpToLine, Plus, Minus, Combine, Plug, X, Eraser, Lock, LockOpen, Magnet } from 'lucide-react';
+import { Trash2, BringToFront, SendToBack, Bold, Pencil, Type, Square, Image as ImageIcon, FlipHorizontal2, FlipVertical2, Ruler, Layers, Palette as PaletteIcon, GitBranchPlus, Link2, Unlink, Cable as CableIcon, MoveVertical, ArrowUpToLine, Plus, Minus, Combine, Plug, X, Eraser, Magnet } from 'lucide-react';
 import { EditorStage } from './ui/EditorStage';
 import { Toolbar } from './ui/Toolbar';
 import { FurniturePanel } from './ui/FurniturePanel';
@@ -649,8 +649,6 @@ function SelectionPanel() {
         <div className="sel-break" />
         <button className={'sel-btn' + (cable.noTray ? '' : ' active')} title={t('cable.inTray')}
           onClick={() => st.updateChain(cable.id, { noTray: cable.noTray ? undefined : true })}><CableIcon size={14} /></button>
-        <button className={'sel-btn' + (cable.fixed ? ' active' : '')} title={t(cable.fixed ? 'cable.fixedOn' : 'cable.fixedOff')}
-          onClick={() => st.updateCable(cable.id, { fixed: cable.fixed ? undefined : true })}>{cable.fixed ? <Lock size={14} /> : <LockOpen size={14} />}</button>
         <label title={t('cable.heightTitle')}>{t('cable.height')} <OptNum key={`ch${cable.id}`} value={cable.height} placeholder="—" title={t('cable.heightTitle')}
           onCommit={v => st.updateCable(cable.id, { height: v })} /> {t('unit.cm')}</label>
         <button className="sel-btn" title={floor.height ? t('cable.ceiling', { h: floor.height }) : t('cable.noCeiling')} disabled={!floor.height}

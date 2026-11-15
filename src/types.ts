@@ -158,8 +158,6 @@ export interface Cable {
   parent?: number;
   /** Runs outside the trays (e.g. under the ceiling): "Tidy" doesn't put it into trays, trays don't count it */
   noTray?: boolean;
-  /** Route laid by hand (points dragged / removed): "Tidy" leaves it as it is */
-  fixed?: boolean;
   /** 'patch' = patch cord: a ready-made cord of a standard length (1, 2, 3, 5, 10 m); a free end shows a plug */
   kind?: 'patch';
   /** Height of the run above the floor (cm) for points without their own height */
