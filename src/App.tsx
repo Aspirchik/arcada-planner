@@ -663,9 +663,17 @@ function ItemPorts({ floor, itemId }: { floor: FloorState; itemId: number }) {
   const t = useT();
   const lang = usePrefs(s => s.lang);
   const [pick, setPick] = useState<number | null>(null);
+  const [allTag, setAllTag] = useState('');
   const item = floor.furniture.find(f => f.id === itemId)!;
   const auto = portCount({ ...item, ports: undefined });
   const count = portCount(item);
+  // One tag for every port (then single ports can be changed by hand); empty clears all tags
+  const applyAll = () => {
+    const v = allTag.trim();
+    if (!v && !confirm(t('port.allClear'))) return;
+    useStore.getState().setAllPortTags(itemId, v, count);
+    setAllTag('');
+  };
   const ends = itemEnds(floor, itemId, lang);
   const byPort = endsByPort(ends);
   const max = Math.max(count, ...byPort.keys());
@@ -705,6 +713,14 @@ function ItemPorts({ floor, itemId }: { floor: FloorState; itemId: number }) {
       <label title={t('port.countTitle')}>{t('port.count')} <OptNum key={`ip${item.id}`} value={item.ports} placeholder={auto ? String(auto) : '—'}
         title={t('port.countTitle')} onCommit={v => useStore.getState().updateFurniture(item.id, { ports: v === undefined ? undefined : Math.min(512, Math.round(v)) })} /></label>
       {count > 0 && <span className="sel-len3d">{t('port.free', { n: free, total: count })}</span>}
+      {count > 0 && (
+        <span className="sw-all" title={t('port.allTitle')}>
+          <input type="text" className="sel-text sw-all-in" value={allTag} placeholder="VLAN 10"
+            onChange={e => setAllTag(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') applyAll(); }} />
+          <button className="secondary sw-all-btn" onClick={applyAll}>{t('port.allApply', { n: count })}</button>
+        </span>
+      )}
       {max > 0 && (
         <>
           <div className="sel-break" />

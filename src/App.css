@@ -367,6 +367,9 @@ body { overflow: hidden; font-family: system-ui, sans-serif; background: var(--o
 .sw-line.clash { color: #e04848; }
 .sw-line-tag { padding: 0 4px; border-radius: 3px; background: var(--surface-2); color: var(--text-2); font-weight: 600; }
 .sw-cable { max-width: 320px; }
+.sw-all { display: inline-flex; align-items: center; gap: 4px; }
+.selection-panel input.sw-all-in { width: 90px; }
+.sw-all-btn { padding: 3px 8px; font-size: 12px; white-space: nowrap; }
 .dev-nics { flex-basis: 100%; display: flex; flex-direction: column; gap: 4px; }
 .dev-nic { display: flex; align-items: center; gap: 8px; }
 .dev-nic-n { min-width: 42px; font-weight: 600; color: var(--text-1); }

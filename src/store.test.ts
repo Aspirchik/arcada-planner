@@ -399,6 +399,15 @@ describe('cable connections and groups', () => {
     expect(floor().cables.find(c => c.id === b)!.fromPort).toBeUndefined();
   });
 
+  it('setAllPortTags: one tag for every port, then single ports by hand, empty clears', () => {
+    const sw = st().addFurniture(chair, 0, 0);
+    st().setAllPortTags(sw, '10', 4);
+    st().setPortTag(sw, 1, 'uplink');
+    expect(floor().furniture[0].portTags).toEqual({ '1': 'uplink', '2': '10', '3': '10', '4': '10' });
+    st().setAllPortTags(sw, '', 4);
+    expect(floor().furniture[0].portTags).toBeUndefined();
+  });
+
   it('point heights: set and clear one point, room height', () => {
     const c = st().addCable([{ x: 0, y: 0 }, { x: 100, y: 0 }], '#000');
     st().setCablePointHeight(c, 1, 160);

@@ -317,6 +317,8 @@ interface Store {
   assignPort(itemId: number, port: number, pick: { id: number; end: 'from' | 'to' } | null): void;
   /** Changes the computer data of an item (host name, HDMI / DP, network ports) */
   updateDevice(itemId: number, changes: Partial<DeviceInfo>): void;
+  /** Gives ports 1…count of an item the same tag (e.g. one VLAN for all), replacing their tags; empty clears them. One undo step */
+  setAllPortTags(itemId: number, tag: string, count: number): void;
   /** Tag of a port of an item ("uplink", "VLAN 10", a number = VLAN); empty clears it */
   setPortTag(itemId: number, port: number, tag: string): void;
   /** Adds the item (socket, switch…) to the group or takes it out */
@@ -615,6 +617,15 @@ export const useStore = create<Store>((set, get) => {
         const next: DeviceInfo = { ...(it.device ?? {}), ...changes };
         for (const k of Object.keys(next) as (keyof DeviceInfo)[]) if (next[k] === undefined || next[k] === '') delete next[k];
         return { ...it, device: Object.keys(next).length ? next : undefined };
+      }) }));
+    },
+    setAllPortTags(itemId, tag, count) {
+      const v = tag.trim().slice(0, 40);
+      upFloor(f => ({ ...f, furniture: f.furniture.map(it => {
+        if (it.id !== itemId) return it;
+        const tags = { ...(it.portTags ?? {}) };
+        for (let n = 1; n <= count; n++) { if (v) tags[String(n)] = v; else delete tags[String(n)]; }
+        return { ...it, portTags: Object.keys(tags).length ? tags : undefined };
       }) }));
     },
     setPortTag(itemId, port, tag) {
