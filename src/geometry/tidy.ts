@@ -6,6 +6,7 @@
 import type { Cable, Tray } from '../types';
 import type { Pt } from './hit';
 import { projectOnPath, pathLength } from './cable';
+import { routeViaDesk } from './desk';
 
 export interface TidyOptions {
   /** Parallel runs closer than this (cm) are merged */
@@ -14,6 +15,8 @@ export interface TidyOptions {
   grid?: number;
   /** A cable end this close to a tray (cm) is routed through the trays */
   trayReach?: number;
+  /** Desk frames: patch cords with an end on a desk go along the frame to its corner */
+  desks?: { corners: Pt[]; outline: Pt[] }[];
 }
 
 const EPS = 0.5;
@@ -214,7 +217,10 @@ export function tidyCables(cables: Cable[], trays: Tray[], opts: TidyOptions = {
       const upPath = out.get(up.id)!;
       start = projectOnPath(upPath.length > 2 ? upPath.slice(0, -1) : upPath, end).p;
     }
-    const routed = trays.length && !c.noTray ? routeViaTrays(start, end, trays, opts.trayReach ?? 300) : null;
+    // Patch cords on a desk: fixed to the desk frame, out at its corner
+    const onDesk = c.kind === 'patch' && opts.desks?.length ? routeViaDesk(start, end, opts.desks) : null;
+    if (onDesk) { out.set(c.id, onDesk); return; }
+    const routed = trays.length && !c.noTray && c.kind !== 'patch' ? routeViaTrays(start, end, trays, opts.trayReach ?? 300) : null;
     if (routed && pathLength(routed) > 0) out.set(c.id, routed);
     else free.push(start === c.points[0] ? c : { ...c, points: [start, ...c.points.slice(1)] });
   };

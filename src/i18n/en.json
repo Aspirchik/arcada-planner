@@ -86,6 +86,8 @@
   "port.countTitle": "Number of ports (switch, patch panel). Empty — from the catalog name",
   "port.free": "free {n} of {total}",
   "cable.inTray": "In trays: Tidy routes the cable through the trays and the trays list it. Off — the cable runs on its own (e.g. under the ceiling)",
+  "desk.frame": "Desk frame inset",
+  "desk.frameTitle": "Metal frame under the desktop: distance from the desk edge (cm). Patch cords on the desk are fixed to it and leave at its corner (a patch cord button or Tidy lays them). Empty on a desk — 5 cm",
   "cable.patchTitle": "Patch cord: a ready-made cord of a standard length (1, 2, 3, 5, 10 m); the label shows the length you need, a free end shows a plug",
   "cable.patchShort": "patch cord",
   "cable.patchNeed": "Patch cord {len} needed (run {real})",

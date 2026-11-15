@@ -6,6 +6,7 @@ import { tidyCables, orthogonal, simplify } from './geometry/tidy';
 import { chainMembers, subtree, projectOnPath } from './geometry/chain';
 import { DEFAULT_WIRING, onLayer, trayLayer } from './layers';
 import { carryHeights } from './geometry/heights';
+import { deskFrames, routeViaDesk } from './geometry/desk';
 import { isPassThrough } from './labels';
 import { translate, type TKey, type TParams } from './i18n';
 
@@ -176,6 +177,7 @@ export function parseProject(json: string): ParsedProject {
       ...(Array.isArray(it.groups) && it.groups.some(isNum) ? { groups: (it.groups as unknown[]).filter(isNum) } : {}),
       ...tagsOf(it.portTags),
       ...deviceOf(it.device),
+      ...(isNum(it.frame) && it.frame >= 0 ? { frame: Math.min(100, it.frame) } : {}),
       ...(typeof it.color2 === 'string' && /^#[0-9a-f]{3}([0-9a-f]{3})?$/i.test(it.color2) ? { color2: it.color2 } : {}),
     }));
 
@@ -324,6 +326,8 @@ interface Store {
    * an end that was in this port loses its port. One undo step.
    */
   assignPort(itemId: number, port: number, pick: { id: number; end: 'from' | 'to' } | null): void;
+  /** Lays a patch cord with an end on a desk along the desk frame (to its corner); nothing when no end is on a desk */
+  layPatch(id: number): void;
   /** Changes the computer data of an item (host name, HDMI / DP, network ports) */
   updateDevice(itemId: number, changes: Partial<DeviceInfo>): void;
   /** Gives ports 1…count of an item the same tag (e.g. one VLAN for all), replacing their tags; empty clears them. One undo step */
@@ -659,6 +663,16 @@ export const useStore = create<Store>((set, get) => {
         }) };
       });
     },
+    layPatch(id) {
+      upFloor(f => {
+        const c = f.cables.find(x => x.id === id);
+        if (!c || c.points.length < 2) return f;
+        const p = routeViaDesk(c.points[0], c.points[c.points.length - 1], deskFrames(f.furniture));
+        if (!p) return f;
+        const pts = carryHeights(c.points, p);
+        return { ...f, cables: f.cables.map(x => (x.id === id ? { ...x, points: pts } : x)) };
+      });
+    },
     updateDevice(itemId, changes) {
       upFloor(f => ({ ...f, furniture: f.furniture.map(it => {
         if (it.id !== itemId) return it;
@@ -711,7 +725,7 @@ export const useStore = create<Store>((set, get) => {
       upFloor(f => {
         const mine = f.cables.filter(c => onLayer(c, mode === 'wiring' ? 'wiring' : 'main'));
         if (mine.length === 0) return f;
-        const paths = tidyCables(mine, mode === 'wiring' ? f.trays : []);
+        const paths = tidyCables(mine, mode === 'wiring' ? f.trays : [], { desks: deskFrames(f.furniture) });
         // Continuations start on the new path of their parent (parents first)
         const done = new Set<number>();
         const place = (c: Cable) => {

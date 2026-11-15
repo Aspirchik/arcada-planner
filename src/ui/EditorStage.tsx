@@ -24,6 +24,7 @@ import { SimpleFurniture } from './AnnotationsLayer';
 import type { WallNode, Wall, FurnitureItem, Dimension, TextNote, Cable, Tray } from '../types';
 import { layerView, styleCables, cablesInGroups, heightCtx } from '../layers';
 import { cableHeights } from '../geometry/heights';
+import { deskFrames } from '../geometry/desk';
 import { chainMembers, projectOnPath, collapseToChains } from '../geometry/chain';
 import { itemNamer } from '../labels';
 
@@ -1198,6 +1199,11 @@ export function EditorStage() {
 
         {/* Cable trays (wiring layer) */}
         <TraysLayerContent trays={act.trays} palette={palette} highlightId={hoveredTray?.id ?? selectedTray?.id} textSize={ws.trayText} />
+        {/* Desk frames under the desktops: patch cords are fixed to them */}
+        {wiring && deskFrames(floor.furniture).map(fr => (
+          <Line key={`fr${fr.id}`} points={fr.corners.flatMap(p => [p.x, p.y])} closed stroke={palette.accent} opacity={0.45}
+            strokeWidth={1.2 * px} dash={[5 * px, 4 * px]} listening={false} />
+        ))}
         {selectedTray && <CableHandles cable={{ id: selectedTray.id, points: selectedTray.points, color: palette.accent }} palette={palette} px={px} />}
 
         {/* Wall preview */}

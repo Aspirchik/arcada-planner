@@ -86,6 +86,8 @@
   "port.countTitle": "Liczba portów (switch, patch panel). Puste — z nazwy w katalogu",
   "port.free": "wolne {n} z {total}",
   "cable.inTray": "W korytach: Uporządkuj prowadzi kabel korytami, a koryta go wyświetlają. Wył. — kabel idzie osobno (np. pod sufitem)",
+  "desk.frame": "Odstęp ramy biurka",
+  "desk.frameTitle": "Metalowa rama pod blatem: odległość od krawędzi biurka (cm). Patchcordy na biurku są do niej mocowane i schodzą w jej narożniku (przycisk patchcordu lub Uporządkuj). Puste na biurku — 5 cm",
   "cable.patchTitle": "Patchcord: gotowy przewód o standardowej długości (1, 2, 3, 5, 10 m); podpis pokazuje potrzebną długość, wolny koniec — wtyk",
   "cable.patchShort": "patchcord",
   "cable.patchNeed": "Potrzebny patchcord {len} (trasa {real})",

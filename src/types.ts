@@ -81,6 +81,8 @@ export interface FurnitureItem {
   color2?: string;
   /** Computer data (PC, laptop): host name, video outputs, network ports */
   device?: DeviceInfo;
+  /** Desk frame under the desktop: inset from the desk edge (cm); patch cords on the desk are fixed to it */
+  frame?: number;
   layer?: Layer;
 }
 

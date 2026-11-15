@@ -13,6 +13,7 @@ import { cableHeights, itemElevation, verticalRun } from './geometry/heights';
 import { pathLength, patchLength, PATCH_LENGTHS } from './geometry/cable';
 import { itemNamer, portCount, portTag, isTwoPart, isDevice, deviceNics, isPassThrough } from './labels';
 import { derivedTag, otherEnd } from './geometry/ports';
+import { frameInset, DEFAULT_FRAME_INSET } from './geometry/desk';
 import { translate } from './i18n';
 import { itemName } from './labels';
 import { normalizeMac, isMac, isIp } from './geometry/netaddr';
@@ -625,7 +626,14 @@ function SelectionPanel() {
         <CableGroupChips cableId={cable.id} groups={cable.groups} />
         <div className="sel-break" />
         <button className={'sel-btn' + (cable.kind === 'patch' ? ' active' : '')} title={t('cable.patchTitle')}
-          onClick={() => st.updateCable(cable.id, { kind: cable.kind === 'patch' ? undefined : 'patch' })}><Plug size={14} /></button>
+          onClick={() => {
+            if (cable.kind === 'patch') { st.updateCable(cable.id, { kind: undefined }); return; }
+            // one undo step: becomes a patch cord and is fixed to the desk frame
+            st.beginGesture();
+            st.updateCable(cable.id, { kind: 'patch' });
+            st.layPatch(cable.id);
+            st.endGesture();
+          }}><Plug size={14} /></button>
         {cable.kind === 'patch' && (() => {
           const need = patchLength(flat + vert);
           return (
@@ -749,6 +757,14 @@ function SelectionPanel() {
         </>
       )}
       {isDevice(item) && <DevicePanel floor={floor} itemId={item.id} />}
+      {st.mode === 'wiring' && (frameInset(item) !== undefined || (item.w >= 60 && item.h >= 40)) && (
+        <>
+          <div className="sel-break" />
+          <label title={t('desk.frameTitle')}>{t('desk.frame')} <OptNum key={`fr${item.id}`} value={item.frame}
+            placeholder={frameInset({ ...item, frame: undefined }) !== undefined ? String(DEFAULT_FRAME_INSET) : '—'} title={t('desk.frameTitle')}
+            onCommit={v => st.updateFurniture(item.id, { frame: v })} /> {t('unit.cm')}</label>
+        </>
+      )}
     </div>
   );
 }
