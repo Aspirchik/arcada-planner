@@ -218,7 +218,7 @@ export function tidyCables(cables: Cable[], trays: Tray[], opts: TidyOptions = {
       start = projectOnPath(upPath.length > 2 ? upPath.slice(0, -1) : upPath, end).p;
     }
     // Patch cords on a desk: fixed to the desk frame, out at its corner
-    const onDesk = c.kind === 'patch' && opts.desks?.length ? routeViaDesk(start, end, opts.desks) : null;
+    const onDesk = c.kind === 'patch' && opts.desks?.length ? routeViaDesk([start, ...c.points.slice(1)], opts.desks) : null;
     if (onDesk) { out.set(c.id, onDesk); return; }
     const routed = trays.length && !c.noTray && c.kind !== 'patch' ? routeViaTrays(start, end, trays, opts.trayReach ?? 300) : null;
     if (routed && pathLength(routed) > 0) out.set(c.id, routed);

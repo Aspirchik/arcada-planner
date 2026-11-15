@@ -667,7 +667,7 @@ export const useStore = create<Store>((set, get) => {
       upFloor(f => {
         const c = f.cables.find(x => x.id === id);
         if (!c || c.points.length < 2) return f;
-        const p = routeViaDesk(c.points[0], c.points[c.points.length - 1], deskFrames(f.furniture));
+        const p = routeViaDesk(c.points, deskFrames(f.furniture));
         if (!p) return f;
         const pts = carryHeights(c.points, p);
         return { ...f, cables: f.cables.map(x => (x.id === id ? { ...x, points: pts } : x)) };

@@ -25,6 +25,7 @@ import type { WallNode, Wall, FurnitureItem, Dimension, TextNote, Cable, Tray } 
 import { layerView, styleCables, cablesInGroups, heightCtx } from '../layers';
 import { cableHeights } from '../geometry/heights';
 import { deskFrames } from '../geometry/desk';
+import { startSegmentDrag, dragSegment, tidyAfterDrag } from '../geometry/segdrag';
 import { chainMembers, projectOnPath, collapseToChains } from '../geometry/chain';
 import { itemNamer } from '../labels';
 
@@ -91,6 +92,8 @@ type DragState =
   | { type: 'dim-move'; start: Pt; base: Dimension }
   | { type: 'cable-pt'; id: number; index: number }
   | { type: 'cable-move'; start: Pt; base: Cable }
+  /** A straight part of the selected cable dragged sideways */
+  | { type: 'cable-seg'; id: number; seg: number; start: Pt; base: Cable['points'] }
   | { type: 'tray-pt'; id: number; index: number }
   | { type: 'tray-move'; start: Pt; base: Tray }
   /** Screen-space pan by dragging empty space */
@@ -634,6 +637,12 @@ export function EditorStage() {
         if (v >= 0) { dragRef.current = { type: 'tray-pt', id: selTray.id, index: v }; return; }
       }
       const cab = hitCable(pt.x, pt.y);
+      // The selected cable: its straight part under the pointer is dragged sideways (the ends stay)
+      if (cab && cab.cable.id === selectedId && cab.cable.points.length >= 2) {
+        const prep = startSegmentDrag(cab.cable.points, cab.seg);
+        dragRef.current = { type: 'cable-seg', id: cab.cable.id, seg: prep.seg, start: pt, base: prep.points };
+        return;
+      }
       if (cab) {
         store.select(cab.cable.id);
         dragRef.current = { type: 'cable-move', start: pt, base: { ...cab.cable, points: cab.cable.points.map(q => ({ ...q })) } };
@@ -730,6 +739,11 @@ export function EditorStage() {
       const { p, snapped } = measurePoint(pt, prev, undefined, d.id);
       store.updateCable(d.id, { points: c.points.map((q, i) => i === d.index ? { ...q, x: p.x, y: p.y } : q) });
       setSnapMark(snapped ? p : null);
+    } else if (d.type === 'cable-seg') {
+      // magnet: parallel parts of the other cables and of the trays
+      const targets = [...act.cables.filter(c => c.id !== d.id).map(c => c.points), ...act.trays.map(t => t.points)];
+      const pts = dragSegment(d.base, d.seg, { x: pt.x - d.start.x, y: pt.y - d.start.y }, targets, CABLE_HIT_PX * 1.2 / scale, snapSize);
+      store.updateCable(d.id, { points: pts });
     } else if (d.type === 'cable-move') {
       const first = d.base.points[0];
       const p = doSnap(first.x + pt.x - d.start.x, first.y + pt.y - d.start.y, snapSize);
@@ -830,6 +844,14 @@ export function EditorStage() {
     }
     if (d.type === 'dim-end' || d.type === 'cable-pt') {
       setSnapMark(null);
+      return;
+    }
+    if (d.type === 'cable-seg') {
+      const c = useStore.getState().floors[useStore.getState().fi].cables.find(x => x.id === d.id);
+      if (c) {
+        const pts = tidyAfterDrag(c.points);
+        if (pts.length !== c.points.length) store.updateCable(d.id, { points: pts });
+      }
       return;
     }
 

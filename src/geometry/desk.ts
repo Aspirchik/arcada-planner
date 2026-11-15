@@ -57,6 +57,28 @@ function onFrame(c: Pt[], p: Pt): { p: Pt; s: number } {
   return { p: best.p, s: best.s };
 }
 
+/** Shorter distance along the closed frame between positions s1 and s2 */
+function frameDist(c: Pt[], s1: number, s2: number): number {
+  const total = c.reduce((t, a, i) => t + Math.hypot(c[(i + 1) % 4].x - a.x, c[(i + 1) % 4].y - a.y), 0);
+  const d = ((s2 - s1) % total + total) % total;
+  return Math.min(d, total - d);
+}
+
+/** Where a cord from `p` meets the frame on its way to frame position `goal`: the edge that makes the way shortest */
+function entry(c: Pt[], p: Pt, goal: number): { p: Pt; s: number } {
+  let best: { p: Pt; s: number; cost: number } | null = null, acc = 0;
+  for (let i = 0; i < 4; i++) {
+    const a = c[i], b = c[(i + 1) % 4];
+    const dx = b.x - a.x, dy = b.y - a.y, len = Math.hypot(dx, dy);
+    const t = len === 0 ? 0 : Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / (len * len)));
+    const q = { x: a.x + dx * t, y: a.y + dy * t };
+    const cost = Math.hypot(q.x - p.x, q.y - p.y) + frameDist(c, acc + len * t, goal);
+    if (!best || cost < best.cost - 0.01) best = { p: q, s: acc + len * t, cost };
+    acc += len;
+  }
+  return best!;
+}
+
 /** Points along the frame from position s1 to s2, the shorter way round (corners included) */
 function alongFrame(c: Pt[], s1: number, s2: number): Pt[] {
   const lens = c.map((a, i) => Math.hypot(c[(i + 1) % 4].x - a.x, c[(i + 1) % 4].y - a.y));
@@ -75,33 +97,51 @@ function alongFrame(c: Pt[], s1: number, s2: number): Pt[] {
 
 const round = (p: Pt) => ({ x: Math.round(p.x * 10) / 10, y: Math.round(p.y * 10) / 10 });
 
-/**
- * Route of a patch cord with an end on a desk: from that end to the frame, along the frame to the frame corner
- * nearest to the other end, then to the other end (right angles). Both ends on one desk: along the frame between
- * them. Null when no end lies on a desk.
- */
-export function routeViaDesk(a: Pt, b: Pt, frames: { corners: Pt[]; outline: Pt[] }[]): Pt[] | null {
-  const fa = frames.find(f => inside(f.outline, a)), fb = frames.find(f => inside(f.outline, b));
-  const f = fa ?? fb;
+/** L-shaped link from `a` to `b`: along the longer direction first */
+function ell(a: Pt, b: Pt): Pt[] {
+  if (Math.abs(a.x - b.x) < 0.5 || Math.abs(a.y - b.y) < 0.5) return [];
+  return [Math.abs(b.x - a.x) >= Math.abs(b.y - a.y) ? { x: b.x, y: a.y } : { x: a.x, y: b.y }];
+}
+
+/** The start of the cord, if it lies on a desk, re-laid along that desk's frame; the rest of the drawn path is kept */
+function fixStart(pts: Pt[], frames: { corners: Pt[]; outline: Pt[] }[]): Pt[] | null {
+  const f = frames.find(fr => inside(fr.outline, pts[0]));
   if (!f) return null;
-  const flip = !fa;
-  const [s, e] = flip ? [b, a] : [a, b];
   const c = f.corners;
-  const p1 = onFrame(c, s);
-  let path: Pt[];
-  if (fa && fb && fa === fb) {
-    const p2 = onFrame(c, e);
-    path = [s, p1.p, ...alongFrame(c, p1.s, p2.s), p2.p, e];
-  } else {
-    // the corner nearest to where the cord goes
-    let ci = 0;
-    for (let i = 1; i < 4; i++) if (Math.hypot(c[i].x - e.x, c[i].y - e.y) < Math.hypot(c[ci].x - e.x, c[ci].y - e.y)) ci = i;
-    const corner = onFrame(c, c[ci]);
-    const out = Math.abs(e.x - c[ci].x) >= Math.abs(e.y - c[ci].y) ? { x: c[ci].x, y: e.y } : { x: e.x, y: c[ci].y };
-    path = [s, p1.p, ...alongFrame(c, p1.s, corner.s), c[ci], out, e];
+  const s = pts[0];
+  const k = pts.findIndex((p, i) => i > 0 && !inside(f.outline, p));
+  if (k < 0) {
+    // both ends on this desk: along the frame between them
+    const e = pts[pts.length - 1], p2 = onFrame(c, e), p1 = entry(c, s, p2.s);
+    return [s, p1.p, ...alongFrame(c, p1.s, p2.s), p2.p, e];
   }
-  // drop repeated points
+  // leaves the desk towards the first drawn point outside it: at the frame corner nearest to that point
+  const q = pts[k];
+  let ci = 0;
+  for (let i = 1; i < 4; i++) if (Math.hypot(c[i].x - q.x, c[i].y - q.y) < Math.hypot(c[ci].x - q.x, c[ci].y - q.y)) ci = i;
+  const corner = onFrame(c, c[ci]);
+  const p1 = entry(c, s, corner.s);
+  return [s, p1.p, ...alongFrame(c, p1.s, corner.s), c[ci], ...ell(c[ci], q), ...pts.slice(k)];
+}
+
+/**
+ * A patch cord with an end on a desk: from that end to the desk frame, along the frame to the frame corner nearest
+ * to where the drawn cord leaves the desk, and on along the drawn path. Both ends on desks — both are fixed.
+ * Null when no end lies on a desk.
+ */
+export function routeViaDesk(points: Pt[], frames: { corners: Pt[]; outline: Pt[] }[]): Pt[] | null {
+  if (points.length < 2) return null;
+  let pts = points;
+  let changed = false;
+  const a = fixStart(pts, frames);
+  if (a) { pts = a; changed = true; }
+  const b = fixStart([...pts].reverse(), frames);
+  if (b && !(a && frames.find(fr => inside(fr.outline, points[0])) === frames.find(fr => inside(fr.outline, points[points.length - 1])))) {
+    pts = b.reverse();
+    changed = true;
+  }
+  if (!changed) return null;
   const clean: Pt[] = [];
-  for (const p of path.map(round)) if (!clean.length || Math.hypot(p.x - clean[clean.length - 1].x, p.y - clean[clean.length - 1].y) > 0.5) clean.push(p);
-  return flip ? clean.reverse() : clean;
+  for (const p of pts.map(round)) if (!clean.length || Math.hypot(p.x - clean[clean.length - 1].x, p.y - clean[clean.length - 1].y) > 0.5) clean.push(p);
+  return clean;
 }

@@ -757,7 +757,7 @@ function SelectionPanel() {
         </>
       )}
       {isDevice(item) && <DevicePanel floor={floor} itemId={item.id} />}
-      {st.mode === 'wiring' && (frameInset(item) !== undefined || (item.w >= 60 && item.h >= 40)) && (
+      {(frameInset(item) !== undefined || (item.w >= 60 && item.h >= 40)) && (
         <>
           <div className="sel-break" />
           <label title={t('desk.frameTitle')}>{t('desk.frame')} <OptNum key={`fr${item.id}`} value={item.frame}
