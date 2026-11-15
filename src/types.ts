@@ -79,7 +79,25 @@ export interface FurnitureItem {
   portTags?: Record<string, string>;
   /** Second colour of a two-port item (double LAN socket): the half with port 2 */
   color2?: string;
+  /** Computer data (PC, laptop): host name, video outputs, network ports */
+  device?: DeviceInfo;
   layer?: Layer;
+}
+
+/** Network port of a device: its MAC and IP address */
+export interface DeviceNic {
+  mac?: string;
+  ip?: string;
+}
+
+/** Computer data shown in its panel; the network ports are the item's ports (cables plug into them) */
+export interface DeviceInfo {
+  hostname?: string;
+  /** Number of HDMI / DisplayPort outputs */
+  hdmi?: number;
+  dp?: number;
+  /** Network ports, in order (port 1, 2…) */
+  nics?: DeviceNic[];
 }
 
 /** Free text note placed on the plan */

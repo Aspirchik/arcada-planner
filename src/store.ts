@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { Tool, METER } from './constants';
-import type { FurnitureItem, FloorState, CatalogItem, Dimension, TextNote, Wall, LabelPos, Cable, Tray, Layer, WiringSettings, CableGroup, CableLink } from './types';
+import type { FurnitureItem, FloorState, CatalogItem, Dimension, TextNote, Wall, LabelPos, Cable, Tray, Layer, WiringSettings, CableGroup, CableLink, DeviceInfo } from './types';
 import { relink, syncLinks } from './geometry/links';
 import { tidyCables, orthogonal, simplify } from './geometry/tidy';
 import { chainMembers, subtree, projectOnPath } from './geometry/chain';
@@ -99,6 +99,25 @@ const tagsOf = (v: unknown): { portTags?: Record<string, string> } => {
     .filter(([k, t]) => /^\d+$/.test(k) && typeof t === 'string' && t.trim()).map(([k, t]) => [k, (t as string).trim().slice(0, 40)]));
   return Object.keys(out).length ? { portTags: out } : {};
 };
+/** Computer data: host name, HDMI / DP counts, network ports with MAC / IP */
+const deviceOf = (v: unknown): { device?: DeviceInfo } => {
+  if (!v || typeof v !== 'object') return {};
+  const d = v as Record<string, unknown>;
+  const str = (x: unknown) => (typeof x === 'string' && x.trim() ? x.trim().slice(0, 80) : undefined);
+  const cnt = (x: unknown) => (isNum(x) && x >= 0 ? Math.min(16, Math.round(x)) : undefined);
+  const nics = Array.isArray(d.nics) ? d.nics.slice(0, 16).map(n => {
+    const o = (n && typeof n === 'object' ? n : {}) as Record<string, unknown>;
+    const mac = str(o.mac), ip = str(o.ip);
+    return { ...(mac ? { mac } : {}), ...(ip ? { ip } : {}) };
+  }) : undefined;
+  const out: DeviceInfo = {
+    ...(str(d.hostname) ? { hostname: str(d.hostname) } : {}),
+    ...(cnt(d.hdmi) !== undefined ? { hdmi: cnt(d.hdmi) } : {}),
+    ...(cnt(d.dp) !== undefined ? { dp: cnt(d.dp) } : {}),
+    ...(nics && nics.length ? { nics } : {}),
+  };
+  return Object.keys(out).length ? { device: out } : {};
+};
 /** Optional height above the floor (cm) */
 const elevOf = (v: unknown): { elev?: number } => (isNum(v) && v >= 0 ? { elev: v } : {});
 
@@ -155,6 +174,7 @@ export function parseProject(json: string): ParsedProject {
       ...(isNum(it.ports) && it.ports >= 0 ? { ports: Math.min(512, Math.round(it.ports)) } : {}),
       ...(Array.isArray(it.groups) && it.groups.some(isNum) ? { groups: (it.groups as unknown[]).filter(isNum) } : {}),
       ...tagsOf(it.portTags),
+      ...deviceOf(it.device),
       ...(typeof it.color2 === 'string' && /^#[0-9a-f]{3}([0-9a-f]{3})?$/i.test(it.color2) ? { color2: it.color2 } : {}),
     }));
 
@@ -295,6 +315,8 @@ interface Store {
    * an end that was in this port loses its port. One undo step.
    */
   assignPort(itemId: number, port: number, pick: { id: number; end: 'from' | 'to' } | null): void;
+  /** Changes the computer data of an item (host name, HDMI / DP, network ports) */
+  updateDevice(itemId: number, changes: Partial<DeviceInfo>): void;
   /** Tag of a port of an item ("uplink", "VLAN 10", a number = VLAN); empty clears it */
   setPortTag(itemId: number, port: number, tag: string): void;
   /** Adds the item (socket, switch…) to the group or takes it out */
@@ -585,6 +607,14 @@ export const useStore = create<Store>((set, get) => {
         if (c.toLink?.id === itemId && c.toPort === port) next = { ...next, toPort: undefined };
         if (pick && c.id === pick.id) next = pick.end === 'from' ? { ...next, fromPort: port } : { ...next, toPort: port };
         return next;
+      }) }));
+    },
+    updateDevice(itemId, changes) {
+      upFloor(f => ({ ...f, furniture: f.furniture.map(it => {
+        if (it.id !== itemId) return it;
+        const next: DeviceInfo = { ...(it.device ?? {}), ...changes };
+        for (const k of Object.keys(next) as (keyof DeviceInfo)[]) if (next[k] === undefined || next[k] === '') delete next[k];
+        return { ...it, device: Object.keys(next).length ? next : undefined };
       }) }));
     },
     setPortTag(itemId, port, tag) {

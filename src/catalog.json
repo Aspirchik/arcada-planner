@@ -95,7 +95,9 @@
         { "name": "Switch 48", "width": 0.48, "height": 0.35, "imagePath": "switch-48", "zIndex": 150 },
         { "name": "Entry point", "width": 0.2,  "height": 0.2,  "imagePath": "entry-point", "zIndex": 200 },
         { "name": "LAN socket",  "width": 0.15, "height": 0.15, "imagePath": "socket-lan", "zIndex": 200 },
-        { "name": "LAN socket double", "width": 0.24, "height": 0.15, "imagePath": "socket-lan-2", "zIndex": 200 }
+        { "name": "LAN socket double", "width": 0.24, "height": 0.15, "imagePath": "socket-lan-2", "zIndex": 200 },
+        { "name": "PC Dell SFF", "width": 0.29, "height": 0.29, "imagePath": "pc-sff", "zIndex": 150 },
+        { "name": "Laptop closed", "width": 0.34, "height": 0.24, "imagePath": "laptop-closed", "zIndex": 150 }
       ]
     },
     {

@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Trash2, BringToFront, SendToBack, Bold, Pencil, Type, Square, Image as ImageIcon, FlipHorizontal2, FlipVertical2, Ruler, Layers, Palette as PaletteIcon, GitBranchPlus, Link2, Unlink, Cable as CableIcon, MoveVertical, ArrowUpToLine } from 'lucide-react';
+import { Trash2, BringToFront, SendToBack, Bold, Pencil, Type, Square, Image as ImageIcon, FlipHorizontal2, FlipVertical2, Ruler, Layers, Palette as PaletteIcon, GitBranchPlus, Link2, Unlink, Cable as CableIcon, MoveVertical, ArrowUpToLine, Plus, Minus } from 'lucide-react';
 import { EditorStage } from './ui/EditorStage';
 import { Toolbar } from './ui/Toolbar';
 import { FurniturePanel } from './ui/FurniturePanel';
@@ -11,7 +11,8 @@ import { useStore, parseProject, isProjectEmpty } from './store';
 import { onLayer, styleCables, trayLayer, heightCtx } from './layers';
 import { cableHeights, itemElevation, verticalRun } from './geometry/heights';
 import { pathLength } from './geometry/cable';
-import { itemNamer, portCount, portTag, isTwoPart } from './labels';
+import { itemNamer, portCount, portTag, isTwoPart, isDevice, deviceNics } from './labels';
+import { normalizeMac, isMac, isIp } from './geometry/netaddr';
 import { CableGroupChips } from './ui/GroupsPanel';
 import { cablesInTray, cableRouteText, cableLength } from './geometry/cable';
 import { chainMembers, collapseToChains, chainInfos, chainRoots } from './geometry/chain';
@@ -644,9 +645,10 @@ function SelectionPanel() {
           <div className="sel-break" />
           <span className="sel-title">{t('cable.groups')}</span>
           <CableGroupChips itemId={item.id} groups={item.groups} />
-          <ItemPorts floor={floor} itemId={item.id} />
+          {!isDevice(item) && <ItemPorts floor={floor} itemId={item.id} />}
         </>
       )}
+      {isDevice(item) && <DevicePanel floor={floor} itemId={item.id} />}
     </div>
   );
 }
@@ -773,6 +775,73 @@ function ItemPorts({ floor, itemId }: { floor: FloorState; itemId: number }) {
           </div>
         </>
       )}
+    </>
+  );
+}
+
+/**
+ * Computer (PC, laptop): host name, HDMI / DP outputs and network ports — each with its MAC and IP address
+ * and the cable plugged into it (a connected cable without a port can be chosen).
+ */
+function DevicePanel({ floor, itemId }: { floor: FloorState; itemId: number }) {
+  const t = useT();
+  const lang = usePrefs(s => s.lang);
+  const st = useStore.getState();
+  const item = floor.furniture.find(f => f.id === itemId)!;
+  const dev = item.device ?? {};
+  const nics = deviceNics(item);
+  const ends = itemEnds(floor, itemId, lang);
+  const byPort = endsByPort(ends);
+  const loose = ends.filter(e => !e.port);
+  const key = (e: ItemEnd) => `${e.c.id}:${e.end}`;
+  const setNic = (i: number, changes: { mac?: string; ip?: string }) => {
+    const next = nics.map((n, k) => (k === i ? { ...n, ...changes } : n)).map(n => Object.fromEntries(Object.entries(n).filter(([, v]) => v)));
+    st.updateDevice(itemId, { nics: next });
+  };
+  const count = (v: number | undefined) => (v === undefined ? undefined : Math.min(16, Math.round(v)));
+  return (
+    <>
+      <div className="sel-break" />
+      <label title={t('dev.hostnameTitle')}>{t('dev.hostname')}
+        <TextField key={`dh${itemId}`} value={dev.hostname ?? ''} placeholder="PC-01" onCommit={v => st.updateDevice(itemId, { hostname: v.trim() || undefined })} />
+      </label>
+      <label title={t('dev.videoTitle')}>{t('dev.hdmi')} <OptNum key={`dhd${itemId}`} value={dev.hdmi} placeholder="0" title={t('dev.videoTitle')}
+        onCommit={v => st.updateDevice(itemId, { hdmi: count(v) })} /></label>
+      <label title={t('dev.videoTitle')}>{t('dev.dp')} <OptNum key={`ddp${itemId}`} value={dev.dp} placeholder="0" title={t('dev.videoTitle')}
+        onCommit={v => st.updateDevice(itemId, { dp: count(v) })} /></label>
+      <div className="sel-break" />
+      <span className="sel-title">{t('dev.lan')}</span>
+      <button className="sel-btn" title={t('dev.addNic')} disabled={nics.length >= 16}
+        onClick={() => st.updateDevice(itemId, { nics: [...nics, {}] })}><Plus size={14} /></button>
+      <button className="sel-btn" title={t('dev.removeNic')} disabled={nics.length <= 1}
+        onClick={() => st.updateDevice(itemId, { nics: nics.slice(0, -1) })}><Minus size={14} /></button>
+      <div className="dev-nics">
+        {nics.map((n, i) => {
+          const port = i + 1;
+          const here = byPort.get(port) ?? [];
+          const badMac = !!n.mac && !isMac(n.mac), badIp = !!n.ip && !isIp(n.ip);
+          return (
+            <div key={i} className="dev-nic">
+              <span className="dev-nic-n">LAN {port}</span>
+              <label className={badMac ? 'dev-bad' : ''} title={badMac ? t('dev.badMac') : undefined}>{t('dev.mac')}
+                <TextField key={`dm${itemId}-${i}`} value={n.mac ?? ''} placeholder="AA:BB:CC:DD:EE:FF" onCommit={v => setNic(i, { mac: normalizeMac(v) })} />
+              </label>
+              <label className={badIp ? 'dev-bad' : ''} title={badIp ? t('dev.badIp') : undefined}>{t('dev.ip')}
+                <TextField key={`di${itemId}-${i}`} value={n.ip ?? ''} placeholder="192.168.1.20" onCommit={v => setNic(i, { ip: v.trim() || undefined })} />
+              </label>
+              {here.length > 0 && <span className="tray-tip-dot" style={{ background: here[0].c.color }} />}
+              <select className="sel-select sw-cable" title={t('port.pick')} value={here[0] ? key(here[0]) : ''}
+                onChange={e => {
+                  const it = ends.find(x => key(x) === e.target.value);
+                  st.assignPort(itemId, port, it ? { id: it.c.id, end: it.end } : null);
+                }}>
+                <option value="">{t('port.isFree')}</option>
+                {[...here, ...loose].map(e => <option key={key(e)} value={key(e)}>{e.end === 'from' ? '→' : '←'} {e.other}</option>)}
+              </select>
+            </div>
+          );
+        })}
+      </div>
     </>
   );
 }

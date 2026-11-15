@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 290 290" width="290" height="290">
+	<title>Small form factor desktop computer, top view (front at the bottom)</title>
+	<style>
+		.s0 { fill: #ffffff; stroke: #000000; stroke-width: 6 }
+		.s1 { fill: none; stroke: #000000; stroke-width: 4; stroke-linecap: round }
+		.s2 { fill: #ffffff; stroke: #000000; stroke-width: 4 }
+	</style>
+	<rect class="s0" x="5" y="5" width="280" height="280" rx="10"/>
+	<path class="s1" d="M5 240 H285"/>
+	<path class="s1" d="M30 30 H260 M30 50 H260 M30 70 H260 M30 90 H260"/>
+	<rect class="s2" x="30" y="252" width="90" height="20" rx="3"/>
+	<circle class="s2" cx="250" cy="262" r="12"/>
+	<path class="s1" d="M200 255 V269 M212 255 V269 M224 255 V269"/>
+</svg>
