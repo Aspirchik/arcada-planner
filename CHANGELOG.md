@@ -3,6 +3,11 @@
 Все изменения проекта Arcada Planner, по порядку. Правила ведения — в [CLAUDE.md](CLAUDE.md).
 Отправная точка — исходная версия проекта 2.0.0 (до записи №1).
 
+## № 40 — 2026-11-15
+
+### Удалено
+- Неиспользуемые картинки, на которые не ссылался ни один предмет каталога ни в одной версии: background-pattern.svg, farfurie furculita.svg, drawerr.svg, table2.svg, single-bed.svg, stairs-u-shaped.svg, chair.svg (public/assets/2d/).
+
 ## № 39 — 2026-11-15
 
 ### Исправлено
