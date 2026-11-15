@@ -22,6 +22,8 @@ interface Prefs {
   /** Clearances smaller than this (cm) are highlighted */
   gapWarn: number;
   sizesPos: SizesPos;
+  /** Snap step in cm, 0 = off (off by default; the last choice is remembered) */
+  snap: number;
 }
 
 interface PrefsStore extends Prefs {
@@ -44,6 +46,7 @@ const defaults: Prefs = {
   gaps: true,
   gapWarn: 60,
   sizesPos: 'off',
+  snap: 0,
 };
 
 function loadPrefs(): Prefs {
@@ -59,6 +62,7 @@ function loadPrefs(): Prefs {
       gaps: typeof p.gaps === 'boolean' ? p.gaps : defaults.gaps,
       gapWarn: typeof p.gapWarn === 'number' && p.gapWarn >= 0 ? p.gapWarn : defaults.gapWarn,
       sizesPos: ['off', 'tl', 'tr', 'bl', 'br'].includes(p.sizesPos as string) ? p.sizesPos as SizesPos : defaults.sizesPos,
+      snap: typeof p.snap === 'number' && p.snap >= 0 && p.snap <= 100 ? p.snap : defaults.snap,
     };
   } catch {
     return defaults;

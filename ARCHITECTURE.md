@@ -31,7 +31,7 @@ arcada-v2/
 │   ├── types.ts              # WallNode, Wall, FurnitureItem, Dimension, TextNote, FloorState, CatalogItem
 │   ├── helpers.ts            # localToWorld, worldToLocal, sortByZ
 │   ├── store.ts              # Zustand store (project data, undo, selection) + parseProject()
-│   ├── prefs.ts              # UI preferences remembered in the browser: language, theme, label modes, gaps
+│   ├── prefs.ts              # UI preferences remembered in the browser: language, theme, label modes, gaps, snap step (off by default)
 │   ├── theme.ts              # Canvas palettes (LIGHT / DARK), useIsDark(), usePalette()
 │   ├── catalog.json          # Furniture catalog data (categories + items, English names)
 │   ├── geometry/             # Pure geometry, no React — covered by tests

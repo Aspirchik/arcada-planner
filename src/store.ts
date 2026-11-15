@@ -43,6 +43,7 @@ function layCables(f: FloorState, list: Cable[], trays: Tray[]): Cable[] | null 
 import { deskFrames } from './geometry/desk';
 import { isPassThrough } from './labels';
 import { translate, type TKey, type TParams } from './i18n';
+import { usePrefs } from './prefs';
 
 const HISTORY_LIMIT = 50;
 /** Project file format. 2.1.0 adds dimensions (ruler), text notes, furniture labels and cables; 2.0.0 files still load. */
@@ -541,7 +542,7 @@ export const useStore = create<Store>((set, get) => {
 
   return {
     tool: Tool.Select,
-    snapSize: 10, // 10 world units = 10cm default
+    snapSize: usePrefs.getState().snap, // off by default, the last choice is remembered
     floors: [emptyFloor()],
     histories: [emptyHistory()],
     fi: 0,
@@ -564,7 +565,7 @@ export const useStore = create<Store>((set, get) => {
     setChainPick: (chainPick) => set({ chainPick }),
 
     setTool: (tool) => set({ tool, wallStartId: null, selectedId: null, selection: [] }),
-    setSnapSize: (snapSize) => set({ snapSize }),
+    setSnapSize: (snapSize) => { set({ snapSize }); usePrefs.getState().set('snap', snapSize); },
     select: (id) => set(sel(id === null ? [] : [id])),
     setSelection: (ids) => set(sel(ids)),
     toggleSelect(id) {

@@ -81,7 +81,7 @@ Use the arrows in the toolbar to add and navigate floors. Each floor is independ
 
 | Option | What it does |
 |---|---|
-| **Snap** | Grid snap: Off, 5, 10, 25 or 50 cm |
+| **Snap** | Grid snap: Off (default), 5, 10, 25 or 50 cm; the last choice is remembered |
 | **Lengths** | Wall length labels: Inside / Both / Axis / Off |
 | **Names** | Show catalog names on furniture |
 | **Sizes** | Show width × depth (cm) on every item, in the chosen corner |
