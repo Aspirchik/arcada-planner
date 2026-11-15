@@ -141,4 +141,20 @@ describe('layoutCables: a tray fed from the side, cables going both ways', () =>
       expect(crossings(list.map(c => m.get(c.id)!))).toBe(0);
     }
   });
+  it('cables that do not run side by side share lanes, so the bundle stays in the middle of the run', () => {
+    // all from one port: right to the tray, then up or down it
+    const up = [0, 1, 2, 3].map(i => ({ id: i + 1, color: '#000',
+      points: [{ x: 0, y: 500 }, { x: 100, y: 500 }, { x: 100, y: 0 }, { x: 300 + 100 * i, y: 0 }, { x: 300 + 100 * i, y: 40 }] }));
+    const down = [0, 1, 2, 3].map(i => ({ id: i + 11, color: '#000',
+      points: [{ x: 0, y: 500 }, { x: 100, y: 500 }, { x: 100, y: 1000 }, { x: 300 + 100 * i, y: 1000 }, { x: 300 + 100 * i, y: 960 }] }));
+    const all = [...up, ...down];
+    const m = layoutCables(all);
+    // x of the long vertical part of a cable (its lane in the tray)
+    const laneX = (c: typeof up[0]) => { const p = m.get(c.id)!; for (let i = 1; i < p.length; i++) if (Math.abs(p[i].x - p[i - 1].x) < 0.01 && Math.abs(p[i].y - p[i - 1].y) > 100) return p[i].x; return NaN; };
+    const xs = (list: typeof up) => list.map(laneX).sort((a, b) => a - b);
+    // the cables going up lie in the same lanes as the ones going down: no room kept for the other bundle
+    expect(xs(up)).toEqual(xs(down));
+    expect(Math.abs(xs(up).reduce((a, b) => a + b, 0) / 4 - 100)).toBeLessThan(0.01);
+    expect(crossings(all.map(c => m.get(c.id)!))).toBe(0);
+  });
 });

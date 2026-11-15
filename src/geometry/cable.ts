@@ -322,8 +322,32 @@ export function layoutCables(cables: Cable[], groupOrder: number[] = []): Map<nu
     if (!progress) break;
   }
 
+  // Lanes: in the corridor order, a line takes the first lane after every earlier line it runs beside;
+  // lines that don't run beside each other (e.g. one bundle going up, one down) share lanes, so no room
+  // is kept for a bundle where it isn't. The lanes are centred on the run.
   const offsets = new Map<string, Pt>();
-  for (const k of corrs) for (const sg of k.list) offsets.set(`${sg.cable}:${sg.index}`, offsetOf(k, lineOf(sg.cable)));
+  for (const k of corrs) {
+    const span = new Map<number, { lo: number; hi: number }>();
+    for (const sg of k.list) {
+      const l = lineOf(sg.cable), s0 = span.get(l);
+      span.set(l, s0 ? { lo: Math.min(s0.lo, sg.t0), hi: Math.max(s0.hi, sg.t1) } : { lo: sg.t0, hi: sg.t1 });
+    }
+    const lane = new Map<number, number>();
+    for (const l of k.order) {
+      const s1 = span.get(l)!;
+      let p = 0;
+      for (const [o, q] of lane) {
+        const s2 = span.get(o)!;
+        if (Math.min(s1.hi, s2.hi) - Math.max(s1.lo, s2.lo) > MIN_OVERLAP) p = Math.max(p, q + 1);
+      }
+      lane.set(l, p);
+    }
+    const top = Math.max(...lane.values());
+    for (const sg of k.list) {
+      const o = (lane.get(lineOf(sg.cable))! - top / 2) * k.step;
+      offsets.set(`${sg.cable}:${sg.index}`, { x: k.n.x * o, y: k.n.y * o });
+    }
+  }
 
   const result = new Map<number, Pt[]>();
   cables.forEach((cb, ci) => {
