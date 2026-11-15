@@ -1155,7 +1155,7 @@ export function EditorStage() {
   const selectedTray = selectedId !== null ? act.trays.find(t => t.id === selectedId) : null;
   const hoveredTray = hoverTray ? act.trays.find(t => t.id === hoverTray.id) ?? null : null;
   // A chain is listed once (its route through all consumers); all its cables light up
-  const trayHits = hoveredTray ? collapseToChains(cablesInTray(hoveredTray, act.cables), act.cables) : null;
+  const trayHits = hoveredTray ? collapseToChains(cablesInTray(hoveredTray, act.cables.filter(c => ws.trayPatch || c.kind !== 'patch')), act.cables) : null;
   const trayCables = trayHits?.shown ?? null;
   const chainPick = store.chainPick;
   const multi = selection.length > 1;

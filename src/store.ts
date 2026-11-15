@@ -85,6 +85,7 @@ export function parseWiring(raw: unknown): WiringSettings {
     cableText: num('cableText', 2, 100),
     cableLabels: typeof w.cableLabels === 'boolean' ? w.cableLabels : DEFAULT_WIRING.cableLabels,
     cableLengths: typeof w.cableLengths === 'boolean' ? w.cableLengths : DEFAULT_WIRING.cableLengths,
+    trayPatch: typeof w.trayPatch === 'boolean' ? w.trayPatch : DEFAULT_WIRING.trayPatch,
     trayWidth: num('trayWidth', 1, 200),
     trayText: num('trayText', 2, 100),
     planDim: num('planDim', 5, 100),

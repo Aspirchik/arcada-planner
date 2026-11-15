@@ -51,3 +51,11 @@ describe('printers', () => {
     expect(isPrinter({ ...prn, path: 'pc-sff', name: 'PC Dell SFF' })).toBe(false);
   });
 });
+
+describe('wiring setting: patch cords in tray lists', () => {
+  it('is on by default and kept when turned off', () => {
+    const base = { floors: [{ nodes: [], walls: [], furniture: [] }], nextId: 5 };
+    expect(parseProject(JSON.stringify(base)).wiring.trayPatch).toBe(true);
+    expect(parseProject(JSON.stringify({ ...base, wiring: { trayPatch: false } })).wiring.trayPatch).toBe(false);
+  });
+});

@@ -33,6 +33,7 @@
   "wset.cableText": "Rozmiar podpisów kabli",
   "wset.cableLabels": "Pokazuj podpisy kabli",
   "wset.cableLengths": "Pokazuj długość każdego kabla",
+  "wset.trayPatch": "Pokazuj patchcordy na liście koryta (panel koryta i podpowiedź)",
   "wset.trayWidth": "Szerokość nowych koryt",
   "wset.trayText": "Rozmiar podpisów koryt",
   "wset.planDim": "Jasność planu pod instalacją",

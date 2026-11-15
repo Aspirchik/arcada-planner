@@ -62,7 +62,7 @@ export function WiringSettingsDialog({ onClose }: { onClose: () => void }) {
       <span className="wset-field"><Num k={k} value={ws[k]} onChange={v => set(k, v)} /> {unit}{extra}</span>
     </div>
   );
-  const check = (k: 'cableLabels' | 'cableLengths', label: TKey) => (
+  const check = (k: 'cableLabels' | 'cableLengths' | 'trayPatch', label: TKey) => (
     <label className="export-row wset-check">
       <input type="checkbox" checked={ws[k]} onChange={e => set(k, e.target.checked)} /> {t(label)}
     </label>
@@ -81,6 +81,7 @@ export function WiringSettingsDialog({ onClose }: { onClose: () => void }) {
         {check('cableLengths', 'wset.cableLengths')}
         {num('trayWidth', 'wset.trayWidth', t('unit.cm'))}
         {num('trayText', 'wset.trayText', t('unit.cm'))}
+        {check('trayPatch', 'wset.trayPatch')}
         {num('planDim', 'wset.planDim', '%')}
         <div className="export-row">
           <span>{t('wset.floorHeight')}</span>

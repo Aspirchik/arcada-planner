@@ -14,7 +14,7 @@ export interface LayerView {
 }
 
 export const DEFAULT_WIRING: WiringSettings = {
-  cableWidth: 3, cableText: 11, cableLabels: true, cableLengths: false, trayWidth: 10, trayText: 10, planDim: 30,
+  cableWidth: 3, cableText: 11, cableLabels: true, cableLengths: false, trayPatch: true, trayWidth: 10, trayText: 10, planDim: 30,
 };
 
 /** Whether an object is shown on the given layer ('both' objects are on each of them) */

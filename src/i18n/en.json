@@ -33,6 +33,7 @@
   "wset.cableText": "Cable label size",
   "wset.cableLabels": "Show cable labels",
   "wset.cableLengths": "Show length on every cable",
+  "wset.trayPatch": "List patch cords in trays (tray panel and hover hint)",
   "wset.trayWidth": "Width of new trays",
   "wset.trayText": "Tray label size",
   "wset.planDim": "Plan brightness under the wiring",

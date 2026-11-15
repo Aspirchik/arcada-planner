@@ -26,6 +26,8 @@ export interface WiringSettings {
   cableLabels: boolean;
   /** Show the length on every cable */
   cableLengths: boolean;
+  /** List patch cords among the cables of a tray (tray panel, hover hint) */
+  trayPatch: boolean;
   /** Width of new trays, cm */
   trayWidth: number;
   /** Letter height of tray labels, cm */

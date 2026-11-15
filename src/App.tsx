@@ -532,7 +532,8 @@ function SelectionPanel() {
   const tray = floor.trays.find(x => x.id === selectedId);
   if (tray) {
     const styled = styleCables(floor.cables.filter(c => onLayer(c, 'wiring')), st.wiring, itemNamer(floor.furniture, lang, floor.cables), heightCtx(floor));
-    const inside = collapseToChains(cablesInTray(tray, styled), styled).shown;
+    // patch cords can be left out of tray lists (Wiring settings)
+    const inside = collapseToChains(cablesInTray(tray, styled.filter(c => st.wiring.trayPatch || c.kind !== 'patch')), styled).shown;
     return (
       <div className="selection-panel" ref={panelRef} style={at(tray.points, 460)}>
         <TextField key={`tl${tray.id}`} value={tray.label ?? ''} placeholder={t('sel.label')}

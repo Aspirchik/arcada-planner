@@ -81,7 +81,7 @@ describe('export content', () => {
       furniture: [{ ...floor.furniture[1], x: 100, y: 100, color: '#8e24aa' }],
       cables: [{ id: 54, points: [{ x: 20, y: 60 }, { x: 220, y: 60 }], color: '#00897b', label: 'Cat6' }],
       trays: [{ id: 55, points: [{ x: 20, y: 100 }, { x: 220, y: 100 }], width: 10, label: 'K1', color: '#e8710a' }] };
-    const svg = buildPlanSvg(wf, new Map(), { ...base, area: 'room', layers: 'all', wiring: { cableWidth: 7, cableText: 11, cableLabels: false, cableLengths: false, trayWidth: 10, trayText: 10, planDim: 30 } })!.svg;
+    const svg = buildPlanSvg(wf, new Map(), { ...base, area: 'room', layers: 'all', wiring: { cableWidth: 7, cableText: 11, cableLabels: false, cableLengths: false, trayPatch: true, trayWidth: 10, trayText: 10, planDim: 30 } })!.svg;
     expect(svg).toContain('stroke="#8e24aa"');
     expect(svg).toContain('stroke="#e8710a"');
     expect(svg).toContain('>K1<');
