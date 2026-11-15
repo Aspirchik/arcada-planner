@@ -12,7 +12,8 @@ import { sortByZ } from '../helpers';
 import { layerPasses, styleCables, heightCtx, DEFAULT_WIRING, type LayerView, type LayerChoice } from '../layers';
 import { mixHex, spriteKey } from '../color';
 import { furnitureLabel, sizesCorner, itemNamer } from '../labels';
-import { cableLabel, layoutCables, placeCableLabels, labelObstacles, midAlong, cableJoints, jointSize } from '../geometry/cable';
+import { cableLabel, layoutCables, placeCableLabels, labelObstacles, midAlong, cableJoints, jointSize, cablePlugs, plugSize } from '../geometry/cable';
+import { translate } from '../i18n';
 
 export const EXPORT_FONT = 'Roboto';
 const LINE_HEIGHT = 1.2;
@@ -313,7 +314,7 @@ export function buildPlanSvg(floor: FloorState, sprites: Map<string, SpriteDef>,
     const cables = styleCables(v.cables, ws, itemNamer(floor.furniture, opts.lang, floor.cables), heightCtx(floor));
     const size = ws.cableText;
     const cablePaths = layoutCables(cables, [...(floor.groups ?? []).map(g => g.id), ...(opts.commonGroups ?? [])]);
-    const cableTexts = new Map(ws.cableLabels ? cables.map(c => [c.id, cableLabel(c, opts.unitM)] as [number, string]).filter(([, l]) => !!l) : []);
+    const cableTexts = new Map(ws.cableLabels ? cables.map(c => [c.id, cableLabel(c, opts.unitM, translate(opts.lang, 'cable.patchShort'))] as [number, string]).filter(([, l]) => !!l) : []);
     const cableSpots = placeCableLabels(cables, cablePaths, cableTexts, size, t => measure(t, size, false),
       labelObstacles(geom, opts.wallLabels, floor.furniture));
     for (const c of cables) {
@@ -322,6 +323,11 @@ export function buildPlanSvg(floor: FloorState, sprites: Map<string, SpriteDef>,
       out.push(`<polyline points="${pts(path)}" fill="none" stroke="${fade(c.color)}" stroke-width="${f(c.width ?? ws.cableWidth)}" stroke-linecap="round" stroke-linejoin="round"/>`);
       // Connectors: a sleeve across the line
       const js = jointSize(c.width ?? ws.cableWidth);
+      // Plugs at the free ends of a patch cord
+      const ps = plugSize(c.width ?? ws.cableWidth);
+      for (const j of cablePlugs(c, path)) {
+        out.push(`<g transform="translate(${f(j.p.x)} ${f(j.p.y)}) rotate(${f(j.angle)})"><rect x="${f(-ps.len)}" y="${f(-ps.thick / 2)}" width="${f(ps.len)}" height="${f(ps.thick)}" rx="${f(ps.thick * 0.15)}" fill="${fade(c.color)}"/><rect x="${f(-ps.tip)}" y="${f(-ps.thick / 2 + ps.stroke)}" width="${f(ps.tip)}" height="${f(ps.thick - ps.stroke * 2)}" fill="${mixHex(fade(c.color), pal.paper, 0.35)}"/></g>`);
+      }
       for (const j of cableJoints(c, path)) {
         out.push(`<g transform="translate(${f(j.p.x)} ${f(j.p.y)}) rotate(${f(j.angle)})"><rect x="${f(-js.len / 2)}" y="${f(-js.thick / 2)}" width="${f(js.len)}" height="${f(js.thick)}" rx="${f(js.thick * 0.25)}" fill="${pal.paper}" stroke="${fade(c.color)}" stroke-width="${f(js.stroke)}"/><line x1="0" y1="${f(-js.thick / 2)}" x2="0" y2="${f(js.thick / 2)}" stroke="${fade(c.color)}" stroke-width="${f(js.stroke)}"/></g>`);
       }

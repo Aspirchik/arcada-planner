@@ -34,8 +34,18 @@ export function midAlong(points: Pt[]): { p: Pt; angle: number } {
 }
 
 /** Text shown along the cable: its label, route (from → to) and/or length */
-export function cableLabel(c: Cable, unitM: string): string {
+/** Standard patch cord lengths, cm */
+export const PATCH_LENGTHS = [100, 200, 300, 500, 1000];
+
+/** Shortest standard patch cord at least as long as `lengthCm`; 0 when even the longest is too short */
+export const patchLength = (lengthCm: number) => PATCH_LENGTHS.find(s => s >= lengthCm - 0.5) ?? 0;
+
+export function cableLabel(c: Cable, unitM: string, patchWord = 'patch'): string {
   const parts: string[] = [];
+  if (c.kind === 'patch') {
+    const n = c.patchLen ?? patchLength(cableLength(c));
+    parts.push(n ? `${patchWord} ${n / 100} ${unitM}` : `${patchWord} > ${PATCH_LENGTHS[PATCH_LENGTHS.length - 1] / 100} ${unitM}`);
+  }
   if (c.label?.trim()) parts.push(c.label.trim());
   const route = c.route !== undefined ? c.route : cableRoute(c);
   if (route) parts.push(route);
@@ -43,8 +53,22 @@ export function cableLabel(c: Cable, unitM: string): string {
   return parts.join(' · ');
 }
 
-/** Size of a connector drawn on a cable of width `w`: a sleeve across the line */
-export const jointSize = (w: number) => ({ len: w * 3 + 6, thick: w * 2 + 5, stroke: Math.max(1.2, w * 0.45) });
+/** Size of a connector drawn on a cable of width `w`: a short sleeve, a little thicker than the cable */
+export const jointSize = (w: number) => ({ len: w * 1.6 + 2.5, thick: w + 1.6, stroke: Math.max(0.5, w * 0.25) });
+
+/** Size of a plug at a free end of a patch cord: a little thicker than the cable */
+export const plugSize = (w: number) => ({ len: w * 2.2 + 3, thick: w + 2, tip: w * 0.7 + 1, stroke: Math.max(0.4, w * 0.2) });
+
+/** Free ends of a patch cord (not connected to an item nor to a parent cable): plug positions, pointing outwards */
+export function cablePlugs(c: Cable, drawn: Pt[]): { p: Pt; angle: number }[] {
+  if (c.kind !== 'patch' || drawn.length < 2) return [];
+  const out: { p: Pt; angle: number }[] = [];
+  const dir = (a: Pt, b: Pt) => Math.atan2(b.y - a.y, b.x - a.x) * 180 / Math.PI;
+  if (!c.fromLink && c.parent === undefined) out.push({ p: drawn[0], angle: dir(drawn[1], drawn[0]) });
+  const n = drawn.length;
+  if (!c.toLink) out.push({ p: drawn[n - 1], angle: dir(drawn[n - 2], drawn[n - 1]) });
+  return out;
+}
 
 /** Connectors of a cable on its drawn path (which may run beside the plan points in a bundle) and their direction */
 export function cableJoints(c: Cable, drawn: Pt[]): { p: Pt; angle: number }[] {

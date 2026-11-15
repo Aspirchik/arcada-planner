@@ -391,6 +391,8 @@ body { overflow: hidden; font-family: system-ui, sans-serif; background: var(--o
 .sw-line-n { min-width: 16px; text-align: right; color: var(--text-3); font-variant-numeric: tabular-nums; }
 .port-select { max-width: 200px; }
 .sel-len3d { color: var(--text-2); font-size: 12px; }
+.sel-patch { font-weight: 600; color: var(--text-1); }
+.sel-patch.long { color: #e04848; }
 .pt-heights { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; max-width: 600px; }
 .pt-h { display: inline-flex; align-items: center; gap: 3px; color: var(--text-3); font-size: 12px; }
 .pt-h .sel-opt { width: 48px; }

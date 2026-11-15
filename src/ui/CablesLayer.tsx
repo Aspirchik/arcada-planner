@@ -4,7 +4,7 @@ import { Line, Group, Circle, Text, Rect } from 'react-konva';
 import type { Cable, Tray } from '../types';
 import type { Palette } from '../theme';
 import type { Pt } from '../geometry/hit';
-import { midAlong, cableLabel, layoutCables, placeCableLabels, cableJoints, jointSize, type Box } from '../geometry/cable';
+import { midAlong, cableLabel, layoutCables, placeCableLabels, cableJoints, jointSize, cablePlugs, plugSize, type Box } from '../geometry/cable';
 import { DEFAULT_CABLE_WIDTH } from '../store';
 import { mixHex } from '../color';
 import { AlongText } from './WallsLayer';
@@ -34,8 +34,10 @@ export function CableLine({ points, color, width = DEFAULT_CABLE_WIDTH, label, l
 }
 
 /** All cables: shared runs drawn side by side, labels placed so they don't cover each other */
-export function CablesLayerContent({ cables, palette, unitM, avoid, highlight, labelSize = LABEL_SIZE, showLabels = true, groupOrder }: {
+export function CablesLayerContent({ cables, palette, unitM, avoid, highlight, labelSize = LABEL_SIZE, showLabels = true, groupOrder, patchWord }: {
   cables: Cable[]; palette: Palette; unitM: string; avoid?: Box[];
+  /** Word for a patch cord in labels ("patch cord 3 m") */
+  patchWord?: string;
   /** Cable groups in lane order (first = outer side of a bundle) */
   groupOrder?: number[];
   /** Letter height of the labels and whether they are shown (global wiring settings) */
@@ -45,10 +47,10 @@ export function CablesLayerContent({ cables, palette, unitM, avoid, highlight, l
 }) {
   const { paths, places, labels } = useMemo(() => {
     const paths = layoutCables(cables, groupOrder);
-    const labels = new Map(showLabels ? cables.map(c => [c.id, cableLabel(c, unitM)] as [number, string]).filter(([, l]) => !!l) : []);
+    const labels = new Map(showLabels ? cables.map(c => [c.id, cableLabel(c, unitM, patchWord)] as [number, string]).filter(([, l]) => !!l) : []);
     const places = placeCableLabels(cables, paths, labels, labelSize, t => t.length * labelSize * 0.55, avoid);
     return { paths, places, labels };
-  }, [cables, unitM, avoid, labelSize, showLabels, groupOrder]);
+  }, [cables, unitM, avoid, labelSize, showLabels, groupOrder, patchWord]);
   return (
     <Group>
       {cables.map(c => (
@@ -56,6 +58,7 @@ export function CablesLayerContent({ cables, palette, unitM, avoid, highlight, l
           <CableLine points={paths.get(c.id) ?? c.points} color={c.color} width={c.width}
             label={labels.get(c.id)} labelAt={places.get(c.id)} palette={palette} labelSize={labelSize} />
           {cableJoints(c, paths.get(c.id) ?? c.points).map((j, i) => <CableJoint key={i} at={j} color={c.color} width={c.width} palette={palette} />)}
+          {cablePlugs(c, paths.get(c.id) ?? c.points).map((j, i) => <CablePlug key={`p${i}`} at={j} color={c.color} width={c.width} palette={palette} />)}
         </Group>
       ))}
     </Group>
@@ -70,6 +73,17 @@ export function CableJoint({ at, color, width = DEFAULT_CABLE_WIDTH, palette }: 
       <Rect x={-s.len / 2} y={-s.thick / 2} width={s.len} height={s.thick} cornerRadius={s.thick * 0.25}
         fill={palette.paper} stroke={color} strokeWidth={s.stroke} />
       <Line points={[0, -s.thick / 2, 0, s.thick / 2]} stroke={color} strokeWidth={s.stroke} />
+    </Group>
+  );
+}
+
+/** RJ45 plug at a free end of a patch cord: a body a little thicker than the cable, its tip at the end */
+export function CablePlug({ at, color, width = DEFAULT_CABLE_WIDTH, palette }: { at: { p: Pt; angle: number }; color: string; width?: number; palette: Palette }) {
+  const s = plugSize(width);
+  return (
+    <Group x={at.p.x} y={at.p.y} rotation={at.angle}>
+      <Rect x={-s.len} y={-s.thick / 2} width={s.len} height={s.thick} cornerRadius={s.thick * 0.15} fill={color} />
+      <Rect x={-s.tip} y={-s.thick / 2 + s.stroke} width={s.tip} height={s.thick - s.stroke * 2} fill={mixHex(color, palette.paper, 0.35)} />
     </Group>
   );
 }

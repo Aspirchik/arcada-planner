@@ -211,6 +211,7 @@ export function parseProject(json: string): ParsedProject {
       ...(Array.isArray(c.groups) && c.groups.some(isNum) ? { groups: c.groups.filter(isNum) } : {}),
       ...(isNum(c.parent) && c.parent !== c.id ? { parent: c.parent } : {}),
       ...(c.noTray === true ? { noTray: true } : {}),
+      ...(c.kind === 'patch' ? { kind: 'patch' as const } : {}),
       ...(isNum(c.fromPort) && c.fromPort >= 1 ? { fromPort: Math.round(c.fromPort) } : {}),
       ...(isNum(c.toPort) && c.toPort >= 1 ? { toPort: Math.round(c.toPort) } : {}),
       ...(isNum(c.height) && c.height >= 0 ? { height: c.height } : {}),

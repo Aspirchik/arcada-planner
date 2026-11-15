@@ -2,6 +2,7 @@
 import type { FloorState, FurnitureItem, TextNote, Dimension, Cable, Tray, WiringSettings, Layer } from './types';
 import { chainInfos, chainRoots, chainRoute } from './geometry/chain';
 import { cableHeights, length3d, itemElevation, type HeightCtx } from './geometry/heights';
+import { patchLength } from './geometry/cable';
 
 export interface LayerView {
   furniture: FurnitureItem[];
@@ -52,7 +53,8 @@ export function styleCables(cables: Cable[], ws: WiringSettings, nameOf?: (id: n
   // Chains: the first cable carries the route through all consumers and the total length; the others only their own label
   const infos = chainInfos(cables, nameOf, lengthOf);
   const roots = chainRoots(cables);
-  return cables.map(c => {
+  return cables.map(c => (c.kind === 'patch' ? { ...style(c), patchLen: patchLength(lengthOf(c)) } : style(c)));
+  function style(c: Cable): Cable {
     const info = infos.get(c.id);
     if (info) return { ...c, width: c.width ?? ws.cableWidth, ...(ws.cableLengths ? { showLength: true } : {}), route: chainRoute(info), totalLength: info.length };
     const root = roots.get(c.id);
@@ -65,7 +67,7 @@ export function styleCables(cables: Cable[], ws: WiringSettings, nameOf?: (id: n
       ...(from ? { from } : {}), ...(to ? { to } : {}),
       ...(zs ? { totalLength: lengthOf(c) } : {}),
     };
-  });
+  }
 }
 
 /** Heights of a floor for cable lengths: item mounting heights (own, or of the tray the item stands in) and tray heights */

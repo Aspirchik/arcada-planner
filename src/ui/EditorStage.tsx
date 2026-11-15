@@ -1187,7 +1187,7 @@ export function EditorStage() {
             {sortByZ(base.furniture).map(item => (
               <FurnitureVisual key={item.id} item={item} palette={palette} onImageLoaded={onImageLoaded} />
             ))}
-            <CablesLayerContent cables={base.cables} palette={palette} unitM={t('unit.m')} avoid={cableAvoid}
+            <CablesLayerContent cables={base.cables} palette={palette} unitM={t('unit.m')} avoid={cableAvoid} patchWord={t('cable.patchShort')}
               labelSize={ws.cableText} showLabels={ws.cableLabels} groupOrder={groupOrder} />
             <FurnitureLabels furniture={base.furniture} palette={palette} showNames={showNames} lang={lang} sizesPos={sizesPos} />
             <TextNotes texts={base.texts} palette={palette} />
@@ -1217,7 +1217,7 @@ export function EditorStage() {
         ))}
 
         {/* Cables (above furniture) */}
-        <CablesLayerContent cables={act.cables} palette={palette} unitM={t('unit.m')} avoid={cableAvoid}
+        <CablesLayerContent cables={act.cables} palette={palette} unitM={t('unit.m')} avoid={cableAvoid} patchWord={t('cable.patchShort')}
           labelSize={ws.cableText} showLabels={ws.cableLabels} groupOrder={groupOrder}
           highlight={trayHits ? trayHits.ids : litCables ?? undefined} />
         {cableDraft && (

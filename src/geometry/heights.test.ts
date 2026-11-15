@@ -156,3 +156,19 @@ describe('connectors', () => {
     expect(out.filter(p => p.joint)).toHaveLength(1);
   });
 });
+
+describe('patch cords', () => {
+  it('standard length that fits, label, plugs at free ends', async () => {
+    const { patchLength, cableLabel, cablePlugs } = await import('./cable');
+    expect(patchLength(80)).toBe(100);
+    expect(patchLength(240)).toBe(300);
+    expect(patchLength(300)).toBe(300);
+    expect(patchLength(1200)).toBe(0);
+    const c: Cable = { id: 1, color: '#000', kind: 'patch', points: [{ x: 0, y: 0 }, { x: 240, y: 0 }], toLink: { id: 5, u: 0.5, v: 0.5 } };
+    const [s] = styleCables([c], DEFAULT_WIRING, undefined, { elevOf: () => undefined, trays: [] });
+    expect(s.patchLen).toBe(300);
+    expect(cableLabel(s, 'm', 'patch cord')).toBe('patch cord 3 m');
+    // only the free start gets a plug, pointing outwards (to the left)
+    expect(cablePlugs(c, c.points)).toEqual([{ p: { x: 0, y: 0 }, angle: 180 }]);
+  });
+});

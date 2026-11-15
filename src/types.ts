@@ -156,10 +156,14 @@ export interface Cable {
   parent?: number;
   /** Runs outside the trays (e.g. under the ceiling): "Tidy" doesn't put it into trays, trays don't count it */
   noTray?: boolean;
+  /** 'patch' = patch cord: a ready-made cord of a standard length (1, 2, 3, 5, 10 m); a free end shows a plug */
+  kind?: 'patch';
   /** Height of the run above the floor (cm) for points without their own height */
   height?: number;
   /** Display only (set by styleCables, never saved): route text of the chain and its total length */
   route?: string;
+  /** Display only: standard patch cord length that fits (cm), 0 = longer than the longest standard one */
+  patchLen?: number;
   totalLength?: number;
   layer?: Layer;
 }

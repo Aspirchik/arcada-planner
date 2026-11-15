@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Trash2, BringToFront, SendToBack, Bold, Pencil, Type, Square, Image as ImageIcon, FlipHorizontal2, FlipVertical2, Ruler, Layers, Palette as PaletteIcon, GitBranchPlus, Link2, Unlink, Cable as CableIcon, MoveVertical, ArrowUpToLine, Plus, Minus, Combine } from 'lucide-react';
+import { Trash2, BringToFront, SendToBack, Bold, Pencil, Type, Square, Image as ImageIcon, FlipHorizontal2, FlipVertical2, Ruler, Layers, Palette as PaletteIcon, GitBranchPlus, Link2, Unlink, Cable as CableIcon, MoveVertical, ArrowUpToLine, Plus, Minus, Combine, Plug } from 'lucide-react';
 import { EditorStage } from './ui/EditorStage';
 import { Toolbar } from './ui/Toolbar';
 import { FurniturePanel } from './ui/FurniturePanel';
@@ -10,7 +10,7 @@ import { rectCorners } from './geometry/hit';
 import { useStore, parseProject, isProjectEmpty } from './store';
 import { onLayer, styleCables, trayLayer, heightCtx } from './layers';
 import { cableHeights, itemElevation, verticalRun } from './geometry/heights';
-import { pathLength } from './geometry/cable';
+import { pathLength, patchLength, PATCH_LENGTHS } from './geometry/cable';
 import { itemNamer, portCount, portTag, isTwoPart, isDevice, deviceNics, isPassThrough } from './labels';
 import { derivedTag, otherEnd } from './geometry/ports';
 import { translate } from './i18n';
@@ -623,6 +623,19 @@ function SelectionPanel() {
         <div className="sel-break" />
         <span className="sel-title">{t('cable.groups')}</span>
         <CableGroupChips cableId={cable.id} groups={cable.groups} />
+        <div className="sel-break" />
+        <button className={'sel-btn' + (cable.kind === 'patch' ? ' active' : '')} title={t('cable.patchTitle')}
+          onClick={() => st.updateCable(cable.id, { kind: cable.kind === 'patch' ? undefined : 'patch' })}><Plug size={14} /></button>
+        {cable.kind === 'patch' && (() => {
+          const need = patchLength(flat + vert);
+          return (
+            <span className={'sel-patch' + (need ? '' : ' long')}>
+              {need
+                ? t('cable.patchNeed', { len: m(need), real: m(flat + vert) })
+                : t('cable.patchTooLong', { max: m(PATCH_LENGTHS[PATCH_LENGTHS.length - 1]), real: m(flat + vert) })}
+            </span>
+          );
+        })()}
         <div className="sel-break" />
         <button className={'sel-btn' + (cable.noTray ? '' : ' active')} title={t('cable.inTray')}
           onClick={() => st.updateChain(cable.id, { noTray: cable.noTray ? undefined : true })}><CableIcon size={14} /></button>
