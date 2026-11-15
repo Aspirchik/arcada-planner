@@ -12,7 +12,9 @@ import { onLayer, styleCables, trayLayer, heightCtx } from './layers';
 import { cableHeights, itemElevation, verticalRun } from './geometry/heights';
 import { pathLength } from './geometry/cable';
 import { itemNamer, portCount, portTag, isTwoPart, isDevice, deviceNics, isPassThrough } from './labels';
-import { derivedTag } from './geometry/ports';
+import { derivedTag, otherEnd } from './geometry/ports';
+import { translate } from './i18n';
+import { itemName } from './labels';
 import { normalizeMac, isMac, isIp } from './geometry/netaddr';
 import { CableGroupChips } from './ui/GroupsPanel';
 import { cablesInTray, cableRouteText, cableLength } from './geometry/cable';
@@ -110,9 +112,68 @@ function OptNum({ value, placeholder, title, onCommit }: { value: number | undef
 /** A cable end connected to an item, and where the cable goes from there */
 interface ItemEnd { c: Cable; end: 'from' | 'to'; port?: number; other: string }
 
+/**
+ * Name of a port for traces in panels: "User 2, port 1 (A1)" — a socket's own label in brackets;
+ * switch tags (VLAN) are not in it, panels show them apart, first.
+ */
+function hopNamer(floor: FloorState, lang: Lang) {
+  const byId = new Map(floor.furniture.map(f => [f.id, f]));
+  return (id: number, port?: number, _via?: number): string | undefined => {
+    const it = byId.get(id);
+    const name = it ? itemName(it, lang) : '';
+    if (!name) return undefined;
+    if (!port) return name;
+    const label = isPassThrough(it!) ? portTag(it!, port) : '';
+    return `${name}, ${translate(lang, 'port.short')} ${port}${label ? ` (${label})` : ''}`;
+  };
+}
+
+/** Item and port at the other end of every cable plugged into a port (the cable `exclude` skipped) */
+function portPeers(floor: FloorState, itemId: number, port: number, exclude?: number): { id?: number; port?: number; cable: Cable; text?: string }[] {
+  const byId = new Map(floor.cables.map(c => [c.id, c]));
+  const out: { id?: number; port?: number; cable: Cable; text?: string }[] = [];
+  for (const c of floor.cables) {
+    if (c.id === exclude) continue;
+    const end = c.toLink?.id === itemId && c.toPort === port ? 'to' : c.fromLink?.id === itemId && c.fromPort === port ? 'from' : null;
+    if (!end) continue;
+    const o = otherEnd(c, end, byId);
+    out.push(o ? { id: o.id, port: o.port, cable: c } : { cable: c, text: (end === 'to' ? c.from : c.to) || c.label });
+  }
+  return out;
+}
+
+/**
+ * What a port leads to, VLAN first and then the run in order:
+ * switch — "User 2, port 1 (A1) → PC-01"; socket — "Switch A, port 3 → port 1 (A1) → PC-01";
+ * computer — "Switch A, port 3 → User 2, port 1 (A1)".
+ */
+function portTrace(floor: FloorState, lang: Lang, itemId: number, port: number): { vlan: string; text: string } {
+  const byId = new Map(floor.furniture.map(f => [f.id, f]));
+  const item = byId.get(itemId);
+  if (!item) return { vlan: '', text: '' };
+  const hop = hopNamer(floor, lang);
+  const name = (p: { id?: number; port?: number; text?: string }) => (p.id !== undefined ? hop(p.id, p.port) : p.text) || '?';
+  const through = (id?: number) => (id !== undefined && byId.get(id) ? isPassThrough(byId.get(id)!) : false);
+  const isDev = (id?: number) => (id !== undefined && byId.get(id) ? isDevice(byId.get(id)!) : false);
+  const tagOf = (id: number, n: number) => { const it = byId.get(id); return it ? portTag(it, n) : ''; };
+  const peers = portPeers(floor, itemId, port);
+  if (isPassThrough(item)) {
+    const back = peers.filter(p => !isDev(p.id)).map(name), front = peers.filter(p => isDev(p.id)).map(name);
+    const label = portTag(item, port);
+    const self = `${translate(lang, 'port.short')} ${port}${label ? ` (${label})` : ''}`;
+    return { vlan: derivedTag(itemId, port, floor.cables, tagOf), text: peers.length ? [back.join(', ') || '…', self, front.join(', ') || '…'].join(' → ') : '' };
+  }
+  const runs = peers.map(p => {
+    const next = through(p.id) && p.port ? portPeers(floor, p.id!, p.port, p.cable.id).map(name) : [];
+    // a computer reads from the switch side: "Switch, port 3 → User 2, port 1"; a switch away from itself
+    return isDevice(item) ? [...next, name(p)].join(' → ') : [name(p), ...next].join(' → ');
+  });
+  return { vlan: isDevice(item) ? derivedTag(itemId, port, floor.cables, tagOf) : portTag(item, port), text: runs.join('; ') };
+}
+
 /** Cable ends connected to an item (switch), with the other end of each run ("User 1", or a chain's consumers) */
 function itemEnds(floor: FloorState, itemId: number, lang: Lang): ItemEnd[] {
-  const nameOf = itemNamer(floor.furniture, lang, floor.cables);
+  const nameOf = hopNamer(floor, lang);
   const infos = chainInfos(floor.cables, nameOf);
   const roots = chainRoots(floor.cables);
   const byId = new Map(floor.cables.map(c => [c.id, c]));
@@ -696,7 +757,8 @@ function ItemPorts({ floor, itemId }: { floor: FloorState; itemId: number }) {
   const room = passThru ? 2 : 1;
   const tagOf = (id: number, n: number) => { const it = floor.furniture.find(f => f.id === id); return it ? portTag(it, n) : ''; };
   const gotTag = (n: number) => (passThru ? derivedTag(itemId, n, floor.cables, tagOf) : '');
-  const what = (n: number) => (byPort.get(n) ?? []).map(e => e.other).join(passThru ? '  ⇄  ' : ', ');
+  const trace = (n: number) => portTrace(floor, lang, itemId, n);
+  const what = (n: number) => trace(n).text;
   const selected = pick !== null && pick <= max ? pick : null;
   const arrow = (e: ItemEnd) => (e.end === 'from' ? '→' : '←');
 
@@ -762,7 +824,15 @@ function ItemPorts({ floor, itemId }: { floor: FloorState; itemId: number }) {
                 <TextField key={`pt${item.id}-${selected}`} value={item.portTags?.[String(selected)] ?? ''} placeholder="uplink / VLAN 10"
                   onCommit={v => useStore.getState().setPortTag(itemId, selected, v)} />
               </label>
-              {gotTag(selected) && <span className="sw-line-tag" title={t('port.gotTitle')}>{gotTag(selected)}</span>}
+              {(() => {
+                const tr = trace(selected);
+                return tr.text ? (
+                  <span className="sw-trace">
+                    {tr.vlan && <span className={'sw-line-tag' + (passThru ? ' got' : '')}>{tr.vlan}</span>} {tr.text}
+                  </span>
+                ) : null;
+              })()}
+              <div className="sel-break" />
               {passThru ? (
                 <>
                   {here.map(e => (
@@ -803,15 +873,14 @@ function ItemPorts({ floor, itemId }: { floor: FloorState; itemId: number }) {
           <div className="sw-list" style={{ gridTemplateRows: `repeat(${Math.min(12, max)}, auto)` }}>
             {Array.from({ length: max }, (_, i) => i + 1).map(n => {
               const at = byPort.get(n) ?? [];
-              const tag = portTag(item, n), got = gotTag(n);
+              const tr = trace(n);
               return (
                 <button key={n} className={'sw-line' + (at.length ? ' busy' : '') + (selected === n ? ' picked' : '') + (at.length > room || n > count ? ' clash' : '')}
                   onClick={() => setPick(selected === n ? null : n)}>
                   <span className="sw-line-n">{n}</span>
                   {at.length > 0 && <span className="tray-tip-dot" style={{ background: at[0].c.color }} />}
-                  {tag && <span className="sw-line-tag">{tag}</span>}
-                  {got && got !== tag && <span className="sw-line-tag got" title={t('port.gotTitle')}>{got}</span>}
-                  <span>{at.length ? what(n) : t('port.isFree')}</span>
+                  {tr.vlan && <span className={'sw-line-tag' + (passThru ? ' got' : '')} title={passThru ? t('port.gotTitle') : undefined}>{tr.vlan}</span>}
+                  <span>{at.length ? tr.text : t('port.isFree')}</span>
                 </button>
               );
             })}
@@ -894,6 +963,10 @@ function DevicePanel({ floor, itemId }: { floor: FloorState; itemId: number }) {
                 <option value="">{t('port.isFree')}</option>
                 {[...here, ...loose].map(e => <option key={key(e)} value={key(e)}>{e.end === 'from' ? '→' : '←'} {e.other}</option>)}
               </select>
+              {(() => {
+                const tr = portTrace(floor, lang, itemId, port);
+                return tr.text ? <span className="sw-trace">{tr.vlan && <span className="sw-line-tag got">{tr.vlan}</span>} {tr.text} → LAN {port}</span> : null;
+              })()}
             </div>
           );
         })}

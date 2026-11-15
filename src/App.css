@@ -371,6 +371,7 @@ body { overflow: hidden; font-family: system-ui, sans-serif; background: var(--o
 .sw-line.clash { color: #e04848; }
 .sw-line-tag { padding: 0 4px; border-radius: 3px; background: var(--surface-2); color: var(--text-2); font-weight: 600; }
 .sw-cable { max-width: 320px; }
+.sw-trace { display: inline-flex; align-items: center; gap: 6px; color: var(--text-1); white-space: nowrap; }
 .sw-line-tag.got { background: none; border: 1px dashed var(--border); }
 .sw-end { display: inline-flex; align-items: center; gap: 4px; padding: 1px 6px; border: 1px solid var(--border); border-radius: 4px; color: var(--text-1); }
 .sw-unplug { border: none; background: none; color: var(--text-3); cursor: pointer; font-size: 14px; line-height: 1; padding: 0 2px; }
