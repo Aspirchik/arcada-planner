@@ -100,9 +100,9 @@
         { "name": "Laptop closed", "width": 0.34, "height": 0.24, "imagePath": "laptop-closed", "zIndex": 150 },
         { "name": "Printer Kyocera", "width": 0.38, "height": 0.4, "imagePath": "printer-laser", "zIndex": 150 },
         { "name": "Printer Kyocera with scanner", "width": 0.42, "height": 0.44, "imagePath": "printer-mfp", "zIndex": 150 },
-        { "name": "Zebra ZD411", "width": 0.12, "height": 0.22, "imagePath": "zebra-zd411", "zIndex": 150 },
-        { "name": "Zebra ZD410", "width": 0.12, "height": 0.22, "imagePath": "zebra-zd410", "zIndex": 150 },
-        { "name": "Zebra ZT230", "width": 0.24, "height": 0.43, "imagePath": "zebra-zt230", "zIndex": 150 }
+        { "name": "Zebra ZT411", "width": 0.27, "height": 0.495, "imagePath": "zebra-zt411", "zIndex": 150 },
+        { "name": "Zebra ZT410", "width": 0.27, "height": 0.495, "imagePath": "zebra-zt410", "zIndex": 150 },
+        { "name": "Zebra ZT230", "width": 0.242, "height": 0.432, "imagePath": "zebra-zt230", "zIndex": 150 }
       ]
     },
     {

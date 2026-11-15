@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 270 495" width="270" height="495">
+	<title>Zebra ZT410 industrial label printer, top view (front at the bottom): dark body with the control panel on the left, light media door on the right</title>
+	<style>
+		.body { fill: #8c8c8c; stroke: #000000; stroke-width: 5 }
+		.door { fill: #e2e2e2; stroke: #000000; stroke-width: 4 }
+		.bezel { fill: #6e6e6e; stroke: #000000; stroke-width: 4 }
+		.light { fill: #f4f4f4; stroke: #000000; stroke-width: 3 }
+		.line { fill: none; stroke: #000000; stroke-width: 3; stroke-linecap: round }
+	</style>
+	<rect class="body" x="4" y="4" width="262" height="487" rx="10"/>
+	<rect class="door" x="100" y="12" width="158" height="400" rx="6"/>
+	<path class="line" d="M112 30 V394"/>
+	<rect class="light" x="190" y="360" width="30" height="30" rx="4"/>
+	<path class="line" d="M197 370 L213 370 M197 377 L213 377 M197 384 L213 384"/>
+	<rect class="bezel" x="4" y="420" width="262" height="71" rx="8"/>
+	<rect class="light" x="16" y="430" width="62" height="24" rx="2"/>
+	<circle class="light" cx="24" cy="472" r="6"/>
+	<circle class="light" cx="44" cy="472" r="6"/>
+	<circle class="light" cx="64" cy="472" r="6"/>
+	<rect class="light" x="110" y="452" width="140" height="10" rx="3"/>
+</svg>

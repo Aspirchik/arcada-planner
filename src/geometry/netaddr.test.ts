@@ -44,7 +44,7 @@ describe('devices', () => {
 
 describe('printers', () => {
   it('are network devices without video outputs, with one port by default', () => {
-    const prn: FurnitureItem = { id: 2, path: 'zebra-zd411', name: 'Zebra ZD411', x: 0, y: 0, w: 12, h: 22, rot: 0, zi: 150 };
+    const prn: FurnitureItem = { id: 2, path: 'zebra-zt411', name: 'Zebra ZT411', x: 0, y: 0, w: 27, h: 49.5, rot: 0, zi: 150 };
     expect(isPrinter(prn)).toBe(true);
     expect(isDevice(prn)).toBe(true);
     expect(portCount(prn)).toBe(1);
