@@ -54,7 +54,7 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
       const list = c.allFloors ? floors.map((floor, index) => ({ index, floor })) : [{ index: fi, floor: floors[fi] }];
       const n = await runExport({
         format: c.format, area: c.area, dark: c.dark, floors: list, pxPerCm: c.pxPerCm, pdfPage: c.pdfPage, layers: c.layers,
-        view: { wallLabels: prefs.wallLabels, showNames: prefs.showNames, sizesPos: prefs.sizesPos, lang: prefs.lang, wiring: useStore.getState().wiring, commonGroups: useStore.getState().commonGroups.map(g => g.id) },
+        view: { wallLabels: prefs.wallLabels, showNames: prefs.showNames, sizesPos: prefs.sizesPos, lang: prefs.lang, wiring: useStore.getState().wiring, commonGroups: useStore.getState().commonGroups.map(g => g.id), litGroups: useStore.getState().litGroups },
         text: { unitM: t('unit.m'), floorTitle: n => t('floor.title', { n }), scale: t('export.scale') },
       });
       if (n === 0) alert(t('export.empty'));
@@ -89,6 +89,7 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
         {c.format === 'pdf' && row('export.page', <Segmented value={c.pdfPage} onChange={v => set('pdfPage', v)}
           options={[{ value: 'a4', label: 'A4' }, { value: 'a3', label: 'A3' }, { value: 'scale50', label: t('export.pageFit') }]} />)}
         <p className="dialog-text export-hint">{t(c.format === 'pdf' ? 'export.hintPdf' : 'export.hintPng')}</p>
+        {useStore.getState().litGroups.length > 0 && <p className="dialog-text export-hint">{t('export.litGroups')}</p>}
         <div className="dialog-actions">
           <button className="secondary" disabled={busy} onClick={onClose}>{t('export.cancel')}</button>
           <button disabled={busy} onClick={go}>{busy ? t('export.busy') : t('export.go')}</button>

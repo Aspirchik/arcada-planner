@@ -165,6 +165,7 @@
   "export.scale": "scale",
   "export.hintPdf": "Vector PDF: lines and text stay sharp at any zoom; opens on any device.",
   "export.hintPng": "High-resolution picture (up to 8 px per cm); opens anywhere like a normal photo.",
+  "export.litGroups": "Groups are highlighted: their cables and items are exported in full, everything else in the wiring is dimmed. Turn the highlight off in the Groups panel to export all in full",
   "export.cancel": "Cancel",
   "export.go": "Export",
   "export.busy": "Exporting…",

@@ -9,7 +9,7 @@ import { computeWallGeometry, type FloorWallGeom } from '../geometry/walls';
 import { rectCorners, type Pt } from '../geometry/hit';
 import { wallLabelSpecs, formatMeters, LABEL_SIZE } from '../geometry/wallLabels';
 import { sortByZ } from '../helpers';
-import { layerPasses, styleCables, heightCtx, DEFAULT_WIRING, type LayerView, type LayerChoice } from '../layers';
+import { layerPasses, styleCables, heightCtx, DEFAULT_WIRING, cablesInGroups, onLayer, type LayerView, type LayerChoice } from '../layers';
 import { mixHex, spriteKey } from '../color';
 import { furnitureLabel, sizesCorner, itemNamer } from '../labels';
 import { cableLabel, layoutCables, placeCableLabels, labelObstacles, midAlong, cableJoints, jointSize, cablePlugs, plugSize } from '../geometry/cable';
@@ -47,6 +47,8 @@ export interface PlanSvgOptions {
   wiring?: WiringSettings;
   /** Ids of the project's common cable groups (after the floor's own groups in lane order) */
   commonGroups?: number[];
+  /** Highlighted groups: their cables and items are drawn in full, other cables and wiring items dimmed */
+  litGroups?: number[];
   /** Pixel size written to the root element (PNG); the viewBox stays in cm */
   pixelWidth?: number;
   pixelHeight?: number;
@@ -293,11 +295,18 @@ export function buildPlanSvg(floor: FloorState, sprites: Map<string, SpriteDef>,
   };
 
   // Objects of one layer: furniture, cables, labels, texts, rulers
+  // Highlighted groups (as in the editor): what is in them stays in focus, other cables and wiring items are dimmed
+  const lit = opts.litGroups?.length ? opts.litGroups : null;
+  const litCables = lit ? cablesInGroups(floor.cables, lit) : null;
+  const outOfFocus = (it: FurnitureItem) => !!lit && onLayer(it, 'wiring') && !it.groups?.some(g => lit.includes(g));
   const objects = (v: LayerView, pal: Palette, faded: boolean): string => {
     const fade = (c: string) => (faded ? fadeHex(c, pal.paper, dimBy) : c);
+    // a cable outside the highlighted groups: dimmed like the plan under the wiring
+    const fadeCable = (id: number, c: string) => (!faded && litCables && !litCables.has(id) ? fadeHex(c, pal.paper, dimBy) : fade(c));
     const out: string[] = [];
     for (const it of sortByZ(v.furniture)) {
       const tr = `translate(${f(it.x)} ${f(it.y)}) rotate(${f(it.rot)})`;
+      const itemFaded = faded || outOfFocus(it);
       const sp = it.simple ? undefined : sprites.get(spriteKey(it));
       if (!sp) {
         const stroke = it.simple ? (it.color ? fade(it.color) : pal.wallStroke) : pal.placeholderStroke;
@@ -308,7 +317,7 @@ export function buildPlanSvg(floor: FloorState, sprites: Map<string, SpriteDef>,
       const flip = it.flipX || it.flipY
         ? ` transform="translate(${f(it.flipX ? it.w : 0)} ${f(it.flipY ? it.h : 0)}) scale(${it.flipX ? -1 : 1} ${it.flipY ? -1 : 1})"`
         : '';
-      out.push(`<g transform="${tr}"${faded ? ` opacity="${f(dimBy)}"` : ''}><g${flip}><svg x="0" y="0" width="${f(it.w)}" height="${f(it.h)}" viewBox="${sp.viewBox}" preserveAspectRatio="none" overflow="hidden"${sp.fill ? ` fill="${sp.fill}"` : ''}>${sp.body}</svg></g></g>`);
+      out.push(`<g transform="${tr}"${itemFaded ? ` opacity="${f(dimBy)}"` : ''}><g${flip}><svg x="0" y="0" width="${f(it.w)}" height="${f(it.h)}" viewBox="${sp.viewBox}" preserveAspectRatio="none" overflow="hidden"${sp.fill ? ` fill="${sp.fill}"` : ''}>${sp.body}</svg></g></g>`);
     }
     // Cables (above furniture): shared runs side by side, labels kept apart
     const cables = styleCables(v.cables, ws, itemNamer(floor.furniture, opts.lang, floor.cables), heightCtx(floor));
@@ -320,21 +329,21 @@ export function buildPlanSvg(floor: FloorState, sprites: Map<string, SpriteDef>,
     for (const c of cables) {
       const path = cablePaths.get(c.id) ?? c.points;
       if (path.length < 2) continue;
-      out.push(`<polyline points="${pts(path)}" fill="none" stroke="${fade(c.color)}" stroke-width="${f(c.width ?? ws.cableWidth)}" stroke-linecap="round" stroke-linejoin="round"/>`);
+      out.push(`<polyline points="${pts(path)}" fill="none" stroke="${fadeCable(c.id, c.color)}" stroke-width="${f(c.width ?? ws.cableWidth)}" stroke-linecap="round" stroke-linejoin="round"/>`);
       // Connectors: a sleeve across the line
       const js = jointSize(c.width ?? ws.cableWidth);
       // Plugs at the free ends of a patch cord
       const ps = plugSize(c.width ?? ws.cableWidth);
       for (const j of cablePlugs(c, path)) {
-        out.push(`<g transform="translate(${f(j.p.x)} ${f(j.p.y)}) rotate(${f(j.angle)})"><rect x="${f(-ps.len)}" y="${f(-ps.thick / 2)}" width="${f(ps.len)}" height="${f(ps.thick)}" rx="${f(ps.thick * 0.15)}" fill="${fade(c.color)}"/><rect x="${f(-ps.tip)}" y="${f(-ps.thick / 2 + ps.stroke)}" width="${f(ps.tip)}" height="${f(ps.thick - ps.stroke * 2)}" fill="${mixHex(fade(c.color), pal.paper, 0.35)}"/></g>`);
+        out.push(`<g transform="translate(${f(j.p.x)} ${f(j.p.y)}) rotate(${f(j.angle)})"><rect x="${f(-ps.len)}" y="${f(-ps.thick / 2)}" width="${f(ps.len)}" height="${f(ps.thick)}" rx="${f(ps.thick * 0.15)}" fill="${fadeCable(c.id, c.color)}"/><rect x="${f(-ps.tip)}" y="${f(-ps.thick / 2 + ps.stroke)}" width="${f(ps.tip)}" height="${f(ps.thick - ps.stroke * 2)}" fill="${mixHex(fadeCable(c.id, c.color), pal.paper, 0.35)}"/></g>`);
       }
       for (const j of cableJoints(c, path)) {
-        out.push(`<g transform="translate(${f(j.p.x)} ${f(j.p.y)}) rotate(${f(j.angle)})"><rect x="${f(-js.len / 2)}" y="${f(-js.thick / 2)}" width="${f(js.len)}" height="${f(js.thick)}" rx="${f(js.thick * 0.25)}" fill="${pal.paper}" stroke="${fade(c.color)}" stroke-width="${f(js.stroke)}"/><line x1="0" y1="${f(-js.thick / 2)}" x2="0" y2="${f(js.thick / 2)}" stroke="${fade(c.color)}" stroke-width="${f(js.stroke)}"/></g>`);
+        out.push(`<g transform="translate(${f(j.p.x)} ${f(j.p.y)}) rotate(${f(j.angle)})"><rect x="${f(-js.len / 2)}" y="${f(-js.thick / 2)}" width="${f(js.len)}" height="${f(js.thick)}" rx="${f(js.thick * 0.25)}" fill="${pal.paper}" stroke="${fadeCable(c.id, c.color)}" stroke-width="${f(js.stroke)}"/><line x1="0" y1="${f(-js.thick / 2)}" x2="0" y2="${f(js.thick / 2)}" stroke="${fadeCable(c.id, c.color)}" stroke-width="${f(js.stroke)}"/></g>`);
       }
     }
     for (const c of cables) {
       const label = cableTexts.get(c.id), at = cableSpots.get(c.id);
-      if (label && at) out.push(alongText(at.p, at.angle, label, size, fade(c.color), pal.paper));
+      if (label && at) out.push(alongText(at.p, at.angle, label, size, fadeCable(c.id, c.color), pal.paper));
     }
     // Furniture labels and sizes
     const lo = { palette: pal, showNames: opts.showNames, sizesPos: opts.sizesPos, lang: opts.lang, measure };

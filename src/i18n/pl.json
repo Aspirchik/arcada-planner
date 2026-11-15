@@ -165,6 +165,7 @@
   "export.scale": "skala",
   "export.hintPdf": "PDF wektorowy: linie i tekst pozostają ostre przy każdym powiększeniu; otwiera się na każdym urządzeniu.",
   "export.hintPng": "Obraz w wysokiej rozdzielczości (do 8 px na cm); otwiera się wszędzie jak zwykłe zdjęcie.",
+  "export.litGroups": "Grupy są podświetlone: ich kable i obiekty są eksportowane w pełni, reszta okablowania przygaszona. Wyłącz podświetlenie w panelu Grupy, aby eksportować wszystko w pełni",
   "export.cancel": "Anuluj",
   "export.go": "Eksportuj",
   "export.busy": "Eksportowanie…",

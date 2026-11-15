@@ -89,6 +89,19 @@ describe('export content', () => {
     expect(svg).not.toContain('Cat6');
   });
 
+  it('highlighted groups: their cables in full colour, other cables dimmed', () => {
+    const wf = { ...floor,
+      cables: [
+        { id: 61, points: [{ x: 20, y: 60 }, { x: 220, y: 60 }], color: '#00897b', groups: [7], layer: 'wiring' as const },
+        { id: 62, points: [{ x: 20, y: 90 }, { x: 220, y: 90 }], color: '#e53935', layer: 'wiring' as const },
+      ] };
+    const plain = buildPlanSvg(wf, new Map(), { ...base, area: 'room', layers: 'wiring' })!.svg;
+    expect(plain).toContain('stroke="#e53935"');
+    const lit = buildPlanSvg(wf, new Map(), { ...base, area: 'room', layers: 'wiring', litGroups: [7] })!.svg;
+    expect(lit).toContain('stroke="#00897b"');
+    expect(lit).not.toContain('stroke="#e53935"');
+  });
+
   it('trays are drawn under the furniture (sockets in a tray stay visible)', () => {
     const wf = { ...floor, furniture: [{ ...floor.furniture[1], x: 100, y: 40, w: 15, h: 15, layer: 'wiring' as const }],
       trays: [{ id: 56, points: [{ x: 20, y: 47 }, { x: 300, y: 47 }], width: 20 }] };

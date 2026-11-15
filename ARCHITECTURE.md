@@ -312,7 +312,7 @@ Files use `.arcada` extension (JSON content). Current format version **2.1.0** (
 - Trays have `layer?: 'plan' | 'both'` (missing = wiring); `trayLayer()` maps it to the object layer used by the panel.
 - Object colour: `color` on furniture and trays. Sprites are recoloured by `colorSvg()` (greys → shades of the colour); the sprite cache and export key is `spriteKey()` (path + colour).
 - Trays (`Tray`: points, width, label) are drawn by `TraysLayerContent`; `cablesInTray()` lists cables with ≥ 20 cm inside a tray band. Cables snap to tray centre lines.
-- Export: `layers` = `plan` (main only), `all`, `wiring` (main drawn with `fadePalette()` colours, wiring on top).
+- Export: `layers` = `plan` (main only), `all`, `wiring` (main drawn with `fadePalette()` colours, wiring on top). With `litGroups` (the editor's highlighted groups) cables outside them (`cablesInGroups`) and wiring items without such a group are dimmed by `planDim`.
 
 ## Export (`src/export`)
 
