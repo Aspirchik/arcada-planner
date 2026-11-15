@@ -12,7 +12,7 @@
   "cable.to": "Dokąd",
   "tool.tray": "Koryto",
   "tray.width": "Szerokość",
-  "tray.pull": "Jednorazowe koryto: przyciągnij kable biegnące wzdłuż niego (do 40 cm od krawędzi) na jego linię i usuń koryto. Narysuj koryto wzdłuż wybranej drogi i kliknij. Końce kabli zostają, a trasy są blokowane, więc Uporządkuj ich nie zmienia",
+  "tray.pull": "Jednorazowe koryto: kable w pobliżu (do 60 cm od krawędzi), także patchcordy, tracą punkty i są układane od nowa jak przy Uporządkuj, przez to koryto (patchcordy z biurka: po ramie biurka do narożnika, potem do koryta); potem koryto znika. Narysuj koryto wzdłuż wybranej drogi i kliknij. Trasy są blokowane, więc Uporządkuj ich nie zmienia",
   "tray.count": "kabli: {n}",
   "tray.none": "Brak kabli w tym korycie",
   "mode.wiring": "Instalacja",

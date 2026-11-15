@@ -6,10 +6,45 @@ import { tidyCables, orthogonal, simplify } from './geometry/tidy';
 import { chainMembers, subtree, projectOnPath } from './geometry/chain';
 import { DEFAULT_WIRING, onLayer, trayLayer } from './layers';
 import { carryHeights } from './geometry/heights';
-import { simplifyPath, pullOnto } from './geometry/segdrag';
+import { simplifyPath, nearGuide } from './geometry/segdrag';
 
-/** One-off tray: cables this far from its edge (cm) are pulled onto it */
-const PULL_REACH = 40;
+/** One-off tray: cables this far from its edge (cm) are laid through it */
+const PULL_REACH = 60;
+/** One-off tray: how far a cable end may be from it and still be led into it (cm) */
+const PULL_ACCESS = 5000;
+
+/**
+ * The floor's cables with `list` laid again by `tidyCables` (through `trays`, desk frames for patch cords);
+ * continuations start on the new path of their parent. Null when nothing changed.
+ */
+function layCables(f: FloorState, list: Cable[], trays: Tray[], trayReach?: number): Cable[] | null {
+  const paths = tidyCables(list, trays, { desks: deskFrames(f.furniture), ...(trayReach ? { trayReach } : {}) });
+  const done = new Set<number>();
+  const place = (c: Cable) => {
+    if (done.has(c.id)) return;
+    done.add(c.id);
+    const up = c.parent !== undefined ? list.find(x => x.id === c.parent) : undefined;
+    const own = paths.get(c.id);
+    if (!up || !own) return;
+    place(up);
+    const upPath = paths.get(up.id) ?? up.points;
+    if (projectOnPath(up.points, c.points[0]).dist > 1) return;
+    const start = projectOnPath(upPath, own[0]).p;
+    paths.set(c.id, simplify(orthogonal([start, ...own.slice(1)])));
+  };
+  list.forEach(place);
+  let changed = false;
+  const cables = f.cables.map(c => {
+    const p = paths.get(c.id);
+    if (!p) return c;
+    // Own point heights stay with the points they belonged to
+    const pts = carryHeights(c.points, p);
+    if (JSON.stringify(pts) === JSON.stringify(c.points)) return c;
+    changed = true;
+    return { ...c, points: pts };
+  });
+  return changed ? cables : null;
+}
 import { deskFrames } from './geometry/desk';
 import { isPassThrough } from './labels';
 import { translate, type TKey, type TParams } from './i18n';
@@ -750,33 +785,8 @@ export const useStore = create<Store>((set, get) => {
         // routes laid by hand stay as they are
         const mine = f.cables.filter(c => onLayer(c, mode === 'wiring' ? 'wiring' : 'main') && !c.fixed);
         if (mine.length === 0) return f;
-        const paths = tidyCables(mine, mode === 'wiring' ? f.trays : [], { desks: deskFrames(f.furniture) });
-        // Continuations start on the new path of their parent (parents first)
-        const done = new Set<number>();
-        const place = (c: Cable) => {
-          if (done.has(c.id)) return;
-          done.add(c.id);
-          const up = c.parent !== undefined ? mine.find(x => x.id === c.parent) : undefined;
-          const own = paths.get(c.id);
-          if (!up || !own) return;
-          place(up);
-          const upPath = paths.get(up.id) ?? up.points;
-          if (projectOnPath(up.points, c.points[0]).dist > 1) return;
-          const start = projectOnPath(upPath, own[0]).p;
-          paths.set(c.id, simplify(orthogonal([start, ...own.slice(1)])));
-        };
-        mine.forEach(place);
-        let changed = false;
-        const cables = f.cables.map(c => {
-          const p = paths.get(c.id);
-          if (!p) return c;
-          // Own point heights stay with the points they belonged to
-          const pts = carryHeights(c.points, p);
-          if (JSON.stringify(pts) === JSON.stringify(c.points)) return c;
-          changed = true;
-          return { ...c, points: pts };
-        });
-        return changed ? { ...f, cables } : f;
+        const cables = layCables(f, mine, mode === 'wiring' ? f.trays : []);
+        return cables ? { ...f, cables } : f;
       });
     },
     resetCableWidths() {
@@ -1072,10 +1082,11 @@ export const useStore = create<Store>((set, get) => {
         const tr = f.trays.find(t => t.id === id);
         if (!tr) return f;
         const reach = tr.width / 2 + PULL_REACH;
-        const cables = f.cables.map(c => {
-          const p = pullOnto(c.points, tr.points, reach);
-          return p ? { ...c, points: p, fixed: true } : c;
-        });
+        // the cables near the tray are laid again, like Tidy does, but through this tray only
+        const near = f.cables.filter(c => nearGuide(c.points, tr.points, reach)).map(c => ({ ...c, noTray: undefined }));
+        const ids = new Set(near.map(c => c.id));
+        const laid = near.length ? layCables(f, near, [tr], PULL_ACCESS) : null;
+        const cables = (laid ?? f.cables).map(c => (ids.has(c.id) ? { ...c, fixed: true } : c));
         return { ...f, cables, trays: f.trays.filter(t => t.id !== id) };
       });
       set({ selectedId: null });

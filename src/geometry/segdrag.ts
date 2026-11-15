@@ -142,3 +142,23 @@ export function pullOnto(points: CPt[], guide: Pt[], reach: number): CPt[] | nul
   }
   return changed ? pts : null;
 }
+
+/** Shortest distance between segments ab and cd */
+function segDist(a: Pt, b: Pt, c: Pt, d: Pt): number {
+  const ptSeg = (p: Pt, s: Pt, e: Pt) => {
+    const dx = e.x - s.x, dy = e.y - s.y, l2 = dx * dx + dy * dy;
+    const t = l2 < 1e-9 ? 0 : Math.max(0, Math.min(1, ((p.x - s.x) * dx + (p.y - s.y) * dy) / l2));
+    return Math.hypot(p.x - s.x - dx * t, p.y - s.y - dy * t);
+  };
+  const cr = (o: Pt, p: Pt, q: Pt) => (p.x - o.x) * (q.y - o.y) - (p.y - o.y) * (q.x - o.x);
+  if (Math.sign(cr(a, b, c)) !== Math.sign(cr(a, b, d)) && Math.sign(cr(c, d, a)) !== Math.sign(cr(c, d, b))) return 0;
+  return Math.min(ptSeg(a, c, d), ptSeg(b, c, d), ptSeg(c, a, b), ptSeg(d, a, b));
+}
+
+/** True when some part of the cable comes within `reach` of the guide line */
+export function nearGuide(points: Pt[], guide: Pt[], reach: number): boolean {
+  for (let i = 1; i < points.length; i++)
+    for (let j = 1; j < guide.length; j++)
+      if (segDist(points[i - 1], points[i], guide[j - 1], guide[j]) <= reach) return true;
+  return false;
+}
