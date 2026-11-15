@@ -3,6 +3,7 @@ import type { FloorState, FurnitureItem, TextNote, Dimension, Cable, Tray, Wirin
 import { chainInfos, chainRoots, chainRoute } from './geometry/chain';
 import { cableHeights, length3d, itemElevation, type HeightCtx } from './geometry/heights';
 import { patchLength } from './geometry/cable';
+import { portCount } from './labels';
 
 export interface LayerView {
   furniture: FurnitureItem[];
@@ -53,7 +54,11 @@ export function styleCables(cables: Cable[], ws: WiringSettings, nameOf?: (id: n
   // Chains: the first cable carries the route through all consumers and the total length; the others only their own label
   const infos = chainInfos(cables, nameOf, lengthOf);
   const roots = chainRoots(cables);
-  return cables.map(c => (c.kind === 'patch' ? { ...style(c), patchLen: patchLength(lengthOf(c)) } : style(c)));
+  // A patch cord end shows a plug unless it is plugged into an item with ports (socket, switch, computer)
+  const plugged = (id?: number) => id !== undefined && (heights?.portsOf?.(id) ?? 1) > 0;
+  return cables.map(c => (c.kind === 'patch'
+    ? { ...style(c), patchLen: patchLength(lengthOf(c)), plugFrom: c.parent === undefined && !plugged(c.fromLink?.id), plugTo: !plugged(c.toLink?.id) }
+    : style(c)));
   function style(c: Cable): Cable {
     const info = infos.get(c.id);
     if (info) return { ...c, width: c.width ?? ws.cableWidth, ...(ws.cableLengths ? { showLength: true } : {}), route: chainRoute(info), totalLength: info.length };
@@ -73,8 +78,13 @@ export function styleCables(cables: Cable[], ws: WiringSettings, nameOf?: (id: n
 /** Heights of a floor for cable lengths: item mounting heights (own, or of the tray the item stands in) and tray heights */
 export function heightCtx(floor: FloorState): HeightCtx {
   const elev = new Map<number, number>();
-  for (const f of floor.furniture) { const e = itemElevation(f, floor.trays); if (e) elev.set(f.id, e.z); }
-  return { elevOf: id => elev.get(id), trays: floor.trays };
+  const ports = new Map<number, number>();
+  for (const f of floor.furniture) {
+    const e = itemElevation(f, floor.trays);
+    if (e) elev.set(f.id, e.z);
+    ports.set(f.id, portCount(f));
+  }
+  return { elevOf: id => elev.get(id), trays: floor.trays, portsOf: id => ports.get(id) ?? 0 };
 }
 
 /** Ids of cables in any of the given groups */

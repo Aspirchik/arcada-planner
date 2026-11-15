@@ -172,3 +172,14 @@ describe('patch cords', () => {
     expect(cablePlugs(c, c.points)).toEqual([{ p: { x: 0, y: 0 }, angle: 180 }]);
   });
 });
+
+describe('patch cord plugs on items', () => {
+  it('an end on a desk shows a plug, an end in a socket does not', async () => {
+    const { cablePlugs } = await import('./cable');
+    const desk = item(1, 0, 0, { name: 'Desk', w: 100, h: 60 }), sock = item(2, 200, 0, { name: 'LAN socket' });
+    const c: Cable = { id: 9, color: '#000', kind: 'patch', points: [{ x: 50, y: 30 }, { x: 207, y: 7 }], fromLink: { id: 1, u: 0.5, v: 0.5 }, toLink: { id: 2, u: 0.5, v: 0.5 } };
+    const [s] = styleCables([c], DEFAULT_WIRING, undefined, heightCtx(floor([desk, sock], [c])));
+    expect([s.plugFrom, s.plugTo]).toEqual([true, false]);
+    expect(cablePlugs(s, s.points)).toHaveLength(1);
+  });
+});

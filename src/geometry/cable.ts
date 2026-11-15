@@ -57,16 +57,19 @@ export function cableLabel(c: Cable, unitM: string, patchWord = 'patch'): string
 export const jointSize = (w: number) => ({ len: w * 1.6 + 2.5, thick: w + 1.6, stroke: Math.max(0.5, w * 0.25) });
 
 /** Size of a plug at a free end of a patch cord: a little thicker than the cable */
-export const plugSize = (w: number) => ({ len: w * 2.2 + 3, thick: w + 2, tip: w * 0.7 + 1, stroke: Math.max(0.4, w * 0.2) });
+export const plugSize = (w: number) => ({ len: w * 2.4 + 4, thick: w + 2.6, tip: w * 0.7 + 1.3, stroke: Math.max(0.5, w * 0.2) });
 
-/** Free ends of a patch cord (not connected to an item nor to a parent cable): plug positions, pointing outwards */
+/**
+ * Plugs of a patch cord, pointing outwards: at free ends and at ends lying on items without ports (a desk) —
+ * `plugFrom` / `plugTo` set by styleCables; without them, at ends not connected to anything
+ */
 export function cablePlugs(c: Cable, drawn: Pt[]): { p: Pt; angle: number }[] {
   if (c.kind !== 'patch' || drawn.length < 2) return [];
   const out: { p: Pt; angle: number }[] = [];
   const dir = (a: Pt, b: Pt) => Math.atan2(b.y - a.y, b.x - a.x) * 180 / Math.PI;
-  if (!c.fromLink && c.parent === undefined) out.push({ p: drawn[0], angle: dir(drawn[1], drawn[0]) });
+  if (c.plugFrom ?? (!c.fromLink && c.parent === undefined)) out.push({ p: drawn[0], angle: dir(drawn[1], drawn[0]) });
   const n = drawn.length;
-  if (!c.toLink) out.push({ p: drawn[n - 1], angle: dir(drawn[n - 2], drawn[n - 1]) });
+  if (c.plugTo ?? !c.toLink) out.push({ p: drawn[n - 1], angle: dir(drawn[n - 2], drawn[n - 1]) });
   return out;
 }
 

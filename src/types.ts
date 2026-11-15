@@ -164,6 +164,9 @@ export interface Cable {
   route?: string;
   /** Display only: standard patch cord length that fits (cm), 0 = longer than the longest standard one */
   patchLen?: number;
+  /** Display only: patch cord end drawn with a plug (free, or lying on an item without ports such as a desk) */
+  plugFrom?: boolean;
+  plugTo?: boolean;
   totalLength?: number;
   layer?: Layer;
 }

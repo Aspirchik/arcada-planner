@@ -19,6 +19,8 @@ export interface HeightCtx {
   elevOf: (id: number) => number | undefined;
   /** All trays of the floor */
   trays: Tray[];
+  /** Number of ports of an item (a patch cord end on an item with ports is plugged in; on a desk it shows a plug) */
+  portsOf?: (id: number) => number;
 }
 
 /** Height of the tray the point lies in (only trays with a height) */
