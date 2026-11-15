@@ -106,3 +106,39 @@ describe('trays', () => {
     expect(cableLabel({ ...cable(1, [[0, 0], [100, 0]]), label: 'Line 3', from: 'Server', to: 'User 1' }, 'm')).toBe('Line 3 · Server → User 1');
   });
 });
+
+describe('layoutCables: a tray fed from the side, cables going both ways', () => {
+  // count crossings between the laid out cables (shared end points don't count)
+  const crossings = (paths: { x: number; y: number }[][]) => {
+    const cross = (a: any, b: any, c: any, d: any) => {
+      const o = (p: any, q: any, r: any) => Math.sign((q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x));
+      return o(a, b, c) * o(a, b, d) < 0 && o(c, d, a) * o(c, d, b) < 0;
+    };
+    let n = 0;
+    for (let i = 0; i < paths.length; i++)
+      for (let j = i + 1; j < paths.length; j++)
+        for (let s = 1; s < paths[i].length; s++)
+          for (let t = 1; t < paths[j].length; t++)
+            if (cross(paths[i][s - 1], paths[i][s], paths[j][t - 1], paths[j][t])) n++;
+    return n;
+  };
+  it('lanes keep the order the cables come in, so they do not cross at the entry', () => {
+    const cables = [
+      ...[0, 1, 2, 3].map(i => ({ id: i + 1, color: '#000', points: [{ x: 0, y: 500 + 10 * i }, { x: 100, y: 500 + 10 * i }, { x: 100, y: 0 }, { x: 400, y: 0 }] })),
+      ...[0, 1, 2, 3].map(i => ({ id: i + 11, color: '#000', points: [{ x: 0, y: 540 + 10 * i }, { x: 100, y: 540 + 10 * i }, { x: 100, y: 1000 }, { x: 400, y: 1000 }] })),
+    ];
+    const m = layoutCables(cables);
+    expect(crossings(cables.map(c => m.get(c.id)!))).toBe(0);
+  });
+  it('cables from one point take the order of the run they turn into, so the bend is nested', () => {
+    // from one port: right to the tray, up it, along the top and down to sockets one after another
+    const cables = [0, 1, 2, 3, 4].map(i => ({ id: i + 1, color: '#000',
+      points: [{ x: 0, y: 500 }, { x: 100, y: 500 }, { x: 100, y: 0 }, { x: 300 + 100 * i, y: 0 }, { x: 300 + 100 * i, y: 40 }] }));
+    const down = [0, 1, 2].map(i => ({ id: i + 11, color: '#000',
+      points: [{ x: 0, y: 500 }, { x: 100, y: 500 }, { x: 100, y: 1000 }, { x: 300 + 100 * i, y: 1000 }, { x: 300 + 100 * i, y: 960 }] }));
+    for (const list of [[...cables, ...down], [...cables].reverse(), [...down, ...cables].reverse()]) {
+      const m = layoutCables(list);
+      expect(crossings(list.map(c => m.get(c.id)!))).toBe(0);
+    }
+  });
+});

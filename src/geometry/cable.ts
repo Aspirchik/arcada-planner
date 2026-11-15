@@ -225,7 +225,9 @@ export function layoutCables(cables: Cable[], groupOrder: number[] = []): Map<nu
     }
   };
 
-  const offsets = new Map<string, Pt>();
+  // Lane order of each corridor, and the groups of lines it can't tell apart
+  interface Corr { list: Seg[]; n: Pt; step: number; order: number[]; ties: number[][] }
+  const corrs: Corr[] = [];
   for (const list of corridors.values()) {
     const lines = [...new Set(list.map(sg => lineOf(sg.cable)))];
     if (lines.length < 2) continue;
@@ -258,12 +260,70 @@ export function layoutCables(cables: Cable[], groupOrder: number[] = []): Map<nu
     };
     const at = list[0].a;
     const outerPlus = (at.x - mid.x) * n.x + (at.y - mid.y) * n.y > 0;
-    const order = lines.sort((x, y) => (outerPlus ? rank(y) - rank(x) : rank(x) - rank(y)) || score.get(x)! - score.get(y)! || x - y);
-    for (const sg of list) {
-      const o = (order.indexOf(lineOf(sg.cable)) - (order.length - 1) / 2) * (maxW + GAP);
-      offsets.set(`${sg.cable}:${sg.index}`, { x: n.x * o, y: n.y * o });
+    const cmp = (x: number, y: number) => (outerPlus ? rank(y) - rank(x) : rank(x) - rank(y)) || score.get(x)! - score.get(y)!;
+    const order = lines.sort((x, y) => cmp(x, y) || x - y);
+    // Lines with nothing to tell them apart here (e.g. all from one port, turning at one spot): a tie group
+    const ties: number[][] = [];
+    for (const l of order) {
+      const g = ties[ties.length - 1];
+      if (g && cmp(g[0], l) === 0) g.push(l); else ties.push([l]);
     }
+    corrs.push({ list, n, step: maxW + GAP, order, ties: ties.filter(g => g.length > 1) });
   }
+
+  // Corridor of each segment, and the lane offset of a segment
+  const corrOf = new Map<string, Corr>();
+  for (const k of corrs) for (const sg of k.list) corrOf.set(`${sg.cable}:${sg.index}`, k);
+  const offsetOf = (k: Corr, line: number): Pt => {
+    const o = (k.order.indexOf(line) - (k.order.length - 1) / 2) * k.step;
+    return { x: k.n.x * o, y: k.n.y * o };
+  };
+  const tiedIn = (k: Corr, line: number) => k.ties.some(g => g.includes(line));
+  const unit = (a: Pt, b: Pt): Pt => { const l = Math.hypot(b.x - a.x, b.y - a.y) || 1; return { x: (b.x - a.x) / l, y: (b.y - a.y) / l }; };
+  // A tie group takes its order from the run its lines turn into together (whose order is known), nested
+  // at the bend: the line lying further back in that run lies further on the side they turn to.
+  for (let pass = 0; pass < 6; pass++) {
+    let progress = false;
+    for (const k of corrs) {
+      k.ties = k.ties.filter(group => {
+        for (const end of ['a', 'b'] as const) {
+          let next: Corr | undefined;
+          let side: Pt | undefined;
+          const keys = new Map<number, number>();
+          for (const line of group) {
+            const sg = k.list.find(x => lineOf(x.cable) === line && (end === 'a' ? x.index > 0 : x.index + 2 < cables[x.cable].points.length) && corrOf.get(`${x.cable}:${end === 'a' ? x.index - 1 : x.index + 1}`));
+            if (!sg) break;
+            const pts = cables[sg.cable].points;
+            const ni = end === 'a' ? sg.index - 1 : sg.index + 1;
+            const nk = corrOf.get(`${sg.cable}:${ni}`)!;
+            if (next && nk !== next) break;
+            next = nk;
+            if (tiedIn(nk, lineOf(sg.cable))) break;
+            const corner = end === 'a' ? pts[sg.index] : pts[sg.index + 1];
+            const s = unit(corner, end === 'a' ? pts[sg.index - 1] : pts[sg.index + 2]);
+            if (side && Math.hypot(side.x - s.x, side.y - s.y) > 0.01) break;
+            side = s;
+            const toward = unit(end === 'a' ? pts[sg.index + 1] : pts[sg.index], corner);
+            const off = offsetOf(nk, lineOf(sg.cable));
+            keys.set(line, off.x * toward.x + off.y * toward.y);
+          }
+          if (keys.size !== group.length || !side) continue;
+          // the slots the group holds, from the far side of the turn to the near one
+          const slots = group.map(l => k.order.indexOf(l)).sort((x, y) => x - y);
+          if (side.x * k.n.x + side.y * k.n.y > 0) slots.reverse();
+          const byKey = [...group].sort((x, y) => keys.get(x)! - keys.get(y)! || x - y);
+          byKey.forEach((l, i) => { k.order[slots[i]] = l; });
+          progress = true;
+          return false;
+        }
+        return true;
+      });
+    }
+    if (!progress) break;
+  }
+
+  const offsets = new Map<string, Pt>();
+  for (const k of corrs) for (const sg of k.list) offsets.set(`${sg.cable}:${sg.index}`, offsetOf(k, lineOf(sg.cable)));
 
   const result = new Map<number, Pt[]>();
   cables.forEach((cb, ci) => {
