@@ -268,13 +268,28 @@ let lastPress: { x: number; y: number } | null = null;
 
 /** Remembers presses on the plan canvas (in world coordinates, so the spot follows panning and zoom) */
 function trackPlanPresses() {
+  // While something is dragged on the plan the selection panel is hidden, so it doesn't get in the way
+  let down: { x: number; y: number } | null = null;
   const fn = (e: PointerEvent) => {
     if (!(e.target instanceof HTMLCanvasElement)) return;
     const { stageX, stageY, stageScale } = useStore.getState();
     lastPress = { x: (e.clientX - stageX) / stageScale, y: (e.clientY - stageY) / stageScale };
+    down = { x: e.clientX, y: e.clientY };
   };
+  const move = (e: PointerEvent) => {
+    if (down && e.buttons && Math.hypot(e.clientX - down.x, e.clientY - down.y) > 4) document.body.classList.add('plan-drag');
+  };
+  const up = () => { down = null; document.body.classList.remove('plan-drag'); };
   window.addEventListener('pointerdown', fn, true);
-  return () => window.removeEventListener('pointerdown', fn, true);
+  window.addEventListener('pointermove', move, true);
+  window.addEventListener('pointerup', up, true);
+  window.addEventListener('pointercancel', up, true);
+  return () => {
+    window.removeEventListener('pointerdown', fn, true);
+    window.removeEventListener('pointermove', move, true);
+    window.removeEventListener('pointerup', up, true);
+    window.removeEventListener('pointercancel', up, true);
+  };
 }
 
 /**
