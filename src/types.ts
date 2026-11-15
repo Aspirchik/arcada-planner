@@ -69,6 +69,12 @@ export interface FurnitureItem {
   flipY?: boolean;
   /** Object colour (lines of the picture, outline of the simple view); missing = as drawn */
   color?: string;
+  /** Mounting height above the floor (cm): where cables connected to the item come in */
+  elev?: number;
+  /** Number of ports (switch, patch panel); missing = from the catalog name ("Switch 24" → 24) */
+  ports?: number;
+  /** Cable groups (local or common) the item belongs to, e.g. sockets and the switch of one network */
+  groups?: number[];
   layer?: Layer;
 }
 
@@ -102,7 +108,8 @@ export interface Dimension {
 /** Cable run: a polyline with its own colour and label */
 export interface Cable {
   id: number;
-  points: { x: number; y: number }[];
+  /** Plan points; `z` = height of the point above the floor (cm), missing = taken from the item / tray / run height */
+  points: { x: number; y: number; z?: number }[];
   color: string;
   /** Line width in cm (default 3) */
   width?: number;
@@ -115,10 +122,17 @@ export interface Cable {
   /** Item the start / end is connected to: the end moves with it, and its name is the default From / To */
   fromLink?: CableLink;
   toLink?: CableLink;
+  /** Port of the connected item (switch) the start / end is plugged into, from 1 */
+  fromPort?: number;
+  toPort?: number;
   /** Cable groups (local to the floor or common to the project) this cable belongs to */
   groups?: number[];
   /** Cable this one continues from (it starts on that cable): together they are one chain */
   parent?: number;
+  /** Runs outside the trays (e.g. under the ceiling): "Tidy" doesn't put it into trays, trays don't count it */
+  noTray?: boolean;
+  /** Height of the run above the floor (cm) for points without their own height */
+  height?: number;
   /** Display only (set by styleCables, never saved): route text of the chain and its total length */
   route?: string;
   totalLength?: number;
@@ -149,6 +163,8 @@ export interface Tray {
   color?: string;
   /** Missing = wiring layer only, 'plan' = main plan only, 'both' = both plans */
   layer?: 'plan' | 'both';
+  /** Height above the floor (cm): cable points lying in the tray are at this height */
+  elev?: number;
 }
 
 export interface FloorState {
@@ -161,6 +177,8 @@ export interface FloorState {
   trays: Tray[];
   /** Cable groups of this floor */
   groups: CableGroup[];
+  /** Room height of the floor (cm), used for "under the ceiling" */
+  height?: number;
 }
 
 export interface CatalogItem {

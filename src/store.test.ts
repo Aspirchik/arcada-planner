@@ -375,6 +375,27 @@ describe('cable connections and groups', () => {
     expect(floor().cables[0].groups).toBeUndefined();
   });
 
+  it('items (sockets, switches) in groups: toggle, save, delete', () => {
+    const a = st().addFurniture(chair, 0, 0);
+    const g = st().addGroup('common', 'LAN');
+    st().toggleItemGroup(a, g);
+    st().load(st().save());
+    expect(floor().furniture[0].groups).toEqual([g]);
+    st().deleteGroup(g);
+    expect(floor().furniture[0].groups).toBeUndefined();
+  });
+
+  it('point heights: set and clear one point, room height', () => {
+    const c = st().addCable([{ x: 0, y: 0 }, { x: 100, y: 0 }], '#000');
+    st().setCablePointHeight(c, 1, 160);
+    expect(floor().cables[0].points[1]).toEqual({ x: 100, y: 0, z: 160 });
+    st().setCablePointHeight(c, 1, undefined);
+    expect(floor().cables[0].points[1]).toEqual({ x: 100, y: 0 });
+    st().setFloorHeight(300);
+    st().load(st().save());
+    expect(floor().height).toBe(300);
+  });
+
   it('layer for several objects at once, trays included', () => {
     const a = st().addFurniture(chair, 0, 0), b = st().addFurniture(chair, 100, 0);
     st().setMode('wiring');

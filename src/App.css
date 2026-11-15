@@ -328,6 +328,16 @@ body { overflow: hidden; font-family: system-ui, sans-serif; background: var(--o
 .grp-chip.active { background: var(--accent); border-color: var(--accent); color: #fff; }
 .sel-link { color: var(--text-3); font-size: 10px; }
 .sel-chain { color: var(--text-1); font-weight: 600; max-width: 560px; }
+.sel-opt { width: 64px; }
+.port-select { max-width: 92px; }
+.port-list { flex-basis: 100%; display: flex; flex-direction: column; gap: 2px; max-height: 260px; overflow-y: auto; }
+.port-row { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+.port-row.clash .port-select { border-color: #d33; color: #d33; }
+.sel-len3d { color: var(--text-2); font-size: 12px; }
+.pt-heights { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; max-width: 600px; }
+.pt-h { display: inline-flex; align-items: center; gap: 3px; color: var(--text-3); font-size: 12px; }
+.pt-h .sel-opt { width: 48px; }
+.pt-hint { flex-basis: 100%; color: var(--text-3); font-size: 11px; }
 .pick-hint {
   position: fixed; top: 12px; left: 50%; transform: translateX(-50%); z-index: 280;
   background: var(--accent); color: #fff; padding: 6px 14px; border-radius: 16px;

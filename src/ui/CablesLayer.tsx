@@ -1,6 +1,6 @@
 /** Cable runs: coloured polylines with a label along the middle (editor and print) */
 import { useMemo } from 'react';
-import { Line, Group, Circle } from 'react-konva';
+import { Line, Group, Circle, Text } from 'react-konva';
 import type { Cable, Tray } from '../types';
 import type { Palette } from '../theme';
 import type { Pt } from '../geometry/hit';
@@ -62,13 +62,23 @@ export function CablesLayerContent({ cables, palette, unitM, avoid, highlight, l
 }
 
 /** Vertex handles of the selected cable */
-export function CableHandles({ cable, shown, palette, px }: { cable: Pick<Cable, 'id' | 'points' | 'color'>; shown?: Pt[]; palette: Palette; px: number }) {
+export function CableHandles({ cable, shown, palette, px, heights }: {
+  cable: Pick<Cable, 'id' | 'points' | 'color'>; shown?: Pt[]; palette: Palette; px: number;
+  /** Heights of the points (cm): each point gets its number and height in metres (bold = its own height) */
+  heights?: number[] | null;
+}) {
+  const pts = cable.points as { x: number; y: number; z?: number }[];
   return (
     <Group>
       <Line points={(shown ?? cable.points).flatMap(p => [p.x, p.y])} stroke={palette.accent}
         strokeWidth={1.5 * px} dash={[6 * px, 3 * px]} />
       {cable.points.map((p, i) => (
         <Circle key={i} x={p.x} y={p.y} radius={5 * px} fill={palette.paper} stroke={palette.accent} strokeWidth={1.5 * px} />
+      ))}
+      {heights && pts.map((p, i) => (
+        <Text key={`h${i}`} x={p.x + 7 * px} y={p.y - 16 * px} text={`${i + 1}: ${(heights[i] / 100).toFixed(2)}`}
+          fontSize={11 * px} fill={palette.accent} stroke={palette.paper} strokeWidth={3 * px} fillAfterStrokeEnabled listening={false}
+          fontStyle={p.z !== undefined ? 'bold' : 'normal'} />
       ))}
     </Group>
   );

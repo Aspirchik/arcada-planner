@@ -27,7 +27,7 @@ export function GroupsPanel({ onClose }: { onClose: () => void }) {
   const lit = useStore(s => s.litGroups);
   const st = useStore.getState();
 
-  const count = (id: number) => floor.cables.filter(c => c.groups?.includes(id)).length;
+  const count = (id: number) => floor.cables.filter(c => c.groups?.includes(id)).length + floor.furniture.filter(f => f.groups?.includes(id)).length;
   const nextName = () => t('groups.newName', { n: floor.groups.length + common.length + 1 });
 
   const section = (title: string, groups: CableGroup[], scope: 'local' | 'common') => (
@@ -71,8 +71,8 @@ export function GroupsPanel({ onClose }: { onClose: () => void }) {
   );
 }
 
-/** Group chips in the cable panel: click to add the cable to a group or take it out */
-export function CableGroupChips({ cableId, groups }: { cableId: number; groups?: number[] }) {
+/** Group chips in the cable panel (or, with `itemId`, the item panel): click to add it to a group or take it out */
+export function CableGroupChips({ cableId, itemId, groups }: { cableId?: number; itemId?: number; groups?: number[] }) {
   const t = useT();
   const local = useStore(s => s.floors[s.fi].groups);
   const common = useStore(s => s.commonGroups);
@@ -82,7 +82,11 @@ export function CableGroupChips({ cableId, groups }: { cableId: number; groups?:
     <span className="grp-chips" title={t('cable.groups')}>
       {all.map(g => (
         <button key={g.id} className={'grp-chip' + (groups?.includes(g.id) ? ' active' : '') + (common.includes(g) ? ' common' : '')}
-          onClick={() => useStore.getState().toggleCableGroup(cableId, g.id)}>{g.name}</button>
+          onClick={() => {
+            const st = useStore.getState();
+            if (itemId !== undefined) st.toggleItemGroup(itemId, g.id);
+            else if (cableId !== undefined) st.toggleCableGroup(cableId, g.id);
+          }}>{g.name}</button>
       ))}
     </span>
   );

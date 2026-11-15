@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Trash2, BringToFront, SendToBack, Bold, Pencil, Type, Square, Image as ImageIcon, FlipHorizontal2, FlipVertical2, Ruler, Layers, Palette as PaletteIcon, GitBranchPlus, Link2, Unlink } from 'lucide-react';
+import { Trash2, BringToFront, SendToBack, Bold, Pencil, Type, Square, Image as ImageIcon, FlipHorizontal2, FlipVertical2, Ruler, Layers, Palette as PaletteIcon, GitBranchPlus, Link2, Unlink, Cable as CableIcon, MoveVertical, ArrowUpToLine } from 'lucide-react';
 import { EditorStage } from './ui/EditorStage';
 import { Toolbar } from './ui/Toolbar';
 import { FurniturePanel } from './ui/FurniturePanel';
@@ -8,17 +8,19 @@ import { TextEditor } from './ui/TextEditor';
 import { measureNote } from './ui/AnnotationsLayer';
 import { rectCorners } from './geometry/hit';
 import { useStore, parseProject, isProjectEmpty } from './store';
-import { onLayer, styleCables, trayLayer } from './layers';
-import { itemNamer } from './labels';
+import { onLayer, styleCables, trayLayer, heightCtx } from './layers';
+import { cableHeights, itemElevation, verticalRun } from './geometry/heights';
+import { pathLength } from './geometry/cable';
+import { itemNamer, portCount } from './labels';
 import { CableGroupChips } from './ui/GroupsPanel';
 import { cablesInTray, cableRouteText, cableLength } from './geometry/cable';
-import { chainMembers, collapseToChains } from './geometry/chain';
+import { chainMembers, collapseToChains, chainInfos, chainRoots } from './geometry/chain';
 import { formatMeters } from './geometry/wallLabels';
 import { setNextCableColor } from './ui/EditorStage';
 import { usePrefs } from './prefs';
 import { useT, HTML_LANG, type TKey } from './i18n';
 import { wallThickness } from './geometry/walls';
-import type { LabelPos, Layer } from './types';
+import type { LabelPos, Layer, Cable, FloorState } from './types';
 import { useIsDark } from './theme';
 import { projectErrorText } from './ui/Toolbar';
 import { METER, AUTOSAVE_KEY } from './constants';
@@ -74,6 +76,61 @@ function NumField({ value, min, onCommit }: { value: number; min?: number; onCom
         if (e.key === 'Escape') { skipCommit.current = true; e.currentTarget.blur(); }
       }}
     />
+  );
+}
+
+/**
+ * Optional number (cm, ≥ 0) that commits on Enter / blur; empty = not set (the placeholder shows what is used then).
+ */
+function OptNum({ value, placeholder, title, onCommit }: { value: number | undefined; placeholder?: string; title?: string; onCommit: (v: number | undefined) => void }) {
+  const show = (v: number | undefined) => (v === undefined ? '' : String(Math.round(v * 10) / 10));
+  const [text, setText] = useState(show(value));
+  const focused = useRef(false);
+  useEffect(() => { if (!focused.current) setText(show(value)); }, [value]);
+  const commit = () => {
+    const tx = text.trim();
+    if (tx === '') { if (value !== undefined) onCommit(undefined); return; }
+    const n = parseFloat(tx.replace(',', '.'));
+    if (Number.isFinite(n) && n >= 0) { if (n !== value) onCommit(n); } else setText(show(value));
+  };
+  return (
+    <input type="text" inputMode="decimal" className="sel-opt" value={text} placeholder={placeholder} title={title}
+      onFocus={() => { focused.current = true; }}
+      onChange={e => setText(e.target.value)}
+      onBlur={() => { focused.current = false; commit(); }}
+      onKeyDown={e => {
+        if (e.key === 'Enter') e.currentTarget.blur();
+        if (e.key === 'Escape') { setText(show(value)); e.currentTarget.blur(); }
+      }} />
+  );
+}
+
+/** Ports of an item that cable ends are plugged into (port → count of ends) */
+function usedPorts(floor: FloorState, itemId: number): Map<number, number> {
+  const used = new Map<number, number>();
+  const add = (p?: number) => { if (p) used.set(p, (used.get(p) ?? 0) + 1); };
+  for (const c of floor.cables) {
+    if (c.fromLink?.id === itemId) add(c.fromPort);
+    if (c.toLink?.id === itemId) add(c.toPort);
+  }
+  return used;
+}
+
+/** Port of a cable end on an item with ports: "—" or 1…n (taken ports are marked) */
+function PortSelect({ cable, end, count, used }: { cable: Cable; end: 'from' | 'to'; count: number; used: Map<number, number> }) {
+  const t = useT();
+  const value = end === 'from' ? cable.fromPort : cable.toPort;
+  return (
+    <select className="sel-select port-select" title={t('port.select')} value={value ?? ''}
+      onChange={e => {
+        const v = e.target.value ? Number(e.target.value) : undefined;
+        useStore.getState().updateCable(cable.id, end === 'from' ? { fromPort: v } : { toPort: v });
+      }}>
+      <option value="">{t('port.short')} —</option>
+      {Array.from({ length: Math.max(count, value ?? 0) }, (_, i) => i + 1).map(n => (
+        <option key={n} value={n}>{t('port.short')} {n}{n !== value && used.has(n) ? ' •' : ''}</option>
+      ))}
+    </select>
   );
 }
 
@@ -205,6 +262,8 @@ function SelectionPanel() {
   const lang         = usePrefs(s => s.lang);
   const st           = useStore.getState();
   const t            = useT();
+  /** Cable panel: the list of point heights is open */
+  const [showPts, setShowPts] = useState(false);
 
   if (textEdit || selection.length === 0) return null;
   const floor = floors[fi];
@@ -302,7 +361,7 @@ function SelectionPanel() {
   // ── Tray ──
   const tray = floor.trays.find(x => x.id === selectedId);
   if (tray) {
-    const styled = styleCables(floor.cables.filter(c => onLayer(c, 'wiring')), st.wiring, itemNamer(floor.furniture, lang));
+    const styled = styleCables(floor.cables.filter(c => onLayer(c, 'wiring')), st.wiring, itemNamer(floor.furniture, lang), heightCtx(floor));
     const inside = collapseToChains(cablesInTray(tray, styled), styled).shown;
     return (
       <div className="selection-panel" style={at(tray.points, 460)}>
@@ -310,6 +369,8 @@ function SelectionPanel() {
           onCommit={v => st.updateTray(tray.id, { label: v.trim() || undefined })} />
         <label>{t('tray.width')} <NumField key={`tw${tray.id}`} value={tray.width} min={1}
           onCommit={v => st.updateTray(tray.id, { width: v })} /> {t('unit.cm')}</label>
+        <label title={t('elev.tray')}>{t('elev.label')} <OptNum key={`te${tray.id}`} value={tray.elev} placeholder="—" title={t('elev.tray')}
+          onCommit={v => st.updateTray(tray.id, { elev: v })} /> {t('unit.cm')}</label>
         <ObjectColor value={tray.color} onChange={c => st.updateTray(tray.id, { color: c })} />
         <LayerButton id={tray.id} layer={trayLayer(tray)} />
         <button className="sel-delete" title={t('sel.delete')} onClick={st.deleteSelected}><Trash2 size={14} /></button>
@@ -334,10 +395,19 @@ function SelectionPanel() {
     const nameOf = itemNamer(floor.furniture, lang);
     const autoFrom = cable.fromLink ? nameOf(cable.fromLink.id) : undefined;
     const autoTo = cable.toLink ? nameOf(cable.toLink.id) : undefined;
+    // Ports of the items the ends are connected to (switches)
+    const portsOf = (id?: number) => { const it = id !== undefined ? floor.furniture.find(f => f.id === id) : undefined; return it ? portCount(it) : 0; };
+    const fromPorts = cable.parent === undefined ? portsOf(cable.fromLink?.id) : 0;
+    const toPorts = portsOf(cable.toLink?.id);
     // Chain: this cable and the cables continued from it / it continues
     const layerCables = floor.cables.filter(c => onLayer(c, st.mode === 'wiring' ? 'wiring' : 'main'));
     const chain = chainMembers(floor.cables, cable.id);
-    const chainView = chain.length > 1 ? collapseToChains([cable], styleCables(layerCables, st.wiring, nameOf)).shown[0] : undefined;
+    const hctx = heightCtx(floor);
+    const chainView = chain.length > 1 ? collapseToChains([cable], styleCables(layerCables, st.wiring, nameOf, hctx)).shown[0] : undefined;
+    // Heights used for the points (own, item, tray or run height) and the length with the runs up / down
+    const zs = cableHeights(floor.cables, hctx).get(cable.id) ?? null;
+    const flat = pathLength(cable.points), vert = verticalRun(zs);
+    const m = (v: number) => formatMeters(v, t('unit.m'));
     return (
       <div className="selection-panel" style={at(cable.points, 620)}>
         {chainView && (
@@ -353,12 +423,14 @@ function SelectionPanel() {
             <span className={'sel-link' + (cable.fromLink ? ' on' : '')} title={cable.fromLink ? t('cable.linked', { name: autoFrom ?? '?' }) : t('cable.notLinked')}>●</span>
             <TextField key={`cf${cable.id}`} value={cable.from ?? ''} placeholder={autoFrom ?? t('cable.from')}
               onCommit={v => st.updateCable(cable.id, { from: v.trim() || undefined })} />
+            {fromPorts > 0 && <PortSelect cable={cable} end="from" count={fromPorts} used={usedPorts(floor, cable.fromLink!.id)} />}
           </>
         )}
         <span className="sel-arrow">→</span>
         <TextField key={`ct${cable.id}`} value={cable.to ?? ''} placeholder={autoTo ?? t('cable.to')}
           onCommit={v => st.updateCable(cable.id, { to: v.trim() || undefined })} />
         <span className={'sel-link' + (cable.toLink ? ' on' : '')} title={cable.toLink ? t('cable.linked', { name: autoTo ?? '?' }) : t('cable.notLinked')}>●</span>
+        {toPorts > 0 && <PortSelect cable={cable} end="to" count={toPorts} used={usedPorts(floor, cable.toLink!.id)} />}
         <div className="sel-break" />
         <ColorSwatches value={cable.color} title={t('text.color')} colors={CABLE_COLORS}
           onChange={c => { if (c) { setNextCableColor(c); st.updateChain(cable.id, { color: c }); } }} />
@@ -377,6 +449,30 @@ function SelectionPanel() {
         <div className="sel-break" />
         <span className="sel-title">{t('cable.groups')}</span>
         <CableGroupChips cableId={cable.id} groups={cable.groups} />
+        <div className="sel-break" />
+        <button className={'sel-btn' + (cable.noTray ? '' : ' active')} title={t('cable.inTray')}
+          onClick={() => st.updateChain(cable.id, { noTray: cable.noTray ? undefined : true })}><CableIcon size={14} /></button>
+        <label title={t('cable.heightTitle')}>{t('cable.height')} <OptNum key={`ch${cable.id}`} value={cable.height} placeholder="—" title={t('cable.heightTitle')}
+          onCommit={v => st.updateCable(cable.id, { height: v })} /> {t('unit.cm')}</label>
+        <button className="sel-btn" title={floor.height ? t('cable.ceiling', { h: floor.height }) : t('cable.noCeiling')} disabled={!floor.height}
+          onClick={() => st.updateCable(cable.id, { height: floor.height })}><ArrowUpToLine size={14} /></button>
+        <button className={'sel-btn' + (showPts ? ' active' : '')} title={t('cable.points')} onClick={() => setShowPts(!showPts)}><MoveVertical size={14} /></button>
+        {vert > 0 && <span className="sel-len3d">{t('cable.length3d', { plan: m(flat), vert: m(vert), total: m(flat + vert) })}</span>}
+        {showPts && (
+          <>
+            <div className="sel-break" />
+            <div className="pt-heights" title={t('cable.pointsHint')}>
+              <span className="sel-title">{t('cable.points')}, {t('unit.cm')}</span>
+              {cable.points.map((p, i) => (
+                <label key={i} className="pt-h">{i + 1}
+                  <OptNum key={`pz${cable.id}-${i}-${cable.points.length}`} value={p.z} placeholder={zs ? String(Math.round(zs[i])) : '—'}
+                    onCommit={v => st.setCablePointHeight(cable.id, i, v)} />
+                </label>
+              ))}
+              <span className="pt-hint">{t('cable.pointsHint')}</span>
+            </div>
+          </>
+        )}
       </div>
     );
   }
@@ -419,6 +515,13 @@ function SelectionPanel() {
       <button className={'sel-btn' + (item.flipY ? ' active' : '')} title={item.path === 'door' ? t('door.swing') : t('sel.flipY')}
         onClick={() => st.flipFurniture(item.id, 'y')}><FlipVertical2 size={14} /></button>
       <ObjectColor value={item.color} onChange={c => st.updateFurniture(item.id, { color: c })} />
+      {(() => {
+        const e = itemElevation({ ...item, elev: undefined }, floor.trays);
+        return (
+          <label title={t('elev.item')}>{t('elev.label')} <OptNum key={`ie${item.id}`} value={item.elev} title={t('elev.item')}
+            placeholder={e ? `${e.z} · ${t('elev.fromTray')}` : '—'} onCommit={v => st.updateFurniture(item.id, { elev: v })} /> {t('unit.cm')}</label>
+        );
+      })()}
       <LayerButton id={item.id} layer={item.layer} />
       <button className="sel-btn" title={t('sel.front')} onClick={() => st.bringToFront(item.id)}>
         <BringToFront size={14} />
@@ -447,7 +550,65 @@ function SelectionPanel() {
         onChange={v => st.updateFurniture(item.id, { textMode: fromTri(v) })} />
       <TriSelect value={triOf(item.sizeMode)} label={t('sel.sizeMode')} title={t('sel.sizeModeTitle')}
         onChange={v => st.updateFurniture(item.id, { sizeMode: fromTri(v) })} />
+      {st.mode === 'wiring' && (
+        <>
+          <div className="sel-break" />
+          <span className="sel-title">{t('cable.groups')}</span>
+          <CableGroupChips itemId={item.id} groups={item.groups} />
+          <ItemPorts floor={floor} itemId={item.id} />
+        </>
+      )}
     </div>
+  );
+}
+
+/**
+ * Ports of an item (switch): how many, and which cable is plugged into which port —
+ * "port 1 → User 1". Each connected cable's port can be chosen here.
+ */
+function ItemPorts({ floor, itemId }: { floor: FloorState; itemId: number }) {
+  const t = useT();
+  const lang = usePrefs(s => s.lang);
+  const item = floor.furniture.find(f => f.id === itemId)!;
+  const auto = portCount({ ...item, ports: undefined });
+  const count = portCount(item);
+  const nameOf = itemNamer(floor.furniture, lang);
+  const infos = chainInfos(floor.cables, nameOf);
+  const roots = chainRoots(floor.cables);
+  const byId = new Map(floor.cables.map(c => [c.id, c]));
+  // Cable ends on this item and where the cable goes from here
+  const ends = floor.cables.flatMap(c => {
+    const out: { c: Cable; end: 'from' | 'to'; port?: number; other: string }[] = [];
+    if (c.fromLink?.id === itemId) {
+      const info = infos.get(c.id);
+      out.push({ c, end: 'from', port: c.fromPort, other: info ? info.stops.slice(1).join(' → ') : (c.to || (c.toLink && nameOf(c.toLink.id, c.toPort)) || '—') });
+    }
+    if (c.toLink?.id === itemId) {
+      const root = byId.get(roots.get(c.id) ?? c.id) ?? c;
+      out.push({ c, end: 'to', port: c.toPort, other: root.from || (root.fromLink && nameOf(root.fromLink.id, root.fromPort)) || '—' });
+    }
+    return out;
+  }).sort((a, b) => (a.port ?? 1e9) - (b.port ?? 1e9));
+  const used = usedPorts(floor, itemId);
+  const free = count - [...used.keys()].filter(p => p <= count).length;
+  return (
+    <>
+      <div className="sel-break" />
+      <label title={t('port.countTitle')}>{t('port.count')} <OptNum key={`ip${item.id}`} value={item.ports} placeholder={auto ? String(auto) : '—'}
+        title={t('port.countTitle')} onCommit={v => useStore.getState().updateFurniture(item.id, { ports: v === undefined ? undefined : Math.min(512, Math.round(v)) })} /></label>
+      {count > 0 && <span className="sel-len3d">{t('port.free', { n: free, total: count })}</span>}
+      {count > 0 && ends.length > 0 && (
+        <div className="port-list">
+          {ends.map(e => (
+            <div key={`${e.c.id}${e.end}`} className={'port-row' + (e.port && (used.get(e.port) ?? 0) > 1 ? ' clash' : '')}>
+              <span className="tray-tip-dot" style={{ background: e.c.color }} />
+              <PortSelect cable={e.c} end={e.end} count={count} used={used} />
+              <span>{e.end === 'from' ? '→' : '←'} {e.other}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </>
   );
 }
 

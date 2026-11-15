@@ -214,12 +214,14 @@ export function tidyCables(cables: Cable[], trays: Tray[], opts: TidyOptions = {
       const upPath = out.get(up.id)!;
       start = projectOnPath(upPath.length > 2 ? upPath.slice(0, -1) : upPath, end).p;
     }
-    const routed = trays.length ? routeViaTrays(start, end, trays, opts.trayReach ?? 300) : null;
+    const routed = trays.length && !c.noTray ? routeViaTrays(start, end, trays, opts.trayReach ?? 300) : null;
     if (routed && pathLength(routed) > 0) out.set(c.id, routed);
     else free.push(start === c.points[0] ? c : { ...c, points: [start, ...c.points.slice(1)] });
   };
   cables.forEach(visit);
-  for (const [id, p] of tidyFree(free, trays, opts)) out.set(id, p);
+  // Cables outside the trays are laid out on their own, not put onto trays
+  for (const [id, p] of tidyFree(free.filter(c => !c.noTray), trays, opts)) out.set(id, p);
+  for (const [id, p] of tidyFree(free.filter(c => c.noTray), [], opts)) out.set(id, p);
   return out;
 }
 

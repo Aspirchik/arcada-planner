@@ -33,6 +33,23 @@ function Num({ k, value, onChange }: { k: NumKey; value: number; onChange: (v: n
   );
 }
 
+/** Room height of the current floor; empty = not set */
+function FloorHeight() {
+  const h = useStore(s => s.floors[s.fi].height);
+  const [text, setText] = useState(h === undefined ? '' : String(h));
+  const commit = () => {
+    const n = parseFloat(text);
+    const v = text.trim() === '' || !(n > 0) ? undefined : Math.min(2000, n);
+    setText(v === undefined ? '' : String(v));
+    if (v !== h) useStore.getState().setFloorHeight(v);
+  };
+  return (
+    <input type="number" value={text} min={50} max={2000} step={10} placeholder="—"
+      onChange={e => setText(e.target.value)} onBlur={commit}
+      onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }} />
+  );
+}
+
 export function WiringSettingsDialog({ onClose }: { onClose: () => void }) {
   const t = useT();
   const ws = useStore(s => s.wiring);
@@ -65,6 +82,10 @@ export function WiringSettingsDialog({ onClose }: { onClose: () => void }) {
         {num('trayWidth', 'wset.trayWidth', t('unit.cm'))}
         {num('trayText', 'wset.trayText', t('unit.cm'))}
         {num('planDim', 'wset.planDim', '%')}
+        <div className="export-row">
+          <span>{t('wset.floorHeight')}</span>
+          <span className="wset-field"><FloorHeight /> {t('unit.cm')}</span>
+        </div>
         <p className="dialog-text wset-hint">{t('wset.note')}</p>
         <div className="dialog-actions">
           <button onClick={onClose}>{t('help.close')}</button>

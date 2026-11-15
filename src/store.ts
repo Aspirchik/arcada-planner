@@ -5,11 +5,12 @@ import { relink, syncLinks } from './geometry/links';
 import { tidyCables, orthogonal, simplify } from './geometry/tidy';
 import { chainMembers, subtree, projectOnPath } from './geometry/chain';
 import { DEFAULT_WIRING, onLayer, trayLayer } from './layers';
+import { carryHeights } from './geometry/heights';
 import { translate, type TKey, type TParams } from './i18n';
 
 const HISTORY_LIMIT = 50;
 /** Project file format. 2.1.0 adds dimensions (ruler), text notes, furniture labels and cables; 2.0.0 files still load. */
-export const FILE_VERSION = '2.1.0';
+export const FILE_VERSION = '2.2.0';
 export const DEFAULT_Z = 100;
 export const DEFAULT_TEXT_SIZE = 20;
 export const DEFAULT_CABLE_COLOR = '#1a73e8';
@@ -91,6 +92,8 @@ export class ProjectError extends Error {
 }
 
 const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
+/** Optional height above the floor (cm) */
+const elevOf = (v: unknown): { elev?: number } => (isNum(v) && v >= 0 ? { elev: v } : {});
 
 /** Parses and validates a .arcada file. Throws a ProjectError (translatable) if the file is invalid. */
 export function parseProject(json: string): ParsedProject {
@@ -141,6 +144,9 @@ export function parseProject(json: string): ParsedProject {
       ...layerOf(it),
       ...(it.flipY === true ? { flipY: true } : {}),
       ...colorOf(it),
+      ...elevOf(it.elev),
+      ...(isNum(it.ports) && it.ports >= 0 ? { ports: Math.min(512, Math.round(it.ports)) } : {}),
+      ...(Array.isArray(it.groups) && it.groups.some(isNum) ? { groups: (it.groups as unknown[]).filter(isNum) } : {}),
     }));
 
     const dimensions = (Array.isArray(f.dimensions) ? f.dimensions : []).filter((dm): dm is Dimension =>
@@ -162,8 +168,8 @@ export function parseProject(json: string): ParsedProject {
       !!c && isNum(c.id) && Array.isArray(c.points)
     ).map((c): Cable => ({
       id: c.id,
-      points: c.points.filter((p): p is { x: number; y: number } => !!p && isNum((p as { x: unknown }).x) && isNum((p as { y: unknown }).y))
-        .map(p => ({ x: p.x, y: p.y })),
+      points: c.points.filter((p): p is { x: number; y: number; z?: unknown } => !!p && isNum((p as { x: unknown }).x) && isNum((p as { y: unknown }).y))
+        .map(p => ({ x: p.x, y: p.y, ...(isNum(p.z) && p.z >= 0 ? { z: p.z } : {}) })),
       color: typeof c.color === 'string' ? c.color : DEFAULT_CABLE_COLOR,
       ...(isNum(c.width) && c.width > 0 ? { width: c.width } : {}),
       ...(typeof c.label === 'string' && c.label ? { label: c.label } : {}),
@@ -174,6 +180,10 @@ export function parseProject(json: string): ParsedProject {
       ...(linkOf(c.toLink) ? { toLink: linkOf(c.toLink) } : {}),
       ...(Array.isArray(c.groups) && c.groups.some(isNum) ? { groups: c.groups.filter(isNum) } : {}),
       ...(isNum(c.parent) && c.parent !== c.id ? { parent: c.parent } : {}),
+      ...(c.noTray === true ? { noTray: true } : {}),
+      ...(isNum(c.fromPort) && c.fromPort >= 1 ? { fromPort: Math.round(c.fromPort) } : {}),
+      ...(isNum(c.toPort) && c.toPort >= 1 ? { toPort: Math.round(c.toPort) } : {}),
+      ...(isNum(c.height) && c.height >= 0 ? { height: c.height } : {}),
       ...layerOf(c),
     })).filter(c => c.points.length >= 2)
       // Ends lying on an item are connected to it (also for cables drawn before connections existed)
@@ -192,11 +202,12 @@ export function parseProject(json: string): ParsedProject {
       ...(typeof t.label === 'string' && t.label ? { label: t.label } : {}),
       ...colorOf(t),
       ...(t.layer === 'plan' || t.layer === 'both' ? { layer: t.layer as 'plan' | 'both' } : {}),
+      ...elevOf(t.elev),
     })).filter(t => t.points.length >= 2);
 
     const groups = groupsOf(f.groups);
     for (const o of [...nodes, ...walls, ...furniture, ...dimensions, ...texts, ...cables, ...trays, ...groups]) maxId = Math.max(maxId, o.id);
-    return syncLinks({ nodes, walls, furniture, dimensions, texts, cables, trays, groups });
+    return syncLinks({ nodes, walls, furniture, dimensions, texts, cables, trays, groups, ...(isNum(f.height) && f.height > 0 ? { height: f.height } : {}) });
   });
 
   const groups = groupsOf(d.cableGroups);
@@ -258,6 +269,10 @@ interface Store {
   /** Same layer for several objects (furniture, texts, dimensions, cables, trays), one undo step */
   setLayerMany(ids: number[], layer: Layer | undefined): void;
   setWiring(changes: Partial<WiringSettings>): void;
+  /** Room height of the current floor (cm); undefined clears it */
+  setFloorHeight(h: number | undefined): void;
+  /** Sets (z = number) or clears (undefined) the own height of one cable point */
+  setCablePointHeight(id: number, index: number, z: number | undefined): void;
   /** Drops the own width of every cable on the floor, so the global width applies */
   resetCableWidths(): void;
   addGroup(scope: 'local' | 'common', name: string): number;
@@ -266,6 +281,8 @@ interface Store {
   deleteGroup(id: number): void;
   /** Adds the cable to the group or takes it out */
   toggleCableGroup(cableId: number, groupId: number): void;
+  /** Adds the item (socket, switch…) to the group or takes it out */
+  toggleItemGroup(itemId: number, groupId: number): void;
   toggleLit(groupId: number): void;
   /** Moves a group up (-1) or down (+1) in its list: the order of groups in a bundle (first = along the wall) */
   moveGroup(id: number, by: -1 | 1): void;
@@ -313,7 +330,7 @@ interface Store {
   /** Makes the cable a separate run again */
   detachCable(id: number): void;
   /** Same change for every cable of the chain */
-  updateChain(id: number, changes: Partial<Pick<Cable, 'color' | 'width' | 'showLength'>>): void;
+  updateChain(id: number, changes: Partial<Pick<Cable, 'color' | 'width' | 'showLength' | 'noTray'>>): void;
   /** Waiting for a click on a cable: where to continue it from, or which cable to attach it to */
   chainPick: { id: number; mode: 'continue' | 'attach' } | null;
   setChainPick(pick: { id: number; mode: 'continue' | 'attach' } | null): void;
@@ -394,9 +411,14 @@ export const useStore = create<Store>((set, get) => {
   function withLinks(c: Cable, f: FloorState): Cable {
     // Any item can be a consumer (e.g. a desk of the main plan seen under the wiring); the smallest one under the end wins
     const { fromLink, toLink } = relink(c, f.furniture);
-    const { fromLink: _a, toLink: _b, ...rest } = c;
-    // A continuation starts on its parent cable, not on an item
-    return { ...rest, ...(fromLink && c.parent === undefined ? { fromLink } : {}), ...(toLink ? { toLink } : {}) };
+    const { fromLink: _a, toLink: _b, fromPort, toPort, ...rest } = c;
+    const from = fromLink && c.parent === undefined ? fromLink : undefined;
+    // A continuation starts on its parent cable, not on an item; a port stays only while the end is on the same item
+    return {
+      ...rest, ...(from ? { fromLink: from } : {}), ...(toLink ? { toLink } : {}),
+      ...(fromPort !== undefined && from && c.fromLink?.id === from.id ? { fromPort } : {}),
+      ...(toPort !== undefined && toLink && c.toLink?.id === toLink.id ? { toPort } : {}),
+    };
   }
 
   /** What a continuation takes from the cable it continues */
@@ -489,6 +511,15 @@ export const useStore = create<Store>((set, get) => {
       if (st.selection.some(id => !visible(id))) set(sel(st.selection.filter(visible)));
     },
     setWiring: (changes) => set(s => ({ wiring: { ...s.wiring, ...changes }, dirty: true })),
+    setFloorHeight(h) {
+      upFloor(f => (f.height === h ? f : { ...f, height: h }));
+    },
+    setCablePointHeight(id, index, z) {
+      upFloor(f => ({ ...f, cables: f.cables.map(c => {
+        if (c.id !== id || !c.points[index]) return c;
+        return { ...c, points: c.points.map((p, i) => (i !== index ? p : z === undefined ? { x: p.x, y: p.y } : { ...p, z })) };
+      }) }));
+    },
 
     addGroup(scope, name) {
       const id = newId();
@@ -501,20 +532,21 @@ export const useStore = create<Store>((set, get) => {
       else upFloor(f => ({ ...f, groups: f.groups.map(g => g.id === id ? { ...g, name } : g) }));
     },
     deleteGroup(id) {
-      const out = (c: Cable): Cable => {
+      const out = <T extends { groups?: number[] }>(c: T): T => {
         if (!c.groups?.includes(id)) return c;
         const groups = c.groups.filter(g => g !== id);
         return { ...c, groups: groups.length ? groups : undefined };
       };
+      const inIt = (f: FloorState) => f.cables.some(c => c.groups?.includes(id)) || f.furniture.some(c => c.groups?.includes(id));
       if (get().commonGroups.some(g => g.id === id)) {
         // Common group: cables on every floor leave it (not an undo step, like other project settings)
         set(s => ({
           commonGroups: s.commonGroups.filter(g => g.id !== id),
-          floors: s.floors.map(f => (f.cables.some(c => c.groups?.includes(id)) ? { ...f, cables: f.cables.map(out) } : f)),
+          floors: s.floors.map(f => (inIt(f) ? { ...f, cables: f.cables.map(out), furniture: f.furniture.map(out) } : f)),
           dirty: true,
         }));
       } else {
-        upFloor(f => ({ ...f, groups: f.groups.filter(g => g.id !== id), cables: f.cables.map(out) }));
+        upFloor(f => ({ ...f, groups: f.groups.filter(g => g.id !== id), cables: f.cables.map(out), furniture: f.furniture.map(out) }));
       }
       set(s => ({ litGroups: s.litGroups.filter(g => g !== id) }));
     },
@@ -528,6 +560,14 @@ export const useStore = create<Store>((set, get) => {
           return { ...c, groups: groups.length ? groups : undefined };
         }) };
       });
+    },
+    toggleItemGroup(itemId, groupId) {
+      upFloor(f => ({ ...f, furniture: f.furniture.map(it => {
+        if (it.id !== itemId) return it;
+        const has = !!it.groups?.includes(groupId);
+        const groups = has ? (it.groups ?? []).filter(g => g !== groupId) : [...(it.groups ?? []), groupId];
+        return { ...it, groups: groups.length ? groups : undefined };
+      }) }));
     },
     moveGroup(id, by) {
       const move = (list: CableGroup[]) => {
@@ -566,9 +606,12 @@ export const useStore = create<Store>((set, get) => {
         let changed = false;
         const cables = f.cables.map(c => {
           const p = paths.get(c.id);
-          if (!p || JSON.stringify(p) === JSON.stringify(c.points)) return c;
+          if (!p) return c;
+          // Own point heights stay with the points they belonged to
+          const pts = carryHeights(c.points, p);
+          if (JSON.stringify(pts) === JSON.stringify(c.points)) return c;
           changed = true;
-          return { ...c, points: p };
+          return { ...c, points: pts };
         });
         return changed ? { ...f, cables } : f;
       });

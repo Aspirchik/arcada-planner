@@ -15,7 +15,7 @@ import { GroupsPanel } from './GroupsPanel';
 /** Theme button cycles: Auto → Light → Dark → Auto */
 const NEXT_THEME: Record<ThemePref, ThemePref> = { system: 'light', light: 'dark', dark: 'system' };
 
-const HELP_KEYS = ['select', 'group', 'wall', 'split', 'exterior', 'walledit', 'lengths', 'measure', 'text', 'cable', 'wiring', 'gaps', 'pan', 'snap', 'keys'] as const;
+const HELP_KEYS = ['select', 'group', 'wall', 'split', 'exterior', 'walledit', 'lengths', 'measure', 'text', 'cable', 'wiring', 'heights', 'gaps', 'pan', 'snap', 'keys'] as const;
 
 function saveToFile(data: string) {
   try { localStorage.setItem(AUTOSAVE_KEY, data); } catch { /* storage unavailable */ }

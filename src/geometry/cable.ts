@@ -388,7 +388,8 @@ export function lengthInTray(cable: Pt[], tray: Tray, step = 5): number {
 
 /** Cables that run in the tray for at least `minLength` cm, in list order */
 export function cablesInTray(tray: Tray, cables: Cable[], minLength = 20): Cable[] {
-  return cables.filter(c => lengthInTray(c.points, tray) >= minLength);
+  // Cables marked as running outside the trays (e.g. under the ceiling above them) are not in it
+  return cables.filter(c => !c.noTray && lengthInTray(c.points, tray) >= minLength);
 }
 
 /** "from → to" for a cable, or '' */

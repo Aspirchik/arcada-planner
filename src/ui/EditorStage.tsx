@@ -21,7 +21,8 @@ import { CablesLayerContent, CableLine, CableHandles, TraysLayerContent } from '
 import { hitSegment, hitVertex, dedupePoints, labelObstacles, layoutCables, distToPath, cablesInTray, cableRouteText, cableLength } from '../geometry/cable';
 import { SimpleFurniture } from './AnnotationsLayer';
 import type { WallNode, Wall, FurnitureItem, Dimension, TextNote, Cable, Tray } from '../types';
-import { layerView, styleCables, cablesInGroups } from '../layers';
+import { layerView, styleCables, cablesInGroups, heightCtx } from '../layers';
+import { cableHeights } from '../geometry/heights';
 import { chainMembers, projectOnPath, collapseToChains } from '../geometry/chain';
 import { itemNamer } from '../labels';
 
@@ -166,13 +167,13 @@ export function EditorStage() {
   /** Objects of the layer being edited: main plan, or the wiring layer in Wiring mode (with objects shown on both) */
   const act = useMemo(() => {
     const v = layerView(floor, wiring ? 'wiring' : 'main');
-    return { ...v, cables: styleCables(v.cables, ws, nameOf) };
+    return { ...v, cables: styleCables(v.cables, ws, nameOf, heightCtx(floor)) };
   }, [floor, wiring, ws, nameOf]);
   /** In Wiring mode: the main plan, drawn dimmed and not editable */
   const base = useMemo(() => {
     if (!wiring) return null;
     const v = layerView(floor, 'main', true);
-    return { ...v, cables: styleCables(v.cables, ws, nameOf) };
+    return { ...v, cables: styleCables(v.cables, ws, nameOf, heightCtx(floor)) };
   }, [floor, wiring, ws, nameOf]);
   /** Cables of the highlighted groups (others are dimmed), or null */
   const litCables = useMemo(() => (litGroups.length ? cablesInGroups(act.cables, litGroups) : null), [act.cables, litGroups]);
@@ -715,13 +716,13 @@ export function EditorStage() {
       if (!c) return;
       const prev = c.points[d.index - 1] ?? c.points[d.index + 1];
       const { p, snapped } = measurePoint(pt, prev, undefined, d.id);
-      store.updateCable(d.id, { points: c.points.map((q, i) => i === d.index ? p : q) });
+      store.updateCable(d.id, { points: c.points.map((q, i) => i === d.index ? { ...p, ...(q.z !== undefined ? { z: q.z } : {}) } : q) });
       setSnapMark(snapped ? p : null);
     } else if (d.type === 'cable-move') {
       const first = d.base.points[0];
       const p = doSnap(first.x + pt.x - d.start.x, first.y + pt.y - d.start.y, snapSize);
       const dx = p.x - first.x, dy = p.y - first.y;
-      store.updateCable(d.base.id, { points: d.base.points.map(q => ({ x: q.x + dx, y: q.y + dy })) });
+      store.updateCable(d.base.id, { points: d.base.points.map(q => ({ ...q, x: q.x + dx, y: q.y + dy })) });
     } else if (d.type === 'tray-pt') {
       const tr = act.trays.find(x => x.id === d.id);
       if (!tr) return;
@@ -1100,6 +1101,8 @@ export function EditorStage() {
   const selectedWall = selectedId !== null ? wallGeom.walls.find(g => g.wall.id === selectedId) : null;
   const selectedDim = selectedId !== null ? act.dimensions.find(d => d.id === selectedId) : null;
   const selectedCable = selectedId !== null ? act.cables.find(c => c.id === selectedId) : null;
+  /** Heights of the selected cable's points (shown next to them) */
+  const selectedZs = selectedCable ? cableHeights(floor.cables, heightCtx(floor)).get(selectedCable.id) ?? null : null;
   const selectedTray = selectedId !== null ? act.trays.find(t => t.id === selectedId) : null;
   const hoveredTray = hoverTray ? act.trays.find(t => t.id === hoverTray.id) ?? null : null;
   // A chain is listed once (its route through all consumers); all its cables light up
@@ -1212,7 +1215,7 @@ export function EditorStage() {
             width={tool === Tool.Tray ? ws.trayWidth : ws.cableWidth} palette={palette} dashed />
         )}
         {cableDraft && cableDraft.map((q, i) => <Circle key={`cd${i}`} x={q.x} y={q.y} radius={4 * px} fill={nextCableColor} />)}
-        {selectedCable && <CableHandles cable={selectedCable} shown={cablePaths.get(selectedCable.id)} palette={palette} px={px} />}
+        {selectedCable && <CableHandles cable={selectedCable} shown={cablePaths.get(selectedCable.id)} palette={palette} px={px} heights={selectedZs} />}
 
         {/* Free space around the selected item */}
         {selectedItem && showGaps && (
@@ -1238,6 +1241,10 @@ export function EditorStage() {
         {snapMark && <SnapMarker x={snapMark.x} y={snapMark.y} palette={palette} px={px} />}
 
         {/* Group selection outlines */}
+        {/* Items of the highlighted groups */}
+        {litGroups.length > 0 && act.furniture.filter(f => f.groups?.some(g => litGroups.includes(g))).map(f => (
+          <ItemOutline key={`lit${f.id}`} x={f.x} y={f.y} w={f.w} h={f.h} rot={f.rot} palette={palette} px={px * 2} />
+        ))}
         {multi && act.furniture.filter(f => selection.includes(f.id)).map(f => (
           <ItemOutline key={`o${f.id}`} x={f.x} y={f.y} w={f.w} h={f.h} rot={f.rot} palette={palette} px={px} />
         ))}

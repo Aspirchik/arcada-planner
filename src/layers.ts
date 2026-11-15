@@ -1,6 +1,7 @@
 /** Plan layers: the main plan and the wiring layer (pure) */
 import type { FloorState, FurnitureItem, TextNote, Dimension, Cable, Tray, WiringSettings, Layer } from './types';
 import { chainInfos, chainRoots, chainRoute } from './geometry/chain';
+import { cableHeights, length3d, itemElevation, type HeightCtx } from './geometry/heights';
 
 export interface LayerView {
   furniture: FurnitureItem[];
@@ -44,23 +45,34 @@ export function trayLayer(t: { layer?: 'plan' | 'both' }): Layer | undefined {
  * Cables ready to draw: global settings applied (default width, length shown on all) and,
  * when From / To is empty, the name of the item the end is connected to.
  */
-export function styleCables(cables: Cable[], ws: WiringSettings, nameOf?: (id: number) => string | undefined): Cable[] {
+export function styleCables(cables: Cable[], ws: WiringSettings, nameOf?: (id: number, port?: number) => string | undefined, heights?: HeightCtx): Cable[] {
+  // Lengths count the vertical runs when heights are known
+  const zs = heights ? cableHeights(cables, heights) : null;
+  const lengthOf = (c: Cable) => length3d(c.points, zs?.get(c.id));
   // Chains: the first cable carries the route through all consumers and the total length; the others only their own label
-  const infos = chainInfos(cables, nameOf);
+  const infos = chainInfos(cables, nameOf, lengthOf);
   const roots = chainRoots(cables);
   return cables.map(c => {
     const info = infos.get(c.id);
     if (info) return { ...c, width: c.width ?? ws.cableWidth, ...(ws.cableLengths ? { showLength: true } : {}), route: chainRoute(info), totalLength: info.length };
     const root = roots.get(c.id);
-    if (root !== undefined && root !== c.id) return { ...c, width: c.width ?? ws.cableWidth, showLength: false, route: '' };
-    const from = c.from || (c.fromLink && nameOf?.(c.fromLink.id));
-    const to = c.to || (c.toLink && nameOf?.(c.toLink.id));
+    if (root !== undefined && root !== c.id) return { ...c, width: c.width ?? ws.cableWidth, showLength: false, route: '', ...(zs ? { totalLength: lengthOf(c) } : {}) };
+    const from = c.from || (c.fromLink && nameOf?.(c.fromLink.id, c.fromPort));
+    const to = c.to || (c.toLink && nameOf?.(c.toLink.id, c.toPort));
     return {
       ...c, width: c.width ?? ws.cableWidth,
       ...(ws.cableLengths ? { showLength: true } : {}),
       ...(from ? { from } : {}), ...(to ? { to } : {}),
+      ...(zs ? { totalLength: lengthOf(c) } : {}),
     };
   });
+}
+
+/** Heights of a floor for cable lengths: item mounting heights (own, or of the tray the item stands in) and tray heights */
+export function heightCtx(floor: FloorState): HeightCtx {
+  const elev = new Map<number, number>();
+  for (const f of floor.furniture) { const e = itemElevation(f, floor.trays); if (e) elev.set(f.id, e.z); }
+  return { elevOf: id => elev.get(id), trays: floor.trays };
 }
 
 /** Ids of cables in any of the given groups */

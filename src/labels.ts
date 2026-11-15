@@ -1,7 +1,7 @@
 /** What is written inside a furniture item — shared by the canvas, print and export (pure) */
 import type { FurnitureItem } from './types';
 import type { Lang, SizesPos } from './prefs';
-import { catalogName } from './i18n';
+import { catalogName, translate } from './i18n';
 import catalog from './catalog.json';
 
 /** English catalog name for items saved before names were stored */
@@ -29,13 +29,25 @@ export function itemName(item: FurnitureItem, lang: Lang): string {
   return name ? catalogName(lang, 'item', name) : '';
 }
 
-/** Looks up item names by id (for cable ends connected to items) */
-export function itemNamer(furniture: FurnitureItem[], lang: Lang): (id: number) => string | undefined {
+/** Item name for a cable end; with a port: "Switch A, port 1" */
+export type EndNamer = (id: number, port?: number) => string | undefined;
+
+/** Looks up item names by id (for cable ends connected to items), with the port the end is plugged into */
+export function itemNamer(furniture: FurnitureItem[], lang: Lang): EndNamer {
   const byId = new Map(furniture.map(f => [f.id, f]));
-  return id => {
+  return (id, port) => {
     const it = byId.get(id);
-    return it ? itemName(it, lang) || undefined : undefined;
+    const name = it ? itemName(it, lang) : '';
+    if (!name) return undefined;
+    return port ? `${name}, ${translate(lang, 'port.short')} ${port}` : name;
   };
+}
+
+/** Number of ports of an item: its own setting, or from a catalog name like "Switch 24"; 0 = none */
+export function portCount(item: FurnitureItem): number {
+  if (item.ports !== undefined) return item.ports;
+  const m = /^Switch (\d+)$/.exec(item.name ?? nameByPath.get(item.path) ?? '');
+  return m ? Number(m[1]) : 0;
 }
 
 /**

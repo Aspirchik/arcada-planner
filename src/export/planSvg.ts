@@ -9,7 +9,7 @@ import { computeWallGeometry, type FloorWallGeom } from '../geometry/walls';
 import { rectCorners, type Pt } from '../geometry/hit';
 import { wallLabelSpecs, formatMeters, LABEL_SIZE } from '../geometry/wallLabels';
 import { sortByZ } from '../helpers';
-import { layerPasses, styleCables, DEFAULT_WIRING, type LayerView, type LayerChoice } from '../layers';
+import { layerPasses, styleCables, heightCtx, DEFAULT_WIRING, type LayerView, type LayerChoice } from '../layers';
 import { mixHex, spriteKey } from '../color';
 import { furnitureLabel, sizesCorner, itemNamer } from '../labels';
 import { cableLabel, layoutCables, placeCableLabels, labelObstacles, midAlong } from '../geometry/cable';
@@ -310,7 +310,7 @@ export function buildPlanSvg(floor: FloorState, sprites: Map<string, SpriteDef>,
       out.push(`<g transform="${tr}"${faded ? ` opacity="${f(dimBy)}"` : ''}><g${flip}><svg x="0" y="0" width="${f(it.w)}" height="${f(it.h)}" viewBox="${sp.viewBox}" preserveAspectRatio="none" overflow="hidden"${sp.fill ? ` fill="${sp.fill}"` : ''}>${sp.body}</svg></g></g>`);
     }
     // Cables (above furniture): shared runs side by side, labels kept apart
-    const cables = styleCables(v.cables, ws, itemNamer(floor.furniture, opts.lang));
+    const cables = styleCables(v.cables, ws, itemNamer(floor.furniture, opts.lang), heightCtx(floor));
     const size = ws.cableText;
     const cablePaths = layoutCables(cables, [...(floor.groups ?? []).map(g => g.id), ...(opts.commonGroups ?? [])]);
     const cableTexts = new Map(ws.cableLabels ? cables.map(c => [c.id, cableLabel(c, opts.unitM)] as [number, string]).filter(([, l]) => !!l) : []);
