@@ -98,6 +98,8 @@
   "cable.noCeiling": "Set the room height in Wiring settings first",
   "cable.points": "Point heights",
   "cable.pointsHint": "Height of each point above the floor, cm (empty = from the item, tray or run height; grey = the height used). Between two heights the cable goes up or down.",
+  "cable.pointDel": "Remove this point",
+  "cable.simplify": "Remove extra points: on a straight line, repeated, back-and-forth spikes (points with an own height or a connector stay). A point can also be removed with Alt + click, a double-click or by dropping it onto its neighbour",
   "cable.length3d": "{plan} along the plan + {vert} up / down = {total}",
   "elev.label": "Height",
   "elev.item": "Mounting height above the floor (cm): connected cables come in here. Empty — the height of the tray the item stands in",

@@ -98,6 +98,8 @@
   "cable.noCeiling": "Najpierw ustaw wysokość pomieszczenia w ustawieniach instalacji",
   "cable.points": "Wysokości punktów",
   "cable.pointsHint": "Wysokość każdego punktu nad podłogą, cm (puste = z obiektu, koryta lub wysokości trasy; szare = użyta wysokość). Między dwiema wysokościami kabel idzie w górę lub w dół.",
+  "cable.pointDel": "Usuń ten punkt",
+  "cable.simplify": "Usuń zbędne punkty: na prostej, powtórzone, zawrócenia tam i z powrotem (punkty z własną wysokością lub złączką zostają). Punkt można też usunąć Alt + klik, dwuklikiem lub upuszczając go na sąsiedni",
   "cable.length3d": "{plan} po planie + {vert} w górę / w dół = {total}",
   "elev.label": "Wysokość",
   "elev.item": "Wysokość montażu nad podłogą (cm): tu wchodzą podłączone kable. Puste — wysokość koryta, w którym stoi obiekt",

@@ -80,3 +80,26 @@ export function tidyAfterDrag(points: CPt[]): CPt[] {
   }
   return out.length >= 2 ? out : points;
 }
+
+/**
+ * Extra points removed: repeated points, points on a straight line and the tips of back-and-forth spikes
+ * (a point where the cable turns straight back). Points with an own height or a connector stay.
+ */
+export function simplifyPath(points: CPt[]): CPt[] {
+  let cur = tidyAfterDrag(points);
+  for (let changed = true; changed && cur.length > 2;) {
+    changed = false;
+    for (let i = 1; i < cur.length - 1; i++) {
+      const a = cur[i - 1], b = cur[i], c = cur[i + 1];
+      if (b.joint || b.z !== undefined) continue;
+      const cross = (b.x - a.x) * (c.y - b.y) - (b.y - a.y) * (c.x - b.x);
+      const l1 = Math.hypot(b.x - a.x, b.y - a.y), l2 = Math.hypot(c.x - b.x, c.y - b.y);
+      if (l1 < 0.5 || l2 < 0.5 || Math.abs(cross) / (l1 * l2) < 0.01) {
+        cur = tidyAfterDrag([...cur.slice(0, i), ...cur.slice(i + 1)]);
+        changed = true;
+        break;
+      }
+    }
+  }
+  return cur;
+}

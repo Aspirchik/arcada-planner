@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Trash2, BringToFront, SendToBack, Bold, Pencil, Type, Square, Image as ImageIcon, FlipHorizontal2, FlipVertical2, Ruler, Layers, Palette as PaletteIcon, GitBranchPlus, Link2, Unlink, Cable as CableIcon, MoveVertical, ArrowUpToLine, Plus, Minus, Combine, Plug } from 'lucide-react';
+import { Trash2, BringToFront, SendToBack, Bold, Pencil, Type, Square, Image as ImageIcon, FlipHorizontal2, FlipVertical2, Ruler, Layers, Palette as PaletteIcon, GitBranchPlus, Link2, Unlink, Cable as CableIcon, MoveVertical, ArrowUpToLine, Plus, Minus, Combine, Plug, X, Eraser } from 'lucide-react';
 import { EditorStage } from './ui/EditorStage';
 import { Toolbar } from './ui/Toolbar';
 import { FurniturePanel } from './ui/FurniturePanel';
@@ -652,6 +652,8 @@ function SelectionPanel() {
         <button className="sel-btn" title={floor.height ? t('cable.ceiling', { h: floor.height }) : t('cable.noCeiling')} disabled={!floor.height}
           onClick={() => st.updateCable(cable.id, { height: floor.height })}><ArrowUpToLine size={14} /></button>
         <button className={'sel-btn' + (showPts ? ' active' : '')} title={t('cable.points')} onClick={() => setShowPts(!showPts)}><MoveVertical size={14} /></button>
+        <button className="sel-btn" title={t('cable.simplify')} disabled={cable.points.length <= 2}
+          onClick={() => st.simplifyCable(cable.id)}><Eraser size={14} /></button>
         {vert > 0 && <span className="sel-len3d">{t('cable.length3d', { plan: m(flat), vert: m(vert), total: m(flat + vert) })}</span>}
         {showPts && (
           <>
@@ -664,6 +666,10 @@ function SelectionPanel() {
                     onCommit={v => st.setCablePointHeight(cable.id, i, v)} />
                   <button className={'pt-joint' + (p.joint ? ' on' : '')} title={t('joint.point')}
                     onClick={e => { e.preventDefault(); st.setJoint(cable.id, i, !p.joint); }}><Combine size={11} /></button>
+                  {i > 0 && i < cable.points.length - 1 && (
+                    <button className="pt-joint" title={t('cable.pointDel')}
+                      onClick={e => { e.preventDefault(); st.removeCablePoint(cable.id, i); }}><X size={11} /></button>
+                  )}
                 </label>
               ))}
               <span className="pt-hint">{t('cable.pointsHint')}</span>

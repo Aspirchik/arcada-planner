@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { FurnitureItem } from '../types';
 import { deskFrames, routeViaDesk, frameInset } from './desk';
-import { startSegmentDrag, dragSegment, tidyAfterDrag } from './segdrag';
+import { startSegmentDrag, dragSegment, tidyAfterDrag, simplifyPath } from './segdrag';
 
 const desk: FurnitureItem = { id: 1, path: 'table', name: 'Desk', x: 0, y: 0, w: 160, h: 80, rot: 0, zi: 100 };
 
@@ -59,5 +59,21 @@ describe('neat patch cords from desks (Tidy)', () => {
       const k = p.findIndex(q => q.x === 2165 && q.y === 2635);
       expect(p.slice(k).every(q => q.x >= 2165)).toBe(true);
     }
+  });
+});
+
+describe('simplifyPath', () => {
+  it('removes points on a straight line and back-and-forth spikes, keeps ends, heights and connectors', () => {
+    const p = [
+      { x: 0, y: 0 }, { x: 50, y: 0 }, { x: 100, y: 0 },   // 50 lies on the line
+      { x: 100, y: 80 }, { x: 100, y: 40 },                 // spike: up to 80 and back to 40
+      { x: 100, y: 100 }, { x: 150, y: 100, z: 40 }, { x: 200, y: 100, joint: true }, { x: 300, y: 100 },
+    ];
+    expect(simplifyPath(p)).toEqual([
+      { x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 150, y: 100, z: 40 }, { x: 200, y: 100, joint: true }, { x: 300, y: 100 },
+    ]);
+  });
+  it('keeps a two-point cable', () => {
+    expect(simplifyPath([{ x: 0, y: 0 }, { x: 10, y: 0 }])).toEqual([{ x: 0, y: 0 }, { x: 10, y: 0 }]);
   });
 });

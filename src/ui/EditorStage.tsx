@@ -629,7 +629,12 @@ export function EditorStage() {
       const selCable = act.cables.find(c => c.id === selectedId);
       if (selCable) {
         const v = hitVertex(selCable.points, pt, CABLE_VERTEX_HIT_PX / scale);
-        if (v >= 0) { dragRef.current = { type: 'cable-pt', id: selCable.id, index: v }; return; }
+        if (v >= 0) {
+          // Alt + click on a middle point removes it
+          if (altRef.current) { if (v > 0 && v < selCable.points.length - 1) store.removeCablePoint(selCable.id, v); return; }
+          dragRef.current = { type: 'cable-pt', id: selCable.id, index: v };
+          return;
+        }
       }
       const selTray = act.trays.find(t => t.id === selectedId);
       if (selTray) {
@@ -842,8 +847,18 @@ export function EditorStage() {
       if (dist(d.start.x, d.start.y, p.x, p.y) >= 2) store.addDimension(d.start.x, d.start.y, p.x, p.y);
       return;
     }
-    if (d.type === 'dim-end' || d.type === 'cable-pt') {
+    if (d.type === 'dim-end') {
       setSnapMark(null);
+      return;
+    }
+    if (d.type === 'cable-pt') {
+      setSnapMark(null);
+      // a point dropped on its neighbour or onto the straight line of its neighbours goes away
+      const c = useStore.getState().floors[useStore.getState().fi].cables.find(x => x.id === d.id);
+      if (c) {
+        const pts = tidyAfterDrag(c.points);
+        if (pts.length !== c.points.length) store.updateCable(d.id, { points: pts });
+      }
       return;
     }
     if (d.type === 'cable-seg') {

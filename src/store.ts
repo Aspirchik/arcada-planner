@@ -6,6 +6,7 @@ import { tidyCables, orthogonal, simplify } from './geometry/tidy';
 import { chainMembers, subtree, projectOnPath } from './geometry/chain';
 import { DEFAULT_WIRING, onLayer, trayLayer } from './layers';
 import { carryHeights } from './geometry/heights';
+import { simplifyPath } from './geometry/segdrag';
 import { deskFrames } from './geometry/desk';
 import { isPassThrough } from './labels';
 import { translate, type TKey, type TParams } from './i18n';
@@ -313,6 +314,10 @@ interface Store {
   setJoint(id: number, index: number, on: boolean): void;
   /** Sets (z = number) or clears (undefined) the own height of one cable point */
   setCablePointHeight(id: number, index: number, z: number | undefined): void;
+  /** Removes a middle point of a cable (the ends stay) */
+  removeCablePoint(id: number, index: number): void;
+  /** Removes the extra points of a cable: on a straight line, repeated, tips of back-and-forth spikes */
+  simplifyCable(id: number): void;
   /** Drops the own width of every cable on the floor, so the global width applies */
   resetCableWidths(): void;
   addGroup(scope: 'local' | 'common', name: string): number;
@@ -587,6 +592,19 @@ export const useStore = create<Store>((set, get) => {
       upFloor(f => ({ ...f, cables: f.cables.map(c => {
         if (c.id !== id || !c.points[index]) return c;
         return { ...c, points: c.points.map((q, i) => (i !== index ? q : on ? { ...q, joint: true } : (({ joint: _j, ...r }) => r)(q))) };
+      }) }));
+    },
+    removeCablePoint(id, index) {
+      upFloor(f => ({ ...f, cables: f.cables.map(c => {
+        if (c.id !== id || index <= 0 || index >= c.points.length - 1) return c;
+        return { ...c, points: c.points.filter((_, i) => i !== index) };
+      }) }));
+    },
+    simplifyCable(id) {
+      upFloor(f => ({ ...f, cables: f.cables.map(c => {
+        if (c.id !== id) return c;
+        const pts = simplifyPath(c.points);
+        return pts.length === c.points.length ? c : { ...c, points: pts };
       }) }));
     },
     setCablePointHeight(id, index, z) {
