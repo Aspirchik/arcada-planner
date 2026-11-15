@@ -29,4 +29,9 @@ export function lightness(hex: string): number {
 }
 
 /** Sprite cache / export key of an item: the picture plus its colour */
-export const spriteKey = (it: { path: string; color?: string }) => (it.color ? `${it.path}|${it.color}` : it.path);
+/** Colour spec of a sprite: "colour", or "colour/colour2" for a two-part item ('' = as drawn) */
+export const spriteColor = (it: { color?: string; color2?: string }) => (it.color2 ? `${it.color ?? ''}/${it.color2}` : it.color);
+export const spriteKey = (it: { path: string; color?: string; color2?: string }) => {
+  const c = spriteColor(it);
+  return c ? `${it.path}|${c}` : it.path;
+};

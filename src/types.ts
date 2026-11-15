@@ -75,6 +75,10 @@ export interface FurnitureItem {
   ports?: number;
   /** Cable groups (local or common) the item belongs to, e.g. sockets and the switch of one network */
   groups?: number[];
+  /** Tag of each port (key = port number): "uplink", "VLAN 10"…; a plain number means a VLAN */
+  portTags?: Record<string, string>;
+  /** Second colour of a two-port item (double LAN socket): the half with port 2 */
+  color2?: string;
   layer?: Layer;
 }
 

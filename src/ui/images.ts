@@ -61,8 +61,24 @@ export function colorSvg(svg: string, color: string, dark: boolean): string {
   return dark ? invertImages(out) : out;
 }
 
-/** Sprite source for the theme and object colour */
+/** Greys that mark the second half of a two-part sprite (double socket): lines and fill */
+const HALF2 = new Set(['#010101', '#fefefe']);
+
+/**
+ * Sprite source for the theme and object colour. `color` may be "c1/c2": the second half of a two-part sprite
+ * (drawn with the marker greys) gets c2, the rest c1 (or stays as drawn when c1 is empty).
+ */
 export function spriteSvg(svg: string, dark: boolean, color?: string): string {
+  if (color?.includes('/')) {
+    const [c1, c2] = color.split('/');
+    const paint = (hex: string, c: string) => {
+      if (!isGrey(hex)) return hex;
+      const fill = mixHex(c, dark ? '#2c2c2c' : '#ffffff', 0.14);
+      return mixHex(c, fill, 1 - lightness(hex));
+    };
+    const out = recolor(svg, hex => (HALF2.has(hex.toLowerCase()) ? paint(hex, c2) : c1 ? paint(hex, c1) : dark ? darkHex(hex) : hex));
+    return dark ? invertImages(out) : out;
+  }
   return color ? colorSvg(svg, color, dark) : dark ? darkSvg(svg) : svg;
 }
 

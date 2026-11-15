@@ -344,6 +344,10 @@ body { overflow: hidden; font-family: system-ui, sans-serif; background: var(--o
   background: #15171a; border: 1px solid #5b6168; border-radius: 2px;
   display: flex; align-items: flex-end; justify-content: center;
 }
+.sw-tag { font-size: 8px; line-height: 15px; color: #fff; font-weight: 700; max-width: 18px; overflow: hidden; white-space: nowrap; text-transform: uppercase; }
+.sw-port { align-items: center; }
+.sw-port:not(.busy) .sw-tag { color: #9fd0ff; }
+.sw-port .sw-jack { align-self: flex-end; }
 .sw-port.none { visibility: hidden; cursor: default; }
 .sw-jack { width: 10px; height: 5px; margin-bottom: 2px; background: #2d3136; border-radius: 1px 1px 0 0; }
 .sw-port:hover { border-color: #c7ccd2; }
@@ -351,8 +355,7 @@ body { overflow: hidden; font-family: system-ui, sans-serif; background: var(--o
 .sw-port.busy .sw-jack { background: rgba(0,0,0,0.45); }
 .sw-port.clash { outline: 2px solid #ff4d4d; outline-offset: 0; }
 .sw-port.picked { outline: 2px solid var(--accent); outline-offset: 1px; }
-.sw-pick { gap: 6px; font-weight: 600; color: var(--text-1); }
-.sw-pick .sel-select { max-width: 320px; }
+.sw-pick { font-weight: 600; color: var(--text-1); }
 .sw-list { display: grid; grid-auto-flow: column; gap: 1px 14px; max-height: 260px; overflow-y: auto; }
 .sw-line {
   display: flex; align-items: center; gap: 5px; padding: 1px 4px; font-size: 11px; text-align: left;
@@ -362,6 +365,11 @@ body { overflow: hidden; font-family: system-ui, sans-serif; background: var(--o
 .sw-line.busy { color: var(--text-1); }
 .sw-line.picked { background: var(--accent-soft, rgba(26,115,232,0.15)); }
 .sw-line.clash { color: #e04848; }
+.sw-line-tag { padding: 0 4px; border-radius: 3px; background: var(--surface-2); color: var(--text-2); font-weight: 600; }
+.sw-cable { max-width: 320px; }
+.sw-links { display: flex; flex-direction: column; gap: 2px; }
+.sw-link { display: flex; align-items: center; gap: 5px; color: var(--text-1); }
+.sel-color-n { font-size: 10px; margin-left: -2px; }
 .sw-line-n { min-width: 16px; text-align: right; color: var(--text-3); font-variant-numeric: tabular-nums; }
 .port-select { max-width: 200px; }
 .sel-len3d { color: var(--text-2); font-size: 12px; }

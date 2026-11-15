@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 60" width="96" height="60">
+	<title>Double network (LAN, RJ45) socket: port 1 on the left, port 2 on the right</title>
+	<style>
+		.a0 { fill: #ffffff; stroke: #000000; stroke-width: 3 }
+		.a1 { fill: none; stroke: #000000; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round }
+		.a2 { fill: #000000; stroke: none }
+		.b0 { fill: #fefefe; stroke: #010101; stroke-width: 3 }
+		.b1 { fill: none; stroke: #010101; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round }
+		.b2 { fill: #010101; stroke: none }
+	</style>
+	<path class="a0" d="M48 3 H9 A6 6 0 0 0 3 9 V51 A6 6 0 0 0 9 57 H48 Z"/>
+	<path class="b0" d="M48 3 H87 A6 6 0 0 1 93 9 V51 A6 6 0 0 1 87 57 H48 Z"/>
+	<path class="a0" d="M12 20 H38 V40 H32 V44 H18 V40 H12 Z"/>
+	<path class="a1" d="M17 25 V30 M21 25 V30 M25 25 V30 M29 25 V30 M33 25 V30"/>
+	<path class="b0" d="M58 20 H84 V40 H78 V44 H64 V40 H58 Z"/>
+	<path class="b1" d="M63 25 V30 M67 25 V30 M71 25 V30 M75 25 V30 M79 25 V30"/>
+	<circle class="a2" cx="25" cy="12" r="2.6"/>
+	<circle class="b2" cx="68" cy="12" r="2.6"/>
+</svg>

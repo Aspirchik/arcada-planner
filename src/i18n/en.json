@@ -52,6 +52,11 @@
   "cable.groups": "Groups",
   "port.short": "port",
   "port.isFree": "free",
+  "port.tag": "Tag",
+  "port.tagTitle": "Port tag: uplink, trunk, VLAN 10… (a plain number = VLAN). Shown on the switch, in the port list and in the routes of cables plugged in here",
+  "port.noLoose": "All connected cables already have a port",
+  "port.links": "Cables",
+  "obj.color2": "Colour of port 2 (right half)",
   "port.faceHint": "Click a port to choose the cable plugged into it; coloured = taken (cable colour), red frame = two cables in one port or beyond the port count",
   "port.noCables": "No cables are connected to this item yet — put a cable end on it",
   "port.pick": "Cable in this port (choose one of the cables connected to this item)",
@@ -315,6 +320,7 @@
   "item.Switch 48": "Switch 48",
   "item.Entry point": "Entry point",
   "item.LAN socket": "LAN socket",
+  "item.LAN socket double": "LAN socket ×2",
   "item.Socket 230V": "Socket 230V",
   "item.Emergency socket 230V": "Emergency 230V"
 }

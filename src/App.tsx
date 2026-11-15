@@ -11,7 +11,7 @@ import { useStore, parseProject, isProjectEmpty } from './store';
 import { onLayer, styleCables, trayLayer, heightCtx } from './layers';
 import { cableHeights, itemElevation, verticalRun } from './geometry/heights';
 import { pathLength } from './geometry/cable';
-import { itemNamer, portCount } from './labels';
+import { itemNamer, portCount, portTag, isTwoPart } from './labels';
 import { CableGroupChips } from './ui/GroupsPanel';
 import { cablesInTray, cableRouteText, cableLength } from './geometry/cable';
 import { chainMembers, collapseToChains, chainInfos, chainRoots } from './geometry/chain';
@@ -20,7 +20,7 @@ import { setNextCableColor } from './ui/EditorStage';
 import { usePrefs, type Lang } from './prefs';
 import { useT, HTML_LANG, type TKey } from './i18n';
 import { wallThickness } from './geometry/walls';
-import type { LabelPos, Layer, Cable, FloorState } from './types';
+import type { LabelPos, Layer, Cable, FloorState, FurnitureItem } from './types';
 import { useIsDark } from './theme';
 import { projectErrorText } from './ui/Toolbar';
 import { METER, AUTOSAVE_KEY } from './constants';
@@ -135,11 +135,13 @@ function endsByPort(ends: ItemEnd[]): Map<number, ItemEnd[]> {
   return m;
 }
 
-/** Port of a cable end on an item with ports: each option says whether the port is free or what is plugged into it */
-function PortSelect({ cable, end, count, byPort }: { cable: Cable; end: 'from' | 'to'; count: number; byPort: Map<number, ItemEnd[]> }) {
+/** Port of a cable end on an item with ports: only free ports are offered (plus the one it is in), with their tags */
+function PortSelect({ cable, end, item, byPort }: { cable: Cable; end: 'from' | 'to'; item: FurnitureItem; byPort: Map<number, ItemEnd[]> }) {
   const t = useT();
   const value = end === 'from' ? cable.fromPort : cable.toPort;
-  const max = Math.max(count, value ?? 0, ...byPort.keys());
+  const count = portCount(item);
+  const ports = Array.from({ length: Math.max(count, value ?? 0) }, (_, i) => i + 1)
+    .filter(n => n === value || !(byPort.get(n) ?? []).some(o => !(o.c.id === cable.id && o.end === end)));
   return (
     <select className="sel-select port-select" title={t('port.select')} value={value ?? ''}
       onChange={e => {
@@ -147,13 +149,9 @@ function PortSelect({ cable, end, count, byPort }: { cable: Cable; end: 'from' |
         useStore.getState().updateCable(cable.id, end === 'from' ? { fromPort: v } : { toPort: v });
       }}>
       <option value="">{t('port.short')} —</option>
-      {Array.from({ length: max }, (_, i) => i + 1).map(n => {
-        const others = (byPort.get(n) ?? []).filter(o => !(o.c.id === cable.id && o.end === end));
-        return (
-          <option key={n} value={n}>
-            {t('port.short')} {n} · {others.length ? others.map(o => o.other).join(', ') : t('port.isFree')}
-          </option>
-        );
+      {ports.map(n => {
+        const tag = portTag(item, n);
+        return <option key={n} value={n}>{t('port.short')} {n}{tag ? ` · ${tag}` : ''}</option>;
       })}
     </select>
   );
@@ -321,12 +319,12 @@ function LayerButton({ id, ids, layer }: { id?: number; ids?: number[]; layer?: 
 const OBJECT_COLORS: (string | null)[] = [null, '#d0021b', '#1a73e8', '#188038', '#e8710a', '#f9ab00', '#8e24aa', '#00897b', '#5f6368'];
 
 /** Object colour: swatches with "as drawn" first */
-function ObjectColor({ value, onChange }: { value: string | null | undefined; onChange: (c: string | undefined) => void }) {
+function ObjectColor({ value, onChange, title }: { value: string | null | undefined; onChange: (c: string | undefined) => void; title?: string }) {
   const t = useT();
   return (
-    <span className="sel-color" title={t('obj.color')}>
-      <PaletteIcon size={13} />
-      <ColorSwatches value={value} title={t('obj.color')} colors={OBJECT_COLORS} onChange={c => onChange(c ?? undefined)} />
+    <span className="sel-color" title={title ?? t('obj.color')}>
+      <PaletteIcon size={13} />{title && <b className="sel-color-n">2</b>}
+      <ColorSwatches value={value} title={title ?? t('obj.color')} colors={OBJECT_COLORS} onChange={c => onChange(c ?? undefined)} />
     </span>
   );
 }
@@ -513,14 +511,14 @@ function SelectionPanel() {
             <span className={'sel-link' + (cable.fromLink ? ' on' : '')} title={cable.fromLink ? t('cable.linked', { name: autoFrom ?? '?' }) : t('cable.notLinked')}>●</span>
             <TextField key={`cf${cable.id}`} value={cable.from ?? ''} placeholder={autoFrom ?? t('cable.from')}
               onCommit={v => st.updateCable(cable.id, { from: v.trim() || undefined })} />
-            {fromPorts > 0 && <PortSelect cable={cable} end="from" count={fromPorts} byPort={endsByPort(itemEnds(floor, cable.fromLink!.id, lang))} />}
+            {fromPorts > 0 && <PortSelect cable={cable} end="from" item={floor.furniture.find(f => f.id === cable.fromLink!.id)!} byPort={endsByPort(itemEnds(floor, cable.fromLink!.id, lang))} />}
           </>
         )}
         <span className="sel-arrow">→</span>
         <TextField key={`ct${cable.id}`} value={cable.to ?? ''} placeholder={autoTo ?? t('cable.to')}
           onCommit={v => st.updateCable(cable.id, { to: v.trim() || undefined })} />
         <span className={'sel-link' + (cable.toLink ? ' on' : '')} title={cable.toLink ? t('cable.linked', { name: autoTo ?? '?' }) : t('cable.notLinked')}>●</span>
-        {toPorts > 0 && <PortSelect cable={cable} end="to" count={toPorts} byPort={endsByPort(itemEnds(floor, cable.toLink!.id, lang))} />}
+        {toPorts > 0 && <PortSelect cable={cable} end="to" item={floor.furniture.find(f => f.id === cable.toLink!.id)!} byPort={endsByPort(itemEnds(floor, cable.toLink!.id, lang))} />}
         <div className="sel-break" />
         <ColorSwatches value={cable.color} title={t('text.color')} colors={CABLE_COLORS}
           onChange={c => { if (c) { setNextCableColor(c); st.updateChain(cable.id, { color: c }); } }} />
@@ -605,6 +603,7 @@ function SelectionPanel() {
       <button className={'sel-btn' + (item.flipY ? ' active' : '')} title={item.path === 'door' ? t('door.swing') : t('sel.flipY')}
         onClick={() => st.flipFurniture(item.id, 'y')}><FlipVertical2 size={14} /></button>
       <ObjectColor value={item.color} onChange={c => st.updateFurniture(item.id, { color: c })} />
+      {isTwoPart(item) && <ObjectColor value={item.color2} title={t('obj.color2')} onChange={c => st.updateFurniture(item.id, { color2: c })} />}
       {(() => {
         const e = itemElevation({ ...item, elev: undefined }, floor.trays);
         return (
@@ -653,9 +652,10 @@ function SelectionPanel() {
 }
 
 /**
- * Ports of an item (switch), drawn like the front of a switch: RJ45 ports in blocks of 12, odd numbers on top,
- * even below; a port with a cable has the cable's colour. Click a port to choose which connected cable is in it
- * (it leaves its old port; the cable that was there loses its port). Below — a text list of all ports.
+ * Ports and cables of an item. A switch is drawn like its front: RJ45 ports in blocks of 12, odd numbers on top,
+ * even below; a port with a cable has the cable's colour and shows its tag (uplink, VLAN…). Click a port to tag it
+ * and to plug in one of the connected cables that has no port yet. Below — a text list of all ports.
+ * An item without ports (a socket) lists where its cables go, e.g. "← Switch A, port 3, VLAN 10".
  */
 function ItemPorts({ floor, itemId }: { floor: FloorState; itemId: number }) {
   const t = useT();
@@ -672,6 +672,7 @@ function ItemPorts({ floor, itemId }: { floor: FloorState; itemId: number }) {
   const loose = ends.filter(e => !e.port);
   const what = (n: number) => (byPort.get(n) ?? []).map(e => e.other).join(', ');
   const selected = pick !== null && pick <= max ? pick : null;
+  const arrow = (e: ItemEnd) => (e.end === 'from' ? '→' : '←');
 
   // Blocks of 12 ports: 6 columns, odd port on top, even below
   const blocks: number[][][] = [];
@@ -682,15 +683,19 @@ function ItemPorts({ floor, itemId }: { floor: FloorState; itemId: number }) {
   }
   const port = (n: number) => {
     const here = byPort.get(n) ?? [];
+    const tag = portTag(item, n);
     const cls = 'sw-port' + (here.length ? ' busy' : '') + (here.length > 1 || n > count ? ' clash' : '') + (selected === n ? ' picked' : '');
     return (
       <button key={n} className={cls} style={here.length ? { ['--cable' as string]: here[0].c.color } : undefined}
-        title={`${t('port.short')} ${n} · ${what(n) || t('port.isFree')}`}
+        title={`${t('port.short')} ${n}${tag ? ` · ${tag}` : ''} · ${what(n) || t('port.isFree')}`}
         onClick={() => setPick(selected === n ? null : n)}>
-        <span className="sw-jack" />
+        {tag ? <span className="sw-tag">{tag.replace(/^VLAN /, '')}</span> : <span className="sw-jack" />}
       </button>
     );
   };
+  const here = selected !== null ? byPort.get(selected) ?? [] : [];
+  // Cables that can go into the picked port: the ones in it and the ones without a port
+  const choices = selected !== null ? [...here, ...loose] : [];
 
   return (
     <>
@@ -718,34 +723,37 @@ function ItemPorts({ floor, itemId }: { floor: FloorState; itemId: number }) {
           {selected !== null && (
             <>
               <div className="sel-break" />
-              <label className="sw-pick">{t('port.short')} {selected}
-                <select className="sel-select" title={t('port.pick')} value={byPort.get(selected)?.[0] ? key(byPort.get(selected)![0]) : ''}
-                  onChange={e => {
-                    const v = e.target.value;
-                    const it = ends.find(x => key(x) === v);
-                    useStore.getState().assignPort(itemId, selected, it ? { id: it.c.id, end: it.end } : null);
-                  }}>
-                  <option value="">{t('port.isFree')}</option>
-                  {ends.map(e => (
-                    <option key={key(e)} value={key(e)}>
-                      {e.end === 'from' ? '→' : '←'} {e.other}{e.port && e.port !== selected ? ` (${t('port.short')} ${e.port})` : ''}
-                    </option>
-                  ))}
-                </select>
+              <span className="sw-pick">{t('port.short')} {selected}</span>
+              <label title={t('port.tagTitle')}>{t('port.tag')}
+                <TextField key={`pt${item.id}-${selected}`} value={item.portTags?.[String(selected)] ?? ''} placeholder="uplink / VLAN 10"
+                  onCommit={v => useStore.getState().setPortTag(itemId, selected, v)} />
               </label>
-              {ends.length === 0 && <span className="sel-len3d">{t('port.noCables')}</span>}
+              <select className="sel-select sw-cable" title={t('port.pick')} value={here[0] ? key(here[0]) : ''}
+                onChange={e => {
+                  const v = e.target.value;
+                  const it = ends.find(x => key(x) === v);
+                  useStore.getState().assignPort(itemId, selected, it ? { id: it.c.id, end: it.end } : null);
+                }}>
+                <option value="">{t('port.isFree')}</option>
+                {choices.map(e => <option key={key(e)} value={key(e)}>{arrow(e)} {e.other}</option>)}
+              </select>
+              {ends.length === 0
+                ? <span className="sel-len3d">{t('port.noCables')}</span>
+                : loose.length === 0 && here.length === 0 && <span className="sel-len3d">{t('port.noLoose')}</span>}
             </>
           )}
           <div className="sel-break" />
           <div className="sw-list" style={{ gridTemplateRows: `repeat(${Math.min(12, max)}, auto)` }}>
             {Array.from({ length: max }, (_, i) => i + 1).map(n => {
-              const here = byPort.get(n) ?? [];
+              const at = byPort.get(n) ?? [];
+              const tag = portTag(item, n);
               return (
-                <button key={n} className={'sw-line' + (here.length ? ' busy' : '') + (selected === n ? ' picked' : '') + (here.length > 1 || n > count ? ' clash' : '')}
+                <button key={n} className={'sw-line' + (at.length ? ' busy' : '') + (selected === n ? ' picked' : '') + (at.length > 1 || n > count ? ' clash' : '')}
                   onClick={() => setPick(selected === n ? null : n)}>
                   <span className="sw-line-n">{n}</span>
-                  {here.length > 0 && <span className="tray-tip-dot" style={{ background: here[0].c.color }} />}
-                  <span>{here.length ? what(n) : t('port.isFree')}</span>
+                  {at.length > 0 && <span className="tray-tip-dot" style={{ background: at[0].c.color }} />}
+                  {tag && <span className="sw-line-tag">{tag}</span>}
+                  <span>{at.length ? what(n) : t('port.isFree')}</span>
                 </button>
               );
             })}
@@ -755,7 +763,14 @@ function ItemPorts({ floor, itemId }: { floor: FloorState; itemId: number }) {
       {loose.length > 0 && (
         <>
           <div className="sel-break" />
-          <span className="sel-len3d">{t('port.loose')}: {loose.map(e => e.other).join(', ')}</span>
+          <span className="sel-title">{max > 0 ? t('port.loose') : t('port.links')}</span>
+          <div className="sw-links">
+            {loose.map(e => (
+              <span key={key(e)} className="sw-link">
+                <span className="tray-tip-dot" style={{ background: e.c.color }} /> {arrow(e)} {e.other}
+              </span>
+            ))}
+          </div>
         </>
       )}
     </>

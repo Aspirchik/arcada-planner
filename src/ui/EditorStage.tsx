@@ -13,6 +13,7 @@ import { usePrefs } from '../prefs';
 import { usePalette, type Palette } from '../theme';
 import { useT } from '../i18n';
 import { getSprite } from './images';
+import { spriteColor } from '../color';
 import { WallsLayerContent, AlongText, formatMeters } from './WallsLayer';
 import { DimensionLine, DimensionsLayerContent, SnapMarker } from './DimensionsLayer';
 import { FurnitureLabels, TextNotes, TextSelection, ItemOutline, measureNote } from './AnnotationsLayer';
@@ -1319,7 +1320,7 @@ function SelectionHandles({ item, scale, palette }: { item: FurnitureItem; scale
 // ── Purely visual furniture ───────────────────────────────────
 function FurnitureVisual({ item, palette, onImageLoaded }: { item: FurnitureItem; palette: Palette; onImageLoaded: () => void }) {
   if (item.simple) return <SimpleFurniture item={item} palette={palette} />;
-  const img = getSprite(item.path, palette.dark, onImageLoaded, item.color);
+  const img = getSprite(item.path, palette.dark, onImageLoaded, spriteColor(item));
 
   return (
     <Group x={item.x} y={item.y} rotation={item.rot}>

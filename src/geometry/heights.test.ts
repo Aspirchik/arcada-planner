@@ -106,3 +106,24 @@ describe('file', () => {
     expect(f.cables[0].points[1].z).toBe(220);
   });
 });
+
+describe('port tags and double socket', () => {
+  it('a tagged port shows in the route; a number is a VLAN', () => {
+    const sw = item(1, 0, 0, { name: 'Switch 24', label: 'Switch A', portTags: { '1': 'uplink', '3': '10' } });
+    const name = itemNamer([sw], 'en');
+    expect(name(1, 3)).toBe('Switch A, port 3, VLAN 10');
+    expect(name(1, 1)).toBe('Switch A, port 1, uplink');
+    expect(name(1, 2)).toBe('Switch A, port 2');
+  });
+
+  it('double LAN socket has 2 ports', () => {
+    expect(portCount(item(1, 0, 0, { name: 'LAN socket double' }))).toBe(2);
+  });
+
+  it('tags and the second colour survive save / load', async () => {
+    const { parseProject } = await import('../store');
+    const sock = item(1, 0, 0, { name: 'LAN socket double', color: '#d0021b', color2: '#1a73e8', portTags: { '2': 'VLAN 20', x: 'bad' } as Record<string, string> });
+    const f = parseProject(JSON.stringify({ floors: [floor([sock], [])], nextId: 10 })).floors[0];
+    expect(f.furniture[0]).toMatchObject({ color2: '#1a73e8', portTags: { '2': 'VLAN 20' } });
+  });
+});

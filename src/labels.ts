@@ -39,14 +39,30 @@ export function itemNamer(furniture: FurnitureItem[], lang: Lang): EndNamer {
     const it = byId.get(id);
     const name = it ? itemName(it, lang) : '';
     if (!name) return undefined;
-    return port ? `${name}, ${translate(lang, 'port.short')} ${port}` : name;
+    if (!port) return name;
+    const tag = portTag(it!, port);
+    return `${name}, ${translate(lang, 'port.short')} ${port}${tag ? `, ${tag}` : ''}`;
   };
 }
+
+/** Tag of a port as shown: "uplink", "VLAN 10" (a plain number is a VLAN); '' when none */
+export function portTag(item: FurnitureItem, port: number): string {
+  const t = item.portTags?.[String(port)]?.trim() ?? '';
+  return /^\d+$/.test(t) ? `VLAN ${t}` : t;
+}
+
+/** Catalog items with a fixed number of ports (other than "Switch N") */
+const PORTS_BY_NAME: Record<string, number> = { 'LAN socket double': 2 };
+
+/** Whether the item is drawn in two halves that can have their own colours (double socket) */
+export const isTwoPart = (item: FurnitureItem) => (item.name ?? nameByPath.get(item.path)) === 'LAN socket double';
 
 /** Number of ports of an item: its own setting, or from a catalog name like "Switch 24"; 0 = none */
 export function portCount(item: FurnitureItem): number {
   if (item.ports !== undefined) return item.ports;
-  const m = /^Switch (\d+)$/.exec(item.name ?? nameByPath.get(item.path) ?? '');
+  const name = item.name ?? nameByPath.get(item.path) ?? '';
+  if (PORTS_BY_NAME[name]) return PORTS_BY_NAME[name];
+  const m = /^Switch (\d+)$/.exec(name);
   return m ? Number(m[1]) : 0;
 }
 

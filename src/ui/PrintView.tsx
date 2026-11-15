@@ -10,7 +10,7 @@ import { getSprite, spriteSettled } from './images';
 import { DimensionsLayerContent } from './DimensionsLayer';
 import { CablesLayerContent, TraysLayerContent } from './CablesLayer';
 import { layerPasses, styleCables, heightCtx, type LayerView } from '../layers';
-import { spriteKey } from '../color';
+import { spriteKey, spriteColor } from '../color';
 import { itemNamer } from '../labels';
 import { labelObstacles } from '../geometry/cable';
 import { FurnitureLabels, TextNotes, SimpleFurniture, measureNote } from './AnnotationsLayer';
@@ -26,8 +26,8 @@ const PAD = 60;
 function useFloorImages(floor: FloorState): boolean {
   const [, bump] = useState(0);
   const items = [...new Map(floor.furniture.filter(f => !f.simple).map(f => [spriteKey(f), f] as const)).values()];
-  for (const f of items) getSprite(f.path, false, () => bump(c => c + 1), f.color);
-  return items.every(f => spriteSettled(f.path, false, f.color));
+  for (const f of items) getSprite(f.path, false, () => bump(c => c + 1), spriteColor(f));
+  return items.every(f => spriteSettled(f.path, false, spriteColor(f)));
 }
 
 function floorBounds(floor: FloorState): { minX: number; minY: number; maxX: number; maxY: number } | null {
@@ -113,7 +113,7 @@ function PrintFloor({ floor, index }: { floor: FloorState; index: number }) {
     <Group>
       {ready && sortByZ(v.furniture).map(f => {
         if (f.simple) return <SimpleFurniture key={f.id} item={f} palette={LIGHT} />;
-        const img = getSprite(f.path, false, () => {}, f.color);
+        const img = getSprite(f.path, false, () => {}, spriteColor(f));
         return (
           <Group key={f.id} x={f.x} y={f.y} rotation={f.rot}>
             {img ? <KImage image={img} width={f.w} height={f.h}

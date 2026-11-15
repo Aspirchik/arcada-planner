@@ -92,6 +92,13 @@ export class ProjectError extends Error {
 }
 
 const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
+/** Port tags: { "1": "uplink", "3": "10" } — only port numbers with non-empty text */
+const tagsOf = (v: unknown): { portTags?: Record<string, string> } => {
+  if (!v || typeof v !== 'object') return {};
+  const out = Object.fromEntries(Object.entries(v as Record<string, unknown>)
+    .filter(([k, t]) => /^\d+$/.test(k) && typeof t === 'string' && t.trim()).map(([k, t]) => [k, (t as string).trim().slice(0, 40)]));
+  return Object.keys(out).length ? { portTags: out } : {};
+};
 /** Optional height above the floor (cm) */
 const elevOf = (v: unknown): { elev?: number } => (isNum(v) && v >= 0 ? { elev: v } : {});
 
@@ -147,6 +154,8 @@ export function parseProject(json: string): ParsedProject {
       ...elevOf(it.elev),
       ...(isNum(it.ports) && it.ports >= 0 ? { ports: Math.min(512, Math.round(it.ports)) } : {}),
       ...(Array.isArray(it.groups) && it.groups.some(isNum) ? { groups: (it.groups as unknown[]).filter(isNum) } : {}),
+      ...tagsOf(it.portTags),
+      ...(typeof it.color2 === 'string' && /^#[0-9a-f]{3}([0-9a-f]{3})?$/i.test(it.color2) ? { color2: it.color2 } : {}),
     }));
 
     const dimensions = (Array.isArray(f.dimensions) ? f.dimensions : []).filter((dm): dm is Dimension =>
@@ -286,6 +295,8 @@ interface Store {
    * an end that was in this port loses its port. One undo step.
    */
   assignPort(itemId: number, port: number, pick: { id: number; end: 'from' | 'to' } | null): void;
+  /** Tag of a port of an item ("uplink", "VLAN 10", a number = VLAN); empty clears it */
+  setPortTag(itemId: number, port: number, tag: string): void;
   /** Adds the item (socket, switch…) to the group or takes it out */
   toggleItemGroup(itemId: number, groupId: number): void;
   toggleLit(groupId: number): void;
@@ -574,6 +585,15 @@ export const useStore = create<Store>((set, get) => {
         if (c.toLink?.id === itemId && c.toPort === port) next = { ...next, toPort: undefined };
         if (pick && c.id === pick.id) next = pick.end === 'from' ? { ...next, fromPort: port } : { ...next, toPort: port };
         return next;
+      }) }));
+    },
+    setPortTag(itemId, port, tag) {
+      upFloor(f => ({ ...f, furniture: f.furniture.map(it => {
+        if (it.id !== itemId) return it;
+        const tags = { ...(it.portTags ?? {}) };
+        const v = tag.trim().slice(0, 40);
+        if (v) tags[String(port)] = v; else delete tags[String(port)];
+        return { ...it, portTags: Object.keys(tags).length ? tags : undefined };
       }) }));
     },
     toggleItemGroup(itemId, groupId) {

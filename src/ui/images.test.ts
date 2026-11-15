@@ -35,3 +35,16 @@ describe('colorSvg', () => {
     expect(out).toContain('fill="#d0021b"');
   });
 });
+
+import { spriteSvg as sprite2 } from './images';
+describe('two-part sprite', () => {
+  it('the marked half gets the second colour, the rest the first', () => {
+    const svg = '<svg fill="#000"><path stroke="#000000"/><path stroke="#010101"/></svg>';
+    const out = sprite2(svg, false, '#ff0000/#0000ff');
+    expect(out).toContain('#ff0000');
+    expect(out).toMatch(/stroke="#0[0-9a-f]0[0-9a-f]f[0-9a-f]"/);
+    expect(out).not.toContain('#010101');
+    // only the second colour: the first half stays as drawn
+    expect(sprite2(svg, false, '/#0000ff')).toContain('#000000');
+  });
+});

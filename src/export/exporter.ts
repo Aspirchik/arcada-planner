@@ -2,7 +2,7 @@
 import type { FloorState } from '../types';
 import { buildPlanSvg, prepareSprite, EXPORT_FONT, type SpriteDef, type Measure, type ExportArea } from './planSvg';
 import { spriteSvg, spriteUrl } from '../ui/images';
-import { spriteKey } from '../color';
+import { spriteKey, spriteColor } from '../color';
 import { DARK, LIGHT } from '../theme';
 import type { WallLabelMode, SizesPos, Lang } from '../prefs';
 import type { LayerChoice } from '../layers';
@@ -69,7 +69,7 @@ async function loadSprites(floors: FloorState[], dark: boolean): Promise<Map<str
     try {
       const res = await fetch(spriteUrl(it.path));
       if (!res.ok) return;
-      map.set(key, prepareSprite(spriteSvg(await res.text(), dark, it.color), `sp${i}`));
+      map.set(key, prepareSprite(spriteSvg(await res.text(), dark, spriteColor(it)), `sp${i}`));
     } catch { /* missing sprite → placeholder rectangle */ }
   }));
   return map;
