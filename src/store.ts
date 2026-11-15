@@ -6,6 +6,7 @@ import { tidyCables, orthogonal, simplify } from './geometry/tidy';
 import { chainMembers, subtree, projectOnPath } from './geometry/chain';
 import { DEFAULT_WIRING, onLayer, trayLayer } from './layers';
 import { carryHeights } from './geometry/heights';
+import { isPassThrough } from './labels';
 import { translate, type TKey, type TParams } from './i18n';
 
 const HISTORY_LIMIT = 50;
@@ -198,7 +199,7 @@ export function parseProject(json: string): ParsedProject {
     ).map((c): Cable => ({
       id: c.id,
       points: c.points.filter((p): p is { x: number; y: number; z?: unknown } => !!p && isNum((p as { x: unknown }).x) && isNum((p as { y: unknown }).y))
-        .map(p => ({ x: p.x, y: p.y, ...(isNum(p.z) && p.z >= 0 ? { z: p.z } : {}) })),
+        .map(p => ({ x: p.x, y: p.y, ...(isNum(p.z) && p.z >= 0 ? { z: p.z } : {}), ...((p as { joint?: unknown }).joint === true ? { joint: true } : {}) })),
       color: typeof c.color === 'string' ? c.color : DEFAULT_CABLE_COLOR,
       ...(isNum(c.width) && c.width > 0 ? { width: c.width } : {}),
       ...(typeof c.label === 'string' && c.label ? { label: c.label } : {}),
@@ -300,6 +301,13 @@ interface Store {
   setWiring(changes: Partial<WiringSettings>): void;
   /** Room height of the current floor (cm); undefined clears it */
   setFloorHeight(h: number | undefined): void;
+  /**
+   * Connector on a cable at `p`: a point within `near` gets it (or loses it), else a new point with a connector
+   * is put on the cable there
+   */
+  toggleJoint(id: number, p: { x: number; y: number }, near: number): void;
+  /** Connector at one point of a cable on / off */
+  setJoint(id: number, index: number, on: boolean): void;
   /** Sets (z = number) or clears (undefined) the own height of one cable point */
   setCablePointHeight(id: number, index: number, z: number | undefined): void;
   /** Drops the own width of every cable on the floor, so the global width applies */
@@ -372,8 +380,8 @@ interface Store {
   /** Same change for every cable of the chain */
   updateChain(id: number, changes: Partial<Pick<Cable, 'color' | 'width' | 'showLength' | 'noTray'>>): void;
   /** Waiting for a click on a cable: where to continue it from, or which cable to attach it to */
-  chainPick: { id: number; mode: 'continue' | 'attach' } | null;
-  setChainPick(pick: { id: number; mode: 'continue' | 'attach' } | null): void;
+  chainPick: { id: number; mode: 'continue' | 'attach' | 'joint' } | null;
+  setChainPick(pick: { id: number; mode: 'continue' | 'attach' | 'joint' } | null): void;
   updateCable(id: number, changes: Partial<Omit<Cable, 'id'>>): void;
   deleteCable(id: number): void;
   addTray(points: { x: number; y: number }[], width?: number): number;
@@ -554,10 +562,37 @@ export const useStore = create<Store>((set, get) => {
     setFloorHeight(h) {
       upFloor(f => (f.height === h ? f : { ...f, height: h }));
     },
+    toggleJoint(id, p, near) {
+      upFloor(f => ({ ...f, cables: f.cables.map(c => {
+        if (c.id !== id) return c;
+        const at = c.points.findIndex(q => Math.hypot(q.x - p.x, q.y - p.y) <= near);
+        if (at >= 0) return { ...c, points: c.points.map((q, i) => (i !== at ? q : q.joint ? (({ joint: _j, ...r }) => r)(q) : { ...q, joint: true })) };
+        const pr = projectOnPath(c.points, p);
+        let seg = 0, best = Infinity;
+        for (let i = 1; i < c.points.length; i++) {
+          const d = projectOnPath([c.points[i - 1], c.points[i]], pr.p).dist;
+          if (d < best) { best = d; seg = i - 1; }
+        }
+        const pts = [...c.points];
+        pts.splice(seg + 1, 0, { x: Math.round(pr.p.x * 10) / 10, y: Math.round(pr.p.y * 10) / 10, joint: true });
+        return { ...c, points: pts };
+      }) }));
+    },
+    setJoint(id, index, on) {
+      upFloor(f => ({ ...f, cables: f.cables.map(c => {
+        if (c.id !== id || !c.points[index]) return c;
+        return { ...c, points: c.points.map((q, i) => (i !== index ? q : on ? { ...q, joint: true } : (({ joint: _j, ...r }) => r)(q))) };
+      }) }));
+    },
     setCablePointHeight(id, index, z) {
       upFloor(f => ({ ...f, cables: f.cables.map(c => {
         if (c.id !== id || !c.points[index]) return c;
-        return { ...c, points: c.points.map((p, i) => (i !== index ? p : z === undefined ? { x: p.x, y: p.y } : { ...p, z })) };
+        return { ...c, points: c.points.map((p, i) => {
+          if (i !== index) return p;
+          if (z !== undefined) return { ...p, z };
+          const { z: _z, ...rest } = p;
+          return rest;
+        }) };
       }) }));
     },
 
@@ -602,14 +637,26 @@ export const useStore = create<Store>((set, get) => {
       });
     },
     assignPort(itemId, port, pick) {
-      upFloor(f => ({ ...f, cables: f.cables.map(c => {
-        let next = c;
-        // whatever is in this port now leaves it
-        if (c.fromLink?.id === itemId && c.fromPort === port) next = { ...next, fromPort: undefined };
-        if (c.toLink?.id === itemId && c.toPort === port) next = { ...next, toPort: undefined };
-        if (pick && c.id === pick.id) next = pick.end === 'from' ? { ...next, fromPort: port } : { ...next, toPort: port };
-        return next;
-      }) }));
+      upFloor(f => {
+        // A socket port holds two ends (wall cable + cord to a device), other ports one: the oldest ends leave
+        const item = f.furniture.find(it => it.id === itemId);
+        const room = item && isPassThrough(item) ? 2 : 1;
+        const isPick = (c: Cable, end: 'from' | 'to') => !!pick && pick.id === c.id && pick.end === end;
+        const at: { id: number; end: 'from' | 'to' }[] = [];
+        for (const c of f.cables) {
+          if (c.fromLink?.id === itemId && c.fromPort === port && !isPick(c, 'from')) at.push({ id: c.id, end: 'from' });
+          if (c.toLink?.id === itemId && c.toPort === port && !isPick(c, 'to')) at.push({ id: c.id, end: 'to' });
+        }
+        const out = pick ? at.slice(0, Math.max(0, at.length - (room - 1))) : at;
+        const leaves = (c: Cable, end: 'from' | 'to') => out.some(o => o.id === c.id && o.end === end);
+        return { ...f, cables: f.cables.map(c => {
+          let next = c;
+          if (leaves(c, 'from')) next = { ...next, fromPort: undefined };
+          if (leaves(c, 'to')) next = { ...next, toPort: undefined };
+          if (pick && c.id === pick.id) next = pick.end === 'from' ? { ...next, fromPort: port } : { ...next, toPort: port };
+          return next;
+        }) };
+      });
     },
     updateDevice(itemId, changes) {
       upFloor(f => ({ ...f, furniture: f.furniture.map(it => {

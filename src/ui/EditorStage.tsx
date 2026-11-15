@@ -164,7 +164,7 @@ export function EditorStage() {
   const wiring        = mode === 'wiring';
   const ws            = useStore(s => s.wiring);
   const litGroups     = useStore(s => s.litGroups);
-  const nameOf        = useMemo(() => itemNamer(floor.furniture, lang), [floor.furniture, lang]);
+  const nameOf        = useMemo(() => itemNamer(floor.furniture, lang, floor.cables), [floor.furniture, floor.cables, lang]);
   /** Objects of the layer being edited: main plan, or the wiring layer in Wiring mode (with objects shown on both) */
   const act = useMemo(() => {
     const v = layerView(floor, wiring ? 'wiring' : 'main');
@@ -477,6 +477,16 @@ export function EditorStage() {
     // Waiting for a click on a cable: continue it from that point, or attach the selected cable to it
     const pick = useStore.getState().chainPick;
     if (pick) {
+      // Connectors: each click on the cable puts one (or removes the one there); a click elsewhere ends
+      if (pick.mode === 'joint') {
+        const c = act.cables.find(x => x.id === pick.id);
+        const shown = c ? cablePaths.get(c.id) ?? c.points : null;
+        if (c && shown && projectOnPath(shown, pt).dist <= CHAIN_PICK_PX / scale) {
+          const on = projectOnPath(c.points, pt).p;
+          store.toggleJoint(c.id, on, 10 / scale);
+        } else store.setChainPick(null);
+        return;
+      }
       if (pick.mode === 'continue') {
         const ids = new Set(chainMembers(act.cables, pick.id));
         let best: { c: Cable; p: Pt; d: number } | null = null;
@@ -717,7 +727,7 @@ export function EditorStage() {
       if (!c) return;
       const prev = c.points[d.index - 1] ?? c.points[d.index + 1];
       const { p, snapped } = measurePoint(pt, prev, undefined, d.id);
-      store.updateCable(d.id, { points: c.points.map((q, i) => i === d.index ? { ...p, ...(q.z !== undefined ? { z: q.z } : {}) } : q) });
+      store.updateCable(d.id, { points: c.points.map((q, i) => i === d.index ? { ...q, x: p.x, y: p.y } : q) });
       setSnapMark(snapped ? p : null);
     } else if (d.type === 'cable-move') {
       const first = d.base.points[0];
@@ -1130,7 +1140,7 @@ export function EditorStage() {
       </div>
     )}
     {chainPick && (
-      <div className="pick-hint">{t(chainPick.mode === 'continue' ? 'chain.pickContinue' : 'chain.pickAttach')}</div>
+      <div className="pick-hint">{t(chainPick.mode === 'continue' ? 'chain.pickContinue' : chainPick.mode === 'joint' ? 'joint.pick' : 'chain.pickAttach')}</div>
     )}
     <Stage
       ref={stageRef}

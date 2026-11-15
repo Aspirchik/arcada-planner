@@ -130,8 +130,11 @@ export interface Dimension {
 /** Cable run: a polyline with its own colour and label */
 export interface Cable {
   id: number;
-  /** Plan points; `z` = height of the point above the floor (cm), missing = taken from the item / tray / run height */
-  points: { x: number; y: number; z?: number }[];
+  /**
+   * Plan points; `z` = height of the point above the floor (cm), missing = taken from the item / tray / run height;
+   * `joint` = a connector here (two cables joined to extend a run)
+   */
+  points: { x: number; y: number; z?: number; joint?: boolean }[];
   color: string;
   /** Line width in cm (default 3) */
   width?: number;

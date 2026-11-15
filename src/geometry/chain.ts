@@ -55,7 +55,7 @@ export interface ChainInfo {
  * Chains of several cables, keyed by root id. Stop names: `from` / `to` of the cables,
  * or (when empty) `nameOf` the item the end is connected to.
  */
-export function chainInfos(cables: Cable[], nameOf?: (id: number, port?: number) => string | undefined, lengthOf: (c: Cable) => number = c => pathLength(c.points)): Map<number, ChainInfo> {
+export function chainInfos(cables: Cable[], nameOf?: (id: number, port?: number, via?: number) => string | undefined, lengthOf: (c: Cable) => number = c => pathLength(c.points)): Map<number, ChainInfo> {
   const roots = chainRoots(cables);
   const children = new Map<number, Cable[]>();
   for (const c of cables) {
@@ -75,13 +75,13 @@ export function chainInfos(cables: Cable[], nameOf?: (id: number, port?: number)
       members.push(c.id);
       const len = pathLength(c.points);
       length += lengthOf(c);
-      const name = (c.to || (c.toLink && nameOf?.(c.toLink.id, c.toPort)) || '').trim();
+      const name = (c.to || (c.toLink && nameOf?.(c.toLink.id, c.toPort, c.id)) || '').trim();
       if (name) ends.push({ d: start + len, name });
       for (const k of children.get(c.id) ?? []) walk(k, start + projectOnPath(c.points, k.points[0]).along);
     };
     walk(root, 0);
     ends.sort((a, b) => a.d - b.d);
-    const from = (root.from || (root.fromLink && nameOf?.(root.fromLink.id, root.fromPort)) || '').trim();
+    const from = (root.from || (root.fromLink && nameOf?.(root.fromLink.id, root.fromPort, root.id)) || '').trim();
     out.set(root.id, { members, stops: [from, ...ends.map(e => e.name)], length });
   }
   return out;

@@ -408,6 +408,34 @@ describe('cable connections and groups', () => {
     expect(floor().furniture[0].portTags).toBeUndefined();
   });
 
+  it('a socket port holds two ends: the wall cable and the cord; a third pushes the oldest out', () => {
+    const sock: CatalogItem = { name: 'LAN socket', imagePath: 'socket-lan', width: 0.15, height: 0.15 };
+    const s = st().addFurniture(sock, 0, 0);
+    const it = floor().furniture[0];
+    const cx = it.x + it.w / 2, cy = it.y + it.h / 2;
+    const a = st().addCable([{ x: 500, y: 0 }, { x: cx, y: cy }], '#000');
+    const b = st().addCable([{ x: cx, y: cy }, { x: 500, y: 300 }], '#000');
+    const c = st().addCable([{ x: cx, y: cy }, { x: 500, y: 600 }], '#000');
+    st().assignPort(s, 1, { id: a, end: 'to' });
+    st().assignPort(s, 1, { id: b, end: 'from' });
+    expect(floor().cables.find(x => x.id === a)!.toPort).toBe(1);
+    expect(floor().cables.find(x => x.id === b)!.fromPort).toBe(1);
+    st().assignPort(s, 1, { id: c, end: 'from' });
+    expect(floor().cables.find(x => x.id === a)!.toPort).toBeUndefined();
+    expect(floor().cables.find(x => x.id === c)!.fromPort).toBe(1);
+  });
+
+  it('connectors: put on a cable, toggled off, kept when a point is dragged', () => {
+    const c = st().addCable([{ x: 0, y: 0 }, { x: 200, y: 0 }], '#000');
+    st().toggleJoint(c, { x: 80, y: 2 }, 5);
+    expect(floor().cables[0].points).toEqual([{ x: 0, y: 0 }, { x: 80, y: 0, joint: true }, { x: 200, y: 0 }]);
+    st().setCablePointHeight(c, 1, 100);
+    st().setCablePointHeight(c, 1, undefined);
+    expect(floor().cables[0].points[1]).toEqual({ x: 80, y: 0, joint: true });
+    st().toggleJoint(c, { x: 81, y: 0 }, 5);
+    expect(floor().cables[0].points[1]).toEqual({ x: 80, y: 0 });
+  });
+
   it('point heights: set and clear one point, room height', () => {
     const c = st().addCable([{ x: 0, y: 0 }, { x: 100, y: 0 }], '#000');
     st().setCablePointHeight(c, 1, 160);

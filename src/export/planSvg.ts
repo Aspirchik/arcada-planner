@@ -12,7 +12,7 @@ import { sortByZ } from '../helpers';
 import { layerPasses, styleCables, heightCtx, DEFAULT_WIRING, type LayerView, type LayerChoice } from '../layers';
 import { mixHex, spriteKey } from '../color';
 import { furnitureLabel, sizesCorner, itemNamer } from '../labels';
-import { cableLabel, layoutCables, placeCableLabels, labelObstacles, midAlong } from '../geometry/cable';
+import { cableLabel, layoutCables, placeCableLabels, labelObstacles, midAlong, cableJoints, jointSize } from '../geometry/cable';
 
 export const EXPORT_FONT = 'Roboto';
 const LINE_HEIGHT = 1.2;
@@ -310,7 +310,7 @@ export function buildPlanSvg(floor: FloorState, sprites: Map<string, SpriteDef>,
       out.push(`<g transform="${tr}"${faded ? ` opacity="${f(dimBy)}"` : ''}><g${flip}><svg x="0" y="0" width="${f(it.w)}" height="${f(it.h)}" viewBox="${sp.viewBox}" preserveAspectRatio="none" overflow="hidden"${sp.fill ? ` fill="${sp.fill}"` : ''}>${sp.body}</svg></g></g>`);
     }
     // Cables (above furniture): shared runs side by side, labels kept apart
-    const cables = styleCables(v.cables, ws, itemNamer(floor.furniture, opts.lang), heightCtx(floor));
+    const cables = styleCables(v.cables, ws, itemNamer(floor.furniture, opts.lang, floor.cables), heightCtx(floor));
     const size = ws.cableText;
     const cablePaths = layoutCables(cables, [...(floor.groups ?? []).map(g => g.id), ...(opts.commonGroups ?? [])]);
     const cableTexts = new Map(ws.cableLabels ? cables.map(c => [c.id, cableLabel(c, opts.unitM)] as [number, string]).filter(([, l]) => !!l) : []);
@@ -320,6 +320,11 @@ export function buildPlanSvg(floor: FloorState, sprites: Map<string, SpriteDef>,
       const path = cablePaths.get(c.id) ?? c.points;
       if (path.length < 2) continue;
       out.push(`<polyline points="${pts(path)}" fill="none" stroke="${fade(c.color)}" stroke-width="${f(c.width ?? ws.cableWidth)}" stroke-linecap="round" stroke-linejoin="round"/>`);
+      // Connectors: a sleeve across the line
+      const js = jointSize(c.width ?? ws.cableWidth);
+      for (const j of cableJoints(c, path)) {
+        out.push(`<g transform="translate(${f(j.p.x)} ${f(j.p.y)}) rotate(${f(j.angle)})"><rect x="${f(-js.len / 2)}" y="${f(-js.thick / 2)}" width="${f(js.len)}" height="${f(js.thick)}" rx="${f(js.thick * 0.25)}" fill="${pal.paper}" stroke="${fade(c.color)}" stroke-width="${f(js.stroke)}"/><line x1="0" y1="${f(-js.thick / 2)}" x2="0" y2="${f(js.thick / 2)}" stroke="${fade(c.color)}" stroke-width="${f(js.stroke)}"/></g>`);
+      }
     }
     for (const c of cables) {
       const label = cableTexts.get(c.id), at = cableSpots.get(c.id);

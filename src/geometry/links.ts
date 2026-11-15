@@ -72,7 +72,7 @@ export function syncLinks(floor: FloorState): FloorState {
       if (!it) { next = { ...next, [which]: undefined }; return; }
       const p = linkPoint(it, link);
       if (near(p, next.points[idx])) return;
-      next = { ...next, points: next.points.map((q, i) => (i === idx ? { ...p, ...(q.z !== undefined ? { z: q.z } : {}) } : q)) };
+      next = { ...next, points: next.points.map((q, i) => (i === idx ? { ...q, x: p.x, y: p.y } : q)) };
     };
     fix('fromLink');
     fix('toLink');

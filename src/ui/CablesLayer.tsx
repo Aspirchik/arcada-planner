@@ -1,10 +1,10 @@
 /** Cable runs: coloured polylines with a label along the middle (editor and print) */
 import { useMemo } from 'react';
-import { Line, Group, Circle, Text } from 'react-konva';
+import { Line, Group, Circle, Text, Rect } from 'react-konva';
 import type { Cable, Tray } from '../types';
 import type { Palette } from '../theme';
 import type { Pt } from '../geometry/hit';
-import { midAlong, cableLabel, layoutCables, placeCableLabels, type Box } from '../geometry/cable';
+import { midAlong, cableLabel, layoutCables, placeCableLabels, cableJoints, jointSize, type Box } from '../geometry/cable';
 import { DEFAULT_CABLE_WIDTH } from '../store';
 import { mixHex } from '../color';
 import { AlongText } from './WallsLayer';
@@ -55,8 +55,21 @@ export function CablesLayerContent({ cables, palette, unitM, avoid, highlight, l
         <Group key={c.id} opacity={highlight && !highlight.has(c.id) ? 0.15 : 1}>
           <CableLine points={paths.get(c.id) ?? c.points} color={c.color} width={c.width}
             label={labels.get(c.id)} labelAt={places.get(c.id)} palette={palette} labelSize={labelSize} />
+          {cableJoints(c, paths.get(c.id) ?? c.points).map((j, i) => <CableJoint key={i} at={j} color={c.color} width={c.width} palette={palette} />)}
         </Group>
       ))}
+    </Group>
+  );
+}
+
+/** Connector: a sleeve across the cable, so a joined (extended) cable stands out */
+export function CableJoint({ at, color, width = DEFAULT_CABLE_WIDTH, palette }: { at: { p: Pt; angle: number }; color: string; width?: number; palette: Palette }) {
+  const s = jointSize(width);
+  return (
+    <Group x={at.p.x} y={at.p.y} rotation={at.angle}>
+      <Rect x={-s.len / 2} y={-s.thick / 2} width={s.len} height={s.thick} cornerRadius={s.thick * 0.25}
+        fill={palette.paper} stroke={color} strokeWidth={s.stroke} />
+      <Line points={[0, -s.thick / 2, 0, s.thick / 2]} stroke={color} strokeWidth={s.stroke} />
     </Group>
   );
 }

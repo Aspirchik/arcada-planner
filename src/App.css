@@ -330,6 +330,10 @@ body { overflow: hidden; font-family: system-ui, sans-serif; background: var(--o
 .sel-link { color: var(--text-3); font-size: 10px; }
 .sel-chain { color: var(--text-1); font-weight: 600; max-width: 560px; }
 .sel-opt { width: 64px; }
+.sel-btn { position: relative; }
+.sel-badge { position: absolute; top: -5px; right: -6px; min-width: 14px; height: 14px; padding: 0 3px; border-radius: 7px; background: var(--accent); color: #fff; font-size: 9px; line-height: 14px; text-align: center; }
+.pt-joint { border: 1px solid transparent; background: none; color: var(--text-3); cursor: pointer; padding: 1px; border-radius: 3px; line-height: 0; }
+.pt-joint.on { color: var(--accent); border-color: var(--accent); }
 /* Switch front panel: RJ45 ports in blocks of 12 (odd on top, even below) */
 .sw-face {
   display: inline-flex; gap: 10px; padding: 6px 10px;
@@ -367,6 +371,10 @@ body { overflow: hidden; font-family: system-ui, sans-serif; background: var(--o
 .sw-line.clash { color: #e04848; }
 .sw-line-tag { padding: 0 4px; border-radius: 3px; background: var(--surface-2); color: var(--text-2); font-weight: 600; }
 .sw-cable { max-width: 320px; }
+.sw-line-tag.got { background: none; border: 1px dashed var(--border); }
+.sw-end { display: inline-flex; align-items: center; gap: 4px; padding: 1px 6px; border: 1px solid var(--border); border-radius: 4px; color: var(--text-1); }
+.sw-unplug { border: none; background: none; color: var(--text-3); cursor: pointer; font-size: 14px; line-height: 1; padding: 0 2px; }
+.sw-unplug:hover { color: var(--danger); }
 .sw-all { display: inline-flex; align-items: center; gap: 4px; }
 .selection-panel input.sw-all-in { width: 90px; }
 .sw-all-btn { padding: 3px 8px; font-size: 12px; white-space: nowrap; }

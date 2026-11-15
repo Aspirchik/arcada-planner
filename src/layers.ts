@@ -45,7 +45,7 @@ export function trayLayer(t: { layer?: 'plan' | 'both' }): Layer | undefined {
  * Cables ready to draw: global settings applied (default width, length shown on all) and,
  * when From / To is empty, the name of the item the end is connected to.
  */
-export function styleCables(cables: Cable[], ws: WiringSettings, nameOf?: (id: number, port?: number) => string | undefined, heights?: HeightCtx): Cable[] {
+export function styleCables(cables: Cable[], ws: WiringSettings, nameOf?: (id: number, port?: number, via?: number) => string | undefined, heights?: HeightCtx): Cable[] {
   // Lengths count the vertical runs when heights are known
   const zs = heights ? cableHeights(cables, heights) : null;
   const lengthOf = (c: Cable) => length3d(c.points, zs?.get(c.id));
@@ -57,8 +57,8 @@ export function styleCables(cables: Cable[], ws: WiringSettings, nameOf?: (id: n
     if (info) return { ...c, width: c.width ?? ws.cableWidth, ...(ws.cableLengths ? { showLength: true } : {}), route: chainRoute(info), totalLength: info.length };
     const root = roots.get(c.id);
     if (root !== undefined && root !== c.id) return { ...c, width: c.width ?? ws.cableWidth, showLength: false, route: '', ...(zs ? { totalLength: lengthOf(c) } : {}) };
-    const from = c.from || (c.fromLink && nameOf?.(c.fromLink.id, c.fromPort));
-    const to = c.to || (c.toLink && nameOf?.(c.toLink.id, c.toPort));
+    const from = c.from || (c.fromLink && nameOf?.(c.fromLink.id, c.fromPort, c.id));
+    const to = c.to || (c.toLink && nameOf?.(c.toLink.id, c.toPort, c.id));
     return {
       ...c, width: c.width ?? ws.cableWidth,
       ...(ws.cableLengths ? { showLength: true } : {}),

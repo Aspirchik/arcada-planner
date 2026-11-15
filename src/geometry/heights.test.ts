@@ -78,7 +78,8 @@ describe('switch ports', () => {
   it('port count from the catalog name or own setting', () => {
     expect(portCount(item(1, 0, 0, { name: 'Switch 24' }))).toBe(24);
     expect(portCount(item(1, 0, 0, { name: 'Switch 24', ports: 8 }))).toBe(8);
-    expect(portCount(item(1, 0, 0, { name: 'LAN socket' }))).toBe(0);
+    expect(portCount(item(1, 0, 0, { name: 'LAN socket' }))).toBe(1);
+    expect(portCount(item(1, 0, 0, { name: 'Chair' }))).toBe(0);
   });
 
   it('route shows the port: "Switch A, port 1 → User 1"', () => {
@@ -125,5 +126,33 @@ describe('port tags and double socket', () => {
     const sock = item(1, 0, 0, { name: 'LAN socket double', color: '#d0021b', color2: '#1a73e8', portTags: { '2': 'VLAN 20', x: 'bad' } as Record<string, string> });
     const f = parseProject(JSON.stringify({ floors: [floor([sock], [])], nextId: 10 })).floors[0];
     expect(f.furniture[0]).toMatchObject({ color2: '#1a73e8', portTags: { '2': 'VLAN 20' } });
+  });
+});
+
+describe('socket ports: VLAN through the wall cable, cord to a device', () => {
+  const sw = item(1, 0, 0, { name: 'Switch 24', label: 'Switch A', portTags: { '3': '10' } });
+  const sock = item(2, 0, 300, { name: 'LAN socket', label: 'User 1', portTags: { '1': 'A1' } });
+  const pc = item(3, 100, 300, { name: 'PC Dell SFF', device: { hostname: 'PC-02' } });
+  const wall: Cable = { id: 10, color: '#000', points: [{ x: 5, y: 5 }, { x: 5, y: 305 }], fromLink: { id: 1, u: 0.5, v: 0.5 }, fromPort: 3, toLink: { id: 2, u: 0.5, v: 0.5 }, toPort: 1 };
+  const cord: Cable = { id: 11, color: '#000', points: [{ x: 5, y: 305 }, { x: 105, y: 305 }], fromLink: { id: 2, u: 0.5, v: 0.5 }, fromPort: 1, toLink: { id: 3, u: 0.5, v: 0.5 }, toPort: 1 };
+
+  it('the cord route names the socket port with its label and the VLAN it gets', () => {
+    const [, c] = styleCables([wall, cord], DEFAULT_WIRING, itemNamer([sw, sock, pc], 'en', [wall, cord]));
+    expect(`${c.from} → ${c.to}`).toBe('User 1, port 1, A1, VLAN 10 → PC-02, port 1');
+  });
+
+  it('the wall cable does not repeat the VLAN on the socket end', () => {
+    const [w] = styleCables([wall, cord], DEFAULT_WIRING, itemNamer([sw, sock, pc], 'en', [wall, cord]));
+    expect(`${w.from} → ${w.to}`).toBe('Switch A, port 3, VLAN 10 → User 1, port 1, A1');
+  });
+});
+
+describe('connectors', () => {
+  it('cableJoints puts a connector on the drawn path; re-laying keeps it', async () => {
+    const { cableJoints } = await import('./cable');
+    const c: Cable = { id: 1, color: '#000', points: [{ x: 0, y: 0 }, { x: 100, y: 0, joint: true }, { x: 200, y: 0 }] };
+    expect(cableJoints(c, [{ x: 0, y: 6 }, { x: 200, y: 6 }])).toEqual([{ p: { x: 100, y: 6 }, angle: 0 }]);
+    const out = carryHeights(c.points, [{ x: 0, y: 0 }, { x: 0, y: 50 }, { x: 200, y: 50 }, { x: 200, y: 0 }]);
+    expect(out.filter(p => p.joint)).toHaveLength(1);
   });
 });

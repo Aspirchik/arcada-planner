@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Trash2, BringToFront, SendToBack, Bold, Pencil, Type, Square, Image as ImageIcon, FlipHorizontal2, FlipVertical2, Ruler, Layers, Palette as PaletteIcon, GitBranchPlus, Link2, Unlink, Cable as CableIcon, MoveVertical, ArrowUpToLine, Plus, Minus } from 'lucide-react';
+import { Trash2, BringToFront, SendToBack, Bold, Pencil, Type, Square, Image as ImageIcon, FlipHorizontal2, FlipVertical2, Ruler, Layers, Palette as PaletteIcon, GitBranchPlus, Link2, Unlink, Cable as CableIcon, MoveVertical, ArrowUpToLine, Plus, Minus, Combine } from 'lucide-react';
 import { EditorStage } from './ui/EditorStage';
 import { Toolbar } from './ui/Toolbar';
 import { FurniturePanel } from './ui/FurniturePanel';
@@ -11,7 +11,8 @@ import { useStore, parseProject, isProjectEmpty } from './store';
 import { onLayer, styleCables, trayLayer, heightCtx } from './layers';
 import { cableHeights, itemElevation, verticalRun } from './geometry/heights';
 import { pathLength } from './geometry/cable';
-import { itemNamer, portCount, portTag, isTwoPart, isDevice, deviceNics } from './labels';
+import { itemNamer, portCount, portTag, isTwoPart, isDevice, deviceNics, isPassThrough } from './labels';
+import { derivedTag } from './geometry/ports';
 import { normalizeMac, isMac, isIp } from './geometry/netaddr';
 import { CableGroupChips } from './ui/GroupsPanel';
 import { cablesInTray, cableRouteText, cableLength } from './geometry/cable';
@@ -111,7 +112,7 @@ interface ItemEnd { c: Cable; end: 'from' | 'to'; port?: number; other: string }
 
 /** Cable ends connected to an item (switch), with the other end of each run ("User 1", or a chain's consumers) */
 function itemEnds(floor: FloorState, itemId: number, lang: Lang): ItemEnd[] {
-  const nameOf = itemNamer(floor.furniture, lang);
+  const nameOf = itemNamer(floor.furniture, lang, floor.cables);
   const infos = chainInfos(floor.cables, nameOf);
   const roots = chainRoots(floor.cables);
   const byId = new Map(floor.cables.map(c => [c.id, c]));
@@ -119,11 +120,11 @@ function itemEnds(floor: FloorState, itemId: number, lang: Lang): ItemEnd[] {
     const out: ItemEnd[] = [];
     if (c.fromLink?.id === itemId) {
       const info = infos.get(c.id);
-      out.push({ c, end: 'from', port: c.fromPort, other: (info ? info.stops.slice(1).join(' → ') : (c.to || (c.toLink && nameOf(c.toLink.id, c.toPort)))) || c.label || '—' });
+      out.push({ c, end: 'from', port: c.fromPort, other: (info ? info.stops.slice(1).join(' → ') : (c.to || (c.toLink && nameOf(c.toLink.id, c.toPort, c.id)))) || c.label || '—' });
     }
     if (c.toLink?.id === itemId) {
       const root = byId.get(roots.get(c.id) ?? c.id) ?? c;
-      out.push({ c, end: 'to', port: c.toPort, other: root.from || (root.fromLink && nameOf(root.fromLink.id, root.fromPort)) || c.label || '—' });
+      out.push({ c, end: 'to', port: c.toPort, other: root.from || (root.fromLink && nameOf(root.fromLink.id, root.fromPort, root.id)) || c.label || '—' });
     }
     return out;
   });
@@ -141,13 +142,15 @@ function PortSelect({ cable, end, item, byPort }: { cable: Cable; end: 'from' | 
   const t = useT();
   const value = end === 'from' ? cable.fromPort : cable.toPort;
   const count = portCount(item);
+  const room = isPassThrough(item) ? 2 : 1;
   const ports = Array.from({ length: Math.max(count, value ?? 0) }, (_, i) => i + 1)
-    .filter(n => n === value || !(byPort.get(n) ?? []).some(o => !(o.c.id === cable.id && o.end === end)));
+    .filter(n => n === value || (byPort.get(n) ?? []).filter(o => !(o.c.id === cable.id && o.end === end)).length < room);
   return (
     <select className="sel-select port-select" title={t('port.select')} value={value ?? ''}
       onChange={e => {
         const v = e.target.value ? Number(e.target.value) : undefined;
-        useStore.getState().updateCable(cable.id, end === 'from' ? { fromPort: v } : { toPort: v });
+        if (v) useStore.getState().assignPort(item.id, v, { id: cable.id, end });
+        else useStore.getState().updateCable(cable.id, end === 'from' ? { fromPort: undefined } : { toPort: undefined });
       }}>
       <option value="">{t('port.short')} —</option>
       {ports.map(n => {
@@ -340,6 +343,7 @@ function SelectionPanel() {
   const stageY       = useStore(s => s.stageY);
   const stageScale   = useStore(s => s.stageScale);
   const textEdit     = useStore(s => s.textEdit);
+  useStore(s => s.chainPick); // the connector button shows when picking is on
   const lang         = usePrefs(s => s.lang);
   const st           = useStore.getState();
   const t            = useT();
@@ -450,7 +454,7 @@ function SelectionPanel() {
   // ── Tray ──
   const tray = floor.trays.find(x => x.id === selectedId);
   if (tray) {
-    const styled = styleCables(floor.cables.filter(c => onLayer(c, 'wiring')), st.wiring, itemNamer(floor.furniture, lang), heightCtx(floor));
+    const styled = styleCables(floor.cables.filter(c => onLayer(c, 'wiring')), st.wiring, itemNamer(floor.furniture, lang, floor.cables), heightCtx(floor));
     const inside = collapseToChains(cablesInTray(tray, styled), styled).shown;
     return (
       <div className="selection-panel" ref={panelRef} style={at(tray.points, 460)}>
@@ -481,7 +485,7 @@ function SelectionPanel() {
   // ── Cable ──
   const cable = floor.cables.find(c => c.id === selectedId);
   if (cable) {
-    const nameOf = itemNamer(floor.furniture, lang);
+    const nameOf = itemNamer(floor.furniture, lang, floor.cables);
     const autoFrom = cable.fromLink ? nameOf(cable.fromLink.id) : undefined;
     const autoTo = cable.toLink ? nameOf(cable.toLink.id) : undefined;
     // Ports of the items the ends are connected to (switches)
@@ -496,6 +500,7 @@ function SelectionPanel() {
     // Heights used for the points (own, item, tray or run height) and the length with the runs up / down
     const zs = cableHeights(floor.cables, hctx).get(cable.id) ?? null;
     const flat = pathLength(cable.points), vert = verticalRun(zs);
+    const joints = cable.points.filter(p => p.joint).length;
     const m = (v: number) => formatMeters(v, t('unit.m'));
     return (
       <div className="selection-panel" ref={panelRef} style={at(cable.points, 620)}>
@@ -528,6 +533,10 @@ function SelectionPanel() {
         <button className={'sel-btn' + (cable.showLength ? ' active' : '')} title={t('cable.showLength')}
           onClick={() => st.updateChain(cable.id, { showLength: cable.showLength ? undefined : true })}><Ruler size={14} /></button>
         <LayerButton ids={chain} layer={cable.layer} />
+        <button className={'sel-btn' + (st.chainPick?.mode === 'joint' && st.chainPick.id === cable.id ? ' active' : '')} title={t('joint.add')}
+          onClick={() => st.setChainPick(st.chainPick?.mode === 'joint' ? null : { id: cable.id, mode: 'joint' })}>
+          <Combine size={14} />{joints > 0 && <span className="sel-badge">{joints}</span>}
+        </button>
         <button className="sel-btn" title={t('chain.continue')} onClick={() => st.setChainPick({ id: cable.id, mode: 'continue' })}>
           <GitBranchPlus size={14} />
         </button>
@@ -556,6 +565,8 @@ function SelectionPanel() {
                 <label key={i} className="pt-h">{i + 1}
                   <OptNum key={`pz${cable.id}-${i}-${cable.points.length}`} value={p.z} placeholder={zs ? String(Math.round(zs[i])) : '—'}
                     onCommit={v => st.setCablePointHeight(cable.id, i, v)} />
+                  <button className={'pt-joint' + (p.joint ? ' on' : '')} title={t('joint.point')}
+                    onClick={e => { e.preventDefault(); st.setJoint(cable.id, i, !p.joint); }}><Combine size={11} /></button>
                 </label>
               ))}
               <span className="pt-hint">{t('cable.pointsHint')}</span>
@@ -680,7 +691,12 @@ function ItemPorts({ floor, itemId }: { floor: FloorState; itemId: number }) {
   const free = Array.from({ length: count }, (_, i) => i + 1).filter(n => !byPort.has(n)).length;
   const key = (e: ItemEnd) => `${e.c.id}:${e.end}`;
   const loose = ends.filter(e => !e.port);
-  const what = (n: number) => (byPort.get(n) ?? []).map(e => e.other).join(', ');
+  // A socket port holds the wall cable and the cord to a device; it gets the tag (VLAN) of the switch port
+  const passThru = isPassThrough(item);
+  const room = passThru ? 2 : 1;
+  const tagOf = (id: number, n: number) => { const it = floor.furniture.find(f => f.id === id); return it ? portTag(it, n) : ''; };
+  const gotTag = (n: number) => (passThru ? derivedTag(itemId, n, floor.cables, tagOf) : '');
+  const what = (n: number) => (byPort.get(n) ?? []).map(e => e.other).join(passThru ? '  ⇄  ' : ', ');
   const selected = pick !== null && pick <= max ? pick : null;
   const arrow = (e: ItemEnd) => (e.end === 'from' ? '→' : '←');
 
@@ -693,8 +709,8 @@ function ItemPorts({ floor, itemId }: { floor: FloorState; itemId: number }) {
   }
   const port = (n: number) => {
     const here = byPort.get(n) ?? [];
-    const tag = portTag(item, n);
-    const cls = 'sw-port' + (here.length ? ' busy' : '') + (here.length > 1 || n > count ? ' clash' : '') + (selected === n ? ' picked' : '');
+    const tag = portTag(item, n) || gotTag(n);
+    const cls = 'sw-port' + (here.length ? ' busy' : '') + (here.length > room || n > count ? ' clash' : '') + (selected === n ? ' picked' : '');
     return (
       <button key={n} className={cls} style={here.length ? { ['--cable' as string]: here[0].c.color } : undefined}
         title={`${t('port.short')} ${n}${tag ? ` · ${tag}` : ''} · ${what(n) || t('port.isFree')}`}
@@ -713,7 +729,7 @@ function ItemPorts({ floor, itemId }: { floor: FloorState; itemId: number }) {
       <label title={t('port.countTitle')}>{t('port.count')} <OptNum key={`ip${item.id}`} value={item.ports} placeholder={auto ? String(auto) : '—'}
         title={t('port.countTitle')} onCommit={v => useStore.getState().updateFurniture(item.id, { ports: v === undefined ? undefined : Math.min(512, Math.round(v)) })} /></label>
       {count > 0 && <span className="sel-len3d">{t('port.free', { n: free, total: count })}</span>}
-      {count > 0 && (
+      {count > 1 && (
         <span className="sw-all" title={t('port.allTitle')}>
           <input type="text" className="sel-text sw-all-in" value={allTag} placeholder="VLAN 10"
             onChange={e => setAllTag(e.target.value)}
@@ -746,15 +762,38 @@ function ItemPorts({ floor, itemId }: { floor: FloorState; itemId: number }) {
                 <TextField key={`pt${item.id}-${selected}`} value={item.portTags?.[String(selected)] ?? ''} placeholder="uplink / VLAN 10"
                   onCommit={v => useStore.getState().setPortTag(itemId, selected, v)} />
               </label>
-              <select className="sel-select sw-cable" title={t('port.pick')} value={here[0] ? key(here[0]) : ''}
-                onChange={e => {
-                  const v = e.target.value;
-                  const it = ends.find(x => key(x) === v);
-                  useStore.getState().assignPort(itemId, selected, it ? { id: it.c.id, end: it.end } : null);
-                }}>
-                <option value="">{t('port.isFree')}</option>
-                {choices.map(e => <option key={key(e)} value={key(e)}>{arrow(e)} {e.other}</option>)}
-              </select>
+              {gotTag(selected) && <span className="sw-line-tag" title={t('port.gotTitle')}>{gotTag(selected)}</span>}
+              {passThru ? (
+                <>
+                  {here.map(e => (
+                    <span key={key(e)} className="sw-end">
+                      <span className="tray-tip-dot" style={{ background: e.c.color }} /> {arrow(e)} {e.other}
+                      <button className="sw-unplug" title={t('port.unplug')}
+                        onClick={() => useStore.getState().updateCable(e.c.id, e.end === 'from' ? { fromPort: undefined } : { toPort: undefined })}>×</button>
+                    </span>
+                  ))}
+                  {here.length < room && (
+                    <select className="sel-select sw-cable" title={t('port.plugTitle')} value=""
+                      onChange={e => {
+                        const it = loose.find(x => key(x) === e.target.value);
+                        if (it) useStore.getState().assignPort(itemId, selected, { id: it.c.id, end: it.end });
+                      }}>
+                      <option value="">{here.length ? t('port.plugDevice') : t('port.plugCable')}</option>
+                      {loose.map(e => <option key={key(e)} value={key(e)}>{arrow(e)} {e.other}</option>)}
+                    </select>
+                  )}
+                </>
+              ) : (
+                <select className="sel-select sw-cable" title={t('port.pick')} value={here[0] ? key(here[0]) : ''}
+                  onChange={e => {
+                    const v = e.target.value;
+                    const it = ends.find(x => key(x) === v);
+                    useStore.getState().assignPort(itemId, selected, it ? { id: it.c.id, end: it.end } : null);
+                  }}>
+                  <option value="">{t('port.isFree')}</option>
+                  {choices.map(e => <option key={key(e)} value={key(e)}>{arrow(e)} {e.other}</option>)}
+                </select>
+              )}
               {ends.length === 0
                 ? <span className="sel-len3d">{t('port.noCables')}</span>
                 : loose.length === 0 && here.length === 0 && <span className="sel-len3d">{t('port.noLoose')}</span>}
@@ -764,13 +803,14 @@ function ItemPorts({ floor, itemId }: { floor: FloorState; itemId: number }) {
           <div className="sw-list" style={{ gridTemplateRows: `repeat(${Math.min(12, max)}, auto)` }}>
             {Array.from({ length: max }, (_, i) => i + 1).map(n => {
               const at = byPort.get(n) ?? [];
-              const tag = portTag(item, n);
+              const tag = portTag(item, n), got = gotTag(n);
               return (
-                <button key={n} className={'sw-line' + (at.length ? ' busy' : '') + (selected === n ? ' picked' : '') + (at.length > 1 || n > count ? ' clash' : '')}
+                <button key={n} className={'sw-line' + (at.length ? ' busy' : '') + (selected === n ? ' picked' : '') + (at.length > room || n > count ? ' clash' : '')}
                   onClick={() => setPick(selected === n ? null : n)}>
                   <span className="sw-line-n">{n}</span>
                   {at.length > 0 && <span className="tray-tip-dot" style={{ background: at[0].c.color }} />}
                   {tag && <span className="sw-line-tag">{tag}</span>}
+                  {got && got !== tag && <span className="sw-line-tag got" title={t('port.gotTitle')}>{got}</span>}
                   <span>{at.length ? what(n) : t('port.isFree')}</span>
                 </button>
               );

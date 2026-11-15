@@ -43,6 +43,21 @@ export function cableLabel(c: Cable, unitM: string): string {
   return parts.join(' · ');
 }
 
+/** Size of a connector drawn on a cable of width `w`: a sleeve across the line */
+export const jointSize = (w: number) => ({ len: w * 3 + 6, thick: w * 2 + 5, stroke: Math.max(1.2, w * 0.45) });
+
+/** Connectors of a cable on its drawn path (which may run beside the plan points in a bundle) and their direction */
+export function cableJoints(c: Cable, drawn: Pt[]): { p: Pt; angle: number }[] {
+  const out: { p: Pt; angle: number }[] = [];
+  const total = pathLength(drawn);
+  for (const q of c.points) {
+    if (!q.joint) continue;
+    const pr = projectOnPath(drawn, q);
+    out.push({ p: pr.p, angle: pointAlong(drawn, total > 0 ? Math.min(0.9999, pr.along / total) : 0).angle });
+  }
+  return out;
+}
+
 /** Length shown for a cable: the whole chain for its first cable */
 export const cableLength = (c: Cable) => c.totalLength ?? pathLength(c.points);
 

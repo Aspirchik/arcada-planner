@@ -121,7 +121,7 @@ function PrintFloor({ floor, index }: { floor: FloorState; index: number }) {
           </Group>
         );
       })}
-      <CablesLayerContent cables={styleCables(v.cables, ws, itemNamer(floor.furniture, lang), heightCtx(floor))} palette={LIGHT} unitM={t('unit.m')} avoid={labelObstacles(geom, wallLabels, floor.furniture)}
+      <CablesLayerContent cables={styleCables(v.cables, ws, itemNamer(floor.furniture, lang, floor.cables), heightCtx(floor))} palette={LIGHT} unitM={t('unit.m')} avoid={labelObstacles(geom, wallLabels, floor.furniture)}
         labelSize={ws.cableText} showLabels={ws.cableLabels} groupOrder={groupOrder} />
       {ready && <FurnitureLabels furniture={v.furniture} palette={LIGHT} showNames={showNames} lang={lang} sizesPos={sizesPos} />}
       <TextNotes texts={v.texts} palette={LIGHT} />

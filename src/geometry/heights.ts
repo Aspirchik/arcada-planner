@@ -99,7 +99,33 @@ export function cableHeights(cables: Cable[], ctx: HeightCtx): Map<number, numbe
  * Heights for a re-laid cable: the new points take the own height of the old point they replace
  * (the nearest old point with a height within `near` cm); the ends keep theirs.
  */
-export function carryHeights(old: { x: number; y: number; z?: number }[], next: Pt[], near = 30): { x: number; y: number; z?: number }[] {
+type CablePt = { x: number; y: number; z?: number; joint?: boolean };
+
+export function carryHeights(old: CablePt[], next: Pt[], near = 30): CablePt[] {
+  return carryJoints(old, carryZ(old, next, near));
+}
+
+/** Connectors of the old points go to the same spot on the new path (onto a point there, or a new point) */
+function carryJoints(old: CablePt[], next: CablePt[]): CablePt[] {
+  const out = next.map(p => ({ ...p }));
+  for (const j of old.filter(p => p.joint)) {
+    let best = { i: 1, d: Infinity, q: out[0] as Pt };
+    for (let i = 1; i < out.length; i++) {
+      const a = out[i - 1], b = out[i];
+      const dx = b.x - a.x, dy = b.y - a.y, l2 = dx * dx + dy * dy;
+      const t = l2 === 0 ? 0 : Math.max(0, Math.min(1, ((j.x - a.x) * dx + (j.y - a.y) * dy) / l2));
+      const q = { x: a.x + dx * t, y: a.y + dy * t };
+      const d = Math.hypot(q.x - j.x, q.y - j.y);
+      if (d < best.d) best = { i, d, q };
+    }
+    const at = out.findIndex(p => Math.hypot(p.x - best.q.x, p.y - best.q.y) <= 1);
+    if (at >= 0) out[at].joint = true;
+    else out.splice(best.i, 0, { x: Math.round(best.q.x * 10) / 10, y: Math.round(best.q.y * 10) / 10, joint: true });
+  }
+  return out;
+}
+
+function carryZ(old: CablePt[], next: Pt[], near: number): CablePt[] {
   const withZ = old.filter(p => p.z !== undefined);
   if (withZ.length === 0) return next.map(p => ({ x: p.x, y: p.y }));
   const last = next.length - 1;
