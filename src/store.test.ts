@@ -385,6 +385,20 @@ describe('cable connections and groups', () => {
     expect(floor().furniture[0].groups).toBeUndefined();
   });
 
+  it('assignPort: a cable takes the port, the one there before loses it', () => {
+    const sw = st().addFurniture(chair, 0, 0);
+    const a = st().addCable([{ x: 30, y: 30 }, { x: 300, y: 0 }], '#000');
+    const b = st().addCable([{ x: 30, y: 30 }, { x: 300, y: 100 }], '#000');
+    expect(floor().cables.every(c => c.fromLink?.id === sw)).toBe(true);
+    st().assignPort(sw, 1, { id: a, end: 'from' });
+    expect(floor().cables.find(c => c.id === a)!.fromPort).toBe(1);
+    st().assignPort(sw, 1, { id: b, end: 'from' });
+    expect(floor().cables.find(c => c.id === a)!.fromPort).toBeUndefined();
+    expect(floor().cables.find(c => c.id === b)!.fromPort).toBe(1);
+    st().assignPort(sw, 1, null);
+    expect(floor().cables.find(c => c.id === b)!.fromPort).toBeUndefined();
+  });
+
   it('point heights: set and clear one point, room height', () => {
     const c = st().addCable([{ x: 0, y: 0 }, { x: 100, y: 0 }], '#000');
     st().setCablePointHeight(c, 1, 160);

@@ -17,7 +17,7 @@ import { cablesInTray, cableRouteText, cableLength } from './geometry/cable';
 import { chainMembers, collapseToChains, chainInfos, chainRoots } from './geometry/chain';
 import { formatMeters } from './geometry/wallLabels';
 import { setNextCableColor } from './ui/EditorStage';
-import { usePrefs } from './prefs';
+import { usePrefs, type Lang } from './prefs';
 import { useT, HTML_LANG, type TKey } from './i18n';
 import { wallThickness } from './geometry/walls';
 import type { LabelPos, Layer, Cable, FloorState } from './types';
@@ -105,21 +105,41 @@ function OptNum({ value, placeholder, title, onCommit }: { value: number | undef
   );
 }
 
-/** Ports of an item that cable ends are plugged into (port → count of ends) */
-function usedPorts(floor: FloorState, itemId: number): Map<number, number> {
-  const used = new Map<number, number>();
-  const add = (p?: number) => { if (p) used.set(p, (used.get(p) ?? 0) + 1); };
-  for (const c of floor.cables) {
-    if (c.fromLink?.id === itemId) add(c.fromPort);
-    if (c.toLink?.id === itemId) add(c.toPort);
-  }
-  return used;
+/** A cable end connected to an item, and where the cable goes from there */
+interface ItemEnd { c: Cable; end: 'from' | 'to'; port?: number; other: string }
+
+/** Cable ends connected to an item (switch), with the other end of each run ("User 1", or a chain's consumers) */
+function itemEnds(floor: FloorState, itemId: number, lang: Lang): ItemEnd[] {
+  const nameOf = itemNamer(floor.furniture, lang);
+  const infos = chainInfos(floor.cables, nameOf);
+  const roots = chainRoots(floor.cables);
+  const byId = new Map(floor.cables.map(c => [c.id, c]));
+  return floor.cables.flatMap(c => {
+    const out: ItemEnd[] = [];
+    if (c.fromLink?.id === itemId) {
+      const info = infos.get(c.id);
+      out.push({ c, end: 'from', port: c.fromPort, other: (info ? info.stops.slice(1).join(' → ') : (c.to || (c.toLink && nameOf(c.toLink.id, c.toPort)))) || c.label || '—' });
+    }
+    if (c.toLink?.id === itemId) {
+      const root = byId.get(roots.get(c.id) ?? c.id) ?? c;
+      out.push({ c, end: 'to', port: c.toPort, other: root.from || (root.fromLink && nameOf(root.fromLink.id, root.fromPort)) || c.label || '—' });
+    }
+    return out;
+  });
 }
 
-/** Port of a cable end on an item with ports: "—" or 1…n (taken ports are marked) */
-function PortSelect({ cable, end, count, used }: { cable: Cable; end: 'from' | 'to'; count: number; used: Map<number, number> }) {
+/** Ends of an item by port */
+function endsByPort(ends: ItemEnd[]): Map<number, ItemEnd[]> {
+  const m = new Map<number, ItemEnd[]>();
+  for (const e of ends) if (e.port) m.set(e.port, [...(m.get(e.port) ?? []), e]);
+  return m;
+}
+
+/** Port of a cable end on an item with ports: each option says whether the port is free or what is plugged into it */
+function PortSelect({ cable, end, count, byPort }: { cable: Cable; end: 'from' | 'to'; count: number; byPort: Map<number, ItemEnd[]> }) {
   const t = useT();
   const value = end === 'from' ? cable.fromPort : cable.toPort;
+  const max = Math.max(count, value ?? 0, ...byPort.keys());
   return (
     <select className="sel-select port-select" title={t('port.select')} value={value ?? ''}
       onChange={e => {
@@ -127,9 +147,14 @@ function PortSelect({ cable, end, count, used }: { cable: Cable; end: 'from' | '
         useStore.getState().updateCable(cable.id, end === 'from' ? { fromPort: v } : { toPort: v });
       }}>
       <option value="">{t('port.short')} —</option>
-      {Array.from({ length: Math.max(count, value ?? 0) }, (_, i) => i + 1).map(n => (
-        <option key={n} value={n}>{t('port.short')} {n}{n !== value && used.has(n) ? ' •' : ''}</option>
-      ))}
+      {Array.from({ length: max }, (_, i) => i + 1).map(n => {
+        const others = (byPort.get(n) ?? []).filter(o => !(o.c.id === cable.id && o.end === end));
+        return (
+          <option key={n} value={n}>
+            {t('port.short')} {n} · {others.length ? others.map(o => o.other).join(', ') : t('port.isFree')}
+          </option>
+        );
+      })}
     </select>
   );
 }
@@ -488,14 +513,14 @@ function SelectionPanel() {
             <span className={'sel-link' + (cable.fromLink ? ' on' : '')} title={cable.fromLink ? t('cable.linked', { name: autoFrom ?? '?' }) : t('cable.notLinked')}>●</span>
             <TextField key={`cf${cable.id}`} value={cable.from ?? ''} placeholder={autoFrom ?? t('cable.from')}
               onCommit={v => st.updateCable(cable.id, { from: v.trim() || undefined })} />
-            {fromPorts > 0 && <PortSelect cable={cable} end="from" count={fromPorts} used={usedPorts(floor, cable.fromLink!.id)} />}
+            {fromPorts > 0 && <PortSelect cable={cable} end="from" count={fromPorts} byPort={endsByPort(itemEnds(floor, cable.fromLink!.id, lang))} />}
           </>
         )}
         <span className="sel-arrow">→</span>
         <TextField key={`ct${cable.id}`} value={cable.to ?? ''} placeholder={autoTo ?? t('cable.to')}
           onCommit={v => st.updateCable(cable.id, { to: v.trim() || undefined })} />
         <span className={'sel-link' + (cable.toLink ? ' on' : '')} title={cable.toLink ? t('cable.linked', { name: autoTo ?? '?' }) : t('cable.notLinked')}>●</span>
-        {toPorts > 0 && <PortSelect cable={cable} end="to" count={toPorts} used={usedPorts(floor, cable.toLink!.id)} />}
+        {toPorts > 0 && <PortSelect cable={cable} end="to" count={toPorts} byPort={endsByPort(itemEnds(floor, cable.toLink!.id, lang))} />}
         <div className="sel-break" />
         <ColorSwatches value={cable.color} title={t('text.color')} colors={CABLE_COLORS}
           onChange={c => { if (c) { setNextCableColor(c); st.updateChain(cable.id, { color: c }); } }} />
@@ -628,50 +653,110 @@ function SelectionPanel() {
 }
 
 /**
- * Ports of an item (switch): how many, and which cable is plugged into which port —
- * "port 1 → User 1". Each connected cable's port can be chosen here.
+ * Ports of an item (switch), drawn like the front of a switch: RJ45 ports in blocks of 12, odd numbers on top,
+ * even below; a port with a cable has the cable's colour. Click a port to choose which connected cable is in it
+ * (it leaves its old port; the cable that was there loses its port). Below — a text list of all ports.
  */
 function ItemPorts({ floor, itemId }: { floor: FloorState; itemId: number }) {
   const t = useT();
   const lang = usePrefs(s => s.lang);
+  const [pick, setPick] = useState<number | null>(null);
   const item = floor.furniture.find(f => f.id === itemId)!;
   const auto = portCount({ ...item, ports: undefined });
   const count = portCount(item);
-  const nameOf = itemNamer(floor.furniture, lang);
-  const infos = chainInfos(floor.cables, nameOf);
-  const roots = chainRoots(floor.cables);
-  const byId = new Map(floor.cables.map(c => [c.id, c]));
-  // Cable ends on this item and where the cable goes from here
-  const ends = floor.cables.flatMap(c => {
-    const out: { c: Cable; end: 'from' | 'to'; port?: number; other: string }[] = [];
-    if (c.fromLink?.id === itemId) {
-      const info = infos.get(c.id);
-      out.push({ c, end: 'from', port: c.fromPort, other: info ? info.stops.slice(1).join(' → ') : (c.to || (c.toLink && nameOf(c.toLink.id, c.toPort)) || '—') });
-    }
-    if (c.toLink?.id === itemId) {
-      const root = byId.get(roots.get(c.id) ?? c.id) ?? c;
-      out.push({ c, end: 'to', port: c.toPort, other: root.from || (root.fromLink && nameOf(root.fromLink.id, root.fromPort)) || '—' });
-    }
-    return out;
-  }).sort((a, b) => (a.port ?? 1e9) - (b.port ?? 1e9));
-  const used = usedPorts(floor, itemId);
-  const free = count - [...used.keys()].filter(p => p <= count).length;
+  const ends = itemEnds(floor, itemId, lang);
+  const byPort = endsByPort(ends);
+  const max = Math.max(count, ...byPort.keys());
+  const free = Array.from({ length: count }, (_, i) => i + 1).filter(n => !byPort.has(n)).length;
+  const key = (e: ItemEnd) => `${e.c.id}:${e.end}`;
+  const loose = ends.filter(e => !e.port);
+  const what = (n: number) => (byPort.get(n) ?? []).map(e => e.other).join(', ');
+  const selected = pick !== null && pick <= max ? pick : null;
+
+  // Blocks of 12 ports: 6 columns, odd port on top, even below
+  const blocks: number[][][] = [];
+  for (let start = 1; start <= max; start += 12) {
+    const cols: number[][] = [];
+    for (let c = 0; c < 6 && start + c * 2 <= max; c++) cols.push([start + c * 2, start + c * 2 + 1].filter(n => n <= max));
+    blocks.push(cols);
+  }
+  const port = (n: number) => {
+    const here = byPort.get(n) ?? [];
+    const cls = 'sw-port' + (here.length ? ' busy' : '') + (here.length > 1 || n > count ? ' clash' : '') + (selected === n ? ' picked' : '');
+    return (
+      <button key={n} className={cls} style={here.length ? { ['--cable' as string]: here[0].c.color } : undefined}
+        title={`${t('port.short')} ${n} · ${what(n) || t('port.isFree')}`}
+        onClick={() => setPick(selected === n ? null : n)}>
+        <span className="sw-jack" />
+      </button>
+    );
+  };
+
   return (
     <>
       <div className="sel-break" />
       <label title={t('port.countTitle')}>{t('port.count')} <OptNum key={`ip${item.id}`} value={item.ports} placeholder={auto ? String(auto) : '—'}
         title={t('port.countTitle')} onCommit={v => useStore.getState().updateFurniture(item.id, { ports: v === undefined ? undefined : Math.min(512, Math.round(v)) })} /></label>
       {count > 0 && <span className="sel-len3d">{t('port.free', { n: free, total: count })}</span>}
-      {count > 0 && ends.length > 0 && (
-        <div className="port-list">
-          {ends.map(e => (
-            <div key={`${e.c.id}${e.end}`} className={'port-row' + (e.port && (used.get(e.port) ?? 0) > 1 ? ' clash' : '')}>
-              <span className="tray-tip-dot" style={{ background: e.c.color }} />
-              <PortSelect cable={e.c} end={e.end} count={count} used={used} />
-              <span>{e.end === 'from' ? '→' : '←'} {e.other}</span>
-            </div>
-          ))}
-        </div>
+      {max > 0 && (
+        <>
+          <div className="sel-break" />
+          <div className="sw-face" title={t('port.faceHint')}>
+            {blocks.map((cols, bi) => (
+              <div key={bi} className="sw-block">
+                {cols.map(([top, bottom]) => (
+                  <div key={top} className="sw-col">
+                    <span className="sw-num">{top}</span>
+                    {port(top)}
+                    {bottom !== undefined ? port(bottom) : <span className="sw-port none" />}
+                    <span className="sw-num">{bottom ?? ''}</span>
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+          {selected !== null && (
+            <>
+              <div className="sel-break" />
+              <label className="sw-pick">{t('port.short')} {selected}
+                <select className="sel-select" title={t('port.pick')} value={byPort.get(selected)?.[0] ? key(byPort.get(selected)![0]) : ''}
+                  onChange={e => {
+                    const v = e.target.value;
+                    const it = ends.find(x => key(x) === v);
+                    useStore.getState().assignPort(itemId, selected, it ? { id: it.c.id, end: it.end } : null);
+                  }}>
+                  <option value="">{t('port.isFree')}</option>
+                  {ends.map(e => (
+                    <option key={key(e)} value={key(e)}>
+                      {e.end === 'from' ? '→' : '←'} {e.other}{e.port && e.port !== selected ? ` (${t('port.short')} ${e.port})` : ''}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {ends.length === 0 && <span className="sel-len3d">{t('port.noCables')}</span>}
+            </>
+          )}
+          <div className="sel-break" />
+          <div className="sw-list" style={{ gridTemplateRows: `repeat(${Math.min(12, max)}, auto)` }}>
+            {Array.from({ length: max }, (_, i) => i + 1).map(n => {
+              const here = byPort.get(n) ?? [];
+              return (
+                <button key={n} className={'sw-line' + (here.length ? ' busy' : '') + (selected === n ? ' picked' : '') + (here.length > 1 || n > count ? ' clash' : '')}
+                  onClick={() => setPick(selected === n ? null : n)}>
+                  <span className="sw-line-n">{n}</span>
+                  {here.length > 0 && <span className="tray-tip-dot" style={{ background: here[0].c.color }} />}
+                  <span>{here.length ? what(n) : t('port.isFree')}</span>
+                </button>
+              );
+            })}
+          </div>
+        </>
+      )}
+      {loose.length > 0 && (
+        <>
+          <div className="sel-break" />
+          <span className="sel-len3d">{t('port.loose')}: {loose.map(e => e.other).join(', ')}</span>
+        </>
       )}
     </>
   );

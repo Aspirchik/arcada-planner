@@ -281,6 +281,11 @@ interface Store {
   deleteGroup(id: number): void;
   /** Adds the cable to the group or takes it out */
   toggleCableGroup(cableId: number, groupId: number): void;
+  /**
+   * Plugs a cable end into port `port` of an item (null = leave the port free): the end leaves its old port,
+   * an end that was in this port loses its port. One undo step.
+   */
+  assignPort(itemId: number, port: number, pick: { id: number; end: 'from' | 'to' } | null): void;
   /** Adds the item (socket, switch…) to the group or takes it out */
   toggleItemGroup(itemId: number, groupId: number): void;
   toggleLit(groupId: number): void;
@@ -560,6 +565,16 @@ export const useStore = create<Store>((set, get) => {
           return { ...c, groups: groups.length ? groups : undefined };
         }) };
       });
+    },
+    assignPort(itemId, port, pick) {
+      upFloor(f => ({ ...f, cables: f.cables.map(c => {
+        let next = c;
+        // whatever is in this port now leaves it
+        if (c.fromLink?.id === itemId && c.fromPort === port) next = { ...next, fromPort: undefined };
+        if (c.toLink?.id === itemId && c.toPort === port) next = { ...next, toPort: undefined };
+        if (pick && c.id === pick.id) next = pick.end === 'from' ? { ...next, fromPort: port } : { ...next, toPort: port };
+        return next;
+      }) }));
     },
     toggleItemGroup(itemId, groupId) {
       upFloor(f => ({ ...f, furniture: f.furniture.map(it => {
