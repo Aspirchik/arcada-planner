@@ -6,7 +6,10 @@ import { tidyCables, orthogonal, simplify } from './geometry/tidy';
 import { chainMembers, subtree, projectOnPath } from './geometry/chain';
 import { DEFAULT_WIRING, onLayer, trayLayer } from './layers';
 import { carryHeights } from './geometry/heights';
-import { simplifyPath } from './geometry/segdrag';
+import { simplifyPath, pullOnto } from './geometry/segdrag';
+
+/** One-off tray: cables this far from its edge (cm) are pulled onto it */
+const PULL_REACH = 40;
 import { deskFrames } from './geometry/desk';
 import { isPassThrough } from './labels';
 import { translate, type TKey, type TParams } from './i18n';
@@ -214,6 +217,7 @@ export function parseProject(json: string): ParsedProject {
       ...(Array.isArray(c.groups) && c.groups.some(isNum) ? { groups: c.groups.filter(isNum) } : {}),
       ...(isNum(c.parent) && c.parent !== c.id ? { parent: c.parent } : {}),
       ...(c.noTray === true ? { noTray: true } : {}),
+      ...(c.fixed === true ? { fixed: true } : {}),
       ...(c.kind === 'patch' ? { kind: 'patch' as const } : {}),
       ...(isNum(c.fromPort) && c.fromPort >= 1 ? { fromPort: Math.round(c.fromPort) } : {}),
       ...(isNum(c.toPort) && c.toPort >= 1 ? { toPort: Math.round(c.toPort) } : {}),
@@ -397,6 +401,8 @@ interface Store {
   addTray(points: { x: number; y: number }[], width?: number): number;
   updateTray(id: number, changes: Partial<Omit<Tray, 'id'>>): void;
   deleteTray(id: number): void;
+  /** One-off tray: the cables running along it are pulled onto its line (route fixed), then the tray is removed */
+  pullToTray(id: number): void;
 
   addText(x: number, y: number, text: string): number;
   updateText(id: number, changes: Partial<Omit<TextNote, 'id'>>): void;
@@ -597,14 +603,14 @@ export const useStore = create<Store>((set, get) => {
     removeCablePoint(id, index) {
       upFloor(f => ({ ...f, cables: f.cables.map(c => {
         if (c.id !== id || index <= 0 || index >= c.points.length - 1) return c;
-        return { ...c, points: c.points.filter((_, i) => i !== index) };
+        return { ...c, points: c.points.filter((_, i) => i !== index), fixed: true };
       }) }));
     },
     simplifyCable(id) {
       upFloor(f => ({ ...f, cables: f.cables.map(c => {
         if (c.id !== id) return c;
         const pts = simplifyPath(c.points);
-        return pts.length === c.points.length ? c : { ...c, points: pts };
+        return pts.length === c.points.length ? c : { ...c, points: pts, fixed: true };
       }) }));
     },
     setCablePointHeight(id, index, z) {
@@ -741,7 +747,8 @@ export const useStore = create<Store>((set, get) => {
     tidyCables() {
       const { mode } = get();
       upFloor(f => {
-        const mine = f.cables.filter(c => onLayer(c, mode === 'wiring' ? 'wiring' : 'main'));
+        // routes laid by hand stay as they are
+        const mine = f.cables.filter(c => onLayer(c, mode === 'wiring' ? 'wiring' : 'main') && !c.fixed);
         if (mine.length === 0) return f;
         const paths = tidyCables(mine, mode === 'wiring' ? f.trays : [], { desks: deskFrames(f.furniture) });
         // Continuations start on the new path of their parent (parents first)
@@ -1059,6 +1066,19 @@ export const useStore = create<Store>((set, get) => {
 
     deleteTray(id) {
       upFloor(f => ({ ...f, trays: f.trays.filter(t => t.id !== id) }));
+    },
+    pullToTray(id) {
+      upFloor(f => {
+        const tr = f.trays.find(t => t.id === id);
+        if (!tr) return f;
+        const reach = tr.width / 2 + PULL_REACH;
+        const cables = f.cables.map(c => {
+          const p = pullOnto(c.points, tr.points, reach);
+          return p ? { ...c, points: p, fixed: true } : c;
+        });
+        return { ...f, cables, trays: f.trays.filter(t => t.id !== id) };
+      });
+      set({ selectedId: null });
     },
 
     addText(x, y, text) {

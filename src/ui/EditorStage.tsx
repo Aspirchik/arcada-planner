@@ -742,13 +742,13 @@ export function EditorStage() {
       if (!c) return;
       const prev = c.points[d.index - 1] ?? c.points[d.index + 1];
       const { p, snapped } = measurePoint(pt, prev, undefined, d.id);
-      store.updateCable(d.id, { points: c.points.map((q, i) => i === d.index ? { ...q, x: p.x, y: p.y } : q) });
+      store.updateCable(d.id, { points: c.points.map((q, i) => i === d.index ? { ...q, x: p.x, y: p.y } : q), fixed: true });
       setSnapMark(snapped ? p : null);
     } else if (d.type === 'cable-seg') {
       // magnet: parallel parts of the other cables and of the trays
       const targets = [...act.cables.filter(c => c.id !== d.id).map(c => c.points), ...act.trays.map(t => t.points)];
       const pts = dragSegment(d.base, d.seg, { x: pt.x - d.start.x, y: pt.y - d.start.y }, targets, CABLE_HIT_PX * 1.2 / scale, snapSize);
-      store.updateCable(d.id, { points: pts });
+      store.updateCable(d.id, { points: pts, fixed: true });
     } else if (d.type === 'cable-move') {
       const first = d.base.points[0];
       const p = doSnap(first.x + pt.x - d.start.x, first.y + pt.y - d.start.y, snapSize);
@@ -1051,7 +1051,7 @@ export function EditorStage() {
     if (selCable) {
       const v = hitVertex(selCable.points, pt, CABLE_VERTEX_HIT_PX / scale);
       if (v >= 0) {
-        if (selCable.points.length > 2) store.updateCable(selCable.id, { points: selCable.points.filter((_, i) => i !== v) });
+        if (selCable.points.length > 2) store.updateCable(selCable.id, { points: selCable.points.filter((_, i) => i !== v), fixed: true });
         return;
       }
       const seg = hitSegment(selCable.points, pt, Math.max((selCable.width ?? 3) / 2, CABLE_HIT_PX / scale));
@@ -1059,7 +1059,7 @@ export function EditorStage() {
         const p = doSnap(pt.x, pt.y, snapSize);
         const pts = [...selCable.points];
         pts.splice(seg + 1, 0, p);
-        store.updateCable(selCable.id, { points: pts });
+        store.updateCable(selCable.id, { points: pts, fixed: true });
         return;
       }
     }

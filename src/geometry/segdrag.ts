@@ -103,3 +103,42 @@ export function simplifyPath(points: CPt[]): CPt[] {
   }
   return cur;
 }
+
+/**
+ * Straight parts of a cable that run along a part of `guide` (parallel, overlapping, at most `reach` away)
+ * are moved onto the guide line; the cable ends stay (a corner is added next to an end). Null when nothing moved.
+ */
+export function pullOnto(points: CPt[], guide: Pt[], reach: number): CPt[] | null {
+  let pts = points;
+  let changed = false;
+  for (let iter = 0; iter < 60; iter++) {
+    let move: { s: number; o: number } | null = null;
+    for (let s = 0; s < pts.length - 1 && !move; s++) {
+      const a = pts[s], b = pts[s + 1];
+      const len = Math.hypot(b.x - a.x, b.y - a.y);
+      if (len < 1) continue;
+      const u = { x: (b.x - a.x) / len, y: (b.y - a.y) / len }, n = { x: -u.y, y: u.x };
+      let best: number | null = null;
+      let onLine = false;
+      for (let i = 1; i < guide.length; i++) {
+        const p = guide[i - 1], q = guide[i];
+        const l = Math.hypot(q.x - p.x, q.y - p.y);
+        if (l < 1e-6 || Math.abs(((q.x - p.x) * n.x + (q.y - p.y) * n.y) / l) > 0.02) continue; // not parallel
+        const t1 = (p.x - a.x) * u.x + (p.y - a.y) * u.y, t2 = (q.x - a.x) * u.x + (q.y - a.y) * u.y;
+        if (Math.min(len, Math.max(t1, t2)) - Math.max(0, Math.min(t1, t2)) < Math.min(10, len / 2)) continue; // no overlap
+        const o = (p.x - a.x) * n.x + (p.y - a.y) * n.y;
+        if (Math.abs(o) < 0.5) { onLine = true; break; }
+        if (Math.abs(o) <= reach && (best === null || Math.abs(o) < Math.abs(best))) best = o;
+      }
+      if (!onLine && best !== null) move = { s, o: best };
+    }
+    if (!move) break;
+    const prep = startSegmentDrag(pts, move.s);
+    const a = prep.points[prep.seg], b = prep.points[prep.seg + 1];
+    const len = Math.hypot(b.x - a.x, b.y - a.y);
+    const n = { x: -(b.y - a.y) / len, y: (b.x - a.x) / len };
+    pts = tidyAfterDrag(dragSegment(prep.points, prep.seg, { x: n.x * move.o, y: n.y * move.o }, [], 0, 0));
+    changed = true;
+  }
+  return changed ? pts : null;
+}
