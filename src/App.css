@@ -191,6 +191,7 @@ body { overflow: hidden; font-family: system-ui, sans-serif; background: var(--o
 /* ── Selection floating panel ────────────────────────────── */
 .selection-panel {
   position: fixed;
+  box-sizing: border-box;
   z-index: 300;
   background: var(--surface);
   border: 1px solid var(--border);

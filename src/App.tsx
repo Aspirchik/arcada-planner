@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Trash2, BringToFront, SendToBack, Bold, Pencil, Type, Square, Image as ImageIcon, FlipHorizontal2, FlipVertical2, Ruler, Layers, Palette as PaletteIcon, GitBranchPlus, Link2, Unlink, Cable as CableIcon, MoveVertical, ArrowUpToLine } from 'lucide-react';
 import { EditorStage } from './ui/EditorStage';
 import { Toolbar } from './ui/Toolbar';
@@ -172,15 +172,72 @@ function TextField({ value, placeholder, onCommit }: { value: string; placeholde
 const TEXT_COLORS: (string | null)[] = [null, '#d0021b', '#1a73e8', '#188038', '#e8710a', '#8e24aa', '#5f6368'];
 
 /** Places the floating panel under the given world-space bounding points */
-function panelPos(points: { x: number; y: number }[], stageX: number, stageY: number, stageScale: number, width: number) {
-  const cx = points.reduce((s, c) => s + c.x, 0) / points.length;
-  const maxY = Math.max(...points.map(c => c.y));
-  const sx = stageX + cx * stageScale;
-  const sy = stageY + maxY * stageScale + 12;
-  return {
-    left: Math.max(8, Math.min(sx - width / 2, window.innerWidth - width - 8)),
-    top: Math.min(window.innerHeight - (window.innerWidth < 768 ? 150 : 60), Math.max(8, sy)),
+/** Where the panel goes (screen px): centred on `x`, below `below` — or above `above` when there is no room below */
+interface PanelAnchor { x: number; below: number; above: number }
+
+/** Last press on the plan, in world coordinates: the panel of the object picked by it opens there */
+let lastPress: { x: number; y: number } | null = null;
+
+/** Remembers presses on the plan canvas (in world coordinates, so the spot follows panning and zoom) */
+function trackPlanPresses() {
+  const fn = (e: PointerEvent) => {
+    if (!(e.target instanceof HTMLCanvasElement)) return;
+    const { stageX, stageY, stageScale } = useStore.getState();
+    lastPress = { x: (e.clientX - stageX) / stageScale, y: (e.clientY - stageY) / stageScale };
   };
+  window.addEventListener('pointerdown', fn, true);
+  return () => window.removeEventListener('pointerdown', fn, true);
+}
+
+/**
+ * Anchor of the panel for an object with these points: the spot it was clicked at when that is on or near
+ * the object, else under the middle of the object (e.g. selected by a frame or just pasted).
+ */
+function panelAnchor(points: { x: number; y: number }[], stageX: number, stageY: number, stageScale: number): PanelAnchor {
+  const xs = points.map(p => p.x), ys = points.map(p => p.y);
+  const near = 40 / stageScale;
+  const p = lastPress;
+  if (p && p.x >= Math.min(...xs) - near && p.x <= Math.max(...xs) + near && p.y >= Math.min(...ys) - near && p.y <= Math.max(...ys) + near) {
+    const sx = stageX + p.x * stageScale, sy = stageY + p.y * stageScale;
+    return { x: sx, below: sy + 18, above: sy - 18 };
+  }
+  const cx = (Math.min(...xs) + Math.max(...xs)) / 2;
+  return { x: stageX + cx * stageScale, below: stageY + Math.max(...ys) * stageScale + 12, above: stageY + Math.min(...ys) * stageScale - 12 };
+}
+
+/** Right edge of what a panel child really takes (full-width wrappers count by their own children) */
+function usedRight(el: Element): number {
+  if (el.classList.contains('sel-break')) return 0;
+  const full = getComputedStyle(el).flexBasis === '100%';
+  if (!full) return el.getBoundingClientRect().right;
+  if (el.children.length === 0) return 0; // a hint text just wraps in the width the rest needs
+  let r = 0;
+  for (const c of Array.from(el.children)) r = Math.max(r, usedRight(c));
+  return r;
+}
+
+/**
+ * Fits the open selection panel: as wide as its widest row (not the whole screen) and placed at its anchor,
+ * flipped above when it doesn't fit below.
+ */
+function fitPanel(el: HTMLElement | null, a: PanelAnchor | null) {
+  if (!el || !a) return;
+  const vw = window.innerWidth, vh = window.innerHeight;
+  el.style.width = '';
+  el.style.maxWidth = `${Math.min(1000, vw - 16)}px`;
+  el.style.left = '8px';
+  el.style.top = '8px';
+  const box = el.getBoundingClientRect();
+  const cs = getComputedStyle(el);
+  let right = 0;
+  for (const c of Array.from(el.children)) right = Math.max(right, usedRight(c));
+  if (right > 0) el.style.width = `${Math.ceil(right - box.left + parseFloat(cs.paddingRight) + parseFloat(cs.borderRightWidth)) + 1}px`;
+  const r = el.getBoundingClientRect();
+  const left = Math.max(8, Math.min(a.x - r.width / 2, vw - r.width - 8));
+  let top = a.below;
+  if (top + r.height > vh - 8) top = a.above - r.height >= 8 ? a.above - r.height : Math.max(8, vh - 8 - r.height);
+  el.style.left = `${left}px`;
+  el.style.top = `${top}px`;
 }
 
 const LABEL_POSITIONS: { pos: LabelPos; icon: string }[] = [
@@ -265,9 +322,17 @@ function SelectionPanel() {
   /** Cable panel: the list of point heights is open */
   const [showPts, setShowPts] = useState(false);
 
+  // The panel is fitted to its content and placed at the anchor after every render (before paint)
+  const anchorRef = useRef<PanelAnchor | null>(null);
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  useLayoutEffect(() => fitPanel(panelRef.current, anchorRef.current));
+
   if (textEdit || selection.length === 0) return null;
   const floor = floors[fi];
-  const at = (points: { x: number; y: number }[], width: number) => panelPos(points, stageX, stageY, stageScale, width);
+  const at = (points: { x: number; y: number }[], _width: number) => {
+    anchorRef.current = panelAnchor(points, stageX, stageY, stageScale);
+    return undefined;
+  };
 
   // ── Group ──
   if (selection.length > 1) {
@@ -277,7 +342,7 @@ function SelectionPanel() {
     ];
     if (pts.length === 0) return null;
     return (
-      <div className="selection-panel" style={at(pts, 520)}>
+      <div className="selection-panel" ref={panelRef} style={at(pts, 520)}>
         <span className="sel-title">{t('sel.count', { n: selection.length })}</span>
         {floor.furniture.some(f => selection.includes(f.id)) && (() => {
           const items = floor.furniture.filter(f => selection.includes(f.id));
@@ -318,7 +383,7 @@ function SelectionPanel() {
   if (note) {
     const { w, h } = measureNote(note);
     return (
-      <div className="selection-panel" style={at(rectCorners(note.x, note.y, w, h, note.rot), 420)}>
+      <div className="selection-panel" ref={panelRef} style={at(rectCorners(note.x, note.y, w, h, note.rot), 420)}>
         <label>{t('text.size')} <NumField key={`s${note.id}`} value={Math.round(note.size)} min={4}
           onCommit={v => st.updateText(note.id, { size: v })} /> {t('unit.cm')}</label>
         <label>{t('sel.r')} <NumField key={`r${note.id}`} value={Math.round(note.rot)}
@@ -343,7 +408,7 @@ function SelectionPanel() {
     if (!a || !b) return null;
     const len = Math.hypot(b.x - a.x, b.y - a.y);
     return (
-      <div className="selection-panel" style={at([a, b], 460)}>
+      <div className="selection-panel" ref={panelRef} style={at([a, b], 460)}>
         <select className="sel-select" value={wall.exterior ? 'ext' : 'int'}
           onChange={e => st.updateWall(wall.id, { exterior: e.target.value === 'ext' })}>
           <option value="ext">{t('wall.exterior')}</option>
@@ -364,7 +429,7 @@ function SelectionPanel() {
     const styled = styleCables(floor.cables.filter(c => onLayer(c, 'wiring')), st.wiring, itemNamer(floor.furniture, lang), heightCtx(floor));
     const inside = collapseToChains(cablesInTray(tray, styled), styled).shown;
     return (
-      <div className="selection-panel" style={at(tray.points, 460)}>
+      <div className="selection-panel" ref={panelRef} style={at(tray.points, 460)}>
         <TextField key={`tl${tray.id}`} value={tray.label ?? ''} placeholder={t('sel.label')}
           onCommit={v => st.updateTray(tray.id, { label: v.trim() || undefined })} />
         <label>{t('tray.width')} <NumField key={`tw${tray.id}`} value={tray.width} min={1}
@@ -409,7 +474,7 @@ function SelectionPanel() {
     const flat = pathLength(cable.points), vert = verticalRun(zs);
     const m = (v: number) => formatMeters(v, t('unit.m'));
     return (
-      <div className="selection-panel" style={at(cable.points, 620)}>
+      <div className="selection-panel" ref={panelRef} style={at(cable.points, 620)}>
         {chainView && (
           <>
             <span className="sel-chain" title={t('chain.title')}>{cableRouteText(chainView) || '—'} · {formatMeters(cableLength(chainView), t('unit.m'))}</span>
@@ -481,7 +546,7 @@ function SelectionPanel() {
   if (dim) {
     const len = Math.hypot(dim.x2 - dim.x1, dim.y2 - dim.y1);
     return (
-      <div className="selection-panel" style={at([{ x: dim.x1, y: dim.y1 }, { x: dim.x2, y: dim.y2 }], 380)}>
+      <div className="selection-panel" ref={panelRef} style={at([{ x: dim.x1, y: dim.y1 }, { x: dim.x2, y: dim.y2 }], 380)}>
         <label>{t('dim.length')} <NumField key={`d${dim.id}`} value={Math.round(len)} min={1}
           onCommit={v => st.setDimensionLength(dim.id, v)} /> {t('unit.cm')}</label>
         <ColorSwatches value={dim.color} title={t('text.color')} onChange={c => st.updateDimension(dim.id, { color: c ?? undefined })} />
@@ -499,7 +564,7 @@ function SelectionPanel() {
   const rot  = Math.round(item.rot);
 
   return (
-    <div className="selection-panel" style={at(rectCorners(item.x, item.y, item.w, item.h, item.rot), 540)}>
+    <div className="selection-panel" ref={panelRef} style={at(rectCorners(item.x, item.y, item.w, item.h, item.rot), 540)}>
       <label>{t('sel.w')} <NumField key={`w${item.id}`} value={wCm} min={1}
         onCommit={v => st.updateFurniture(item.id, { w: v / 100 * METER })} /> {t('unit.cm')}</label>
       <label>{t('sel.h')} <NumField key={`h${item.id}`} value={hCm} min={1}
@@ -654,6 +719,9 @@ export default function App() {
   useEffect(() => { document.documentElement.lang = HTML_LANG[lang]; }, [lang]);
   const dark = useIsDark();
   useEffect(() => { document.documentElement.dataset.theme = dark ? 'dark' : 'light'; }, [dark]);
+
+  // Panels open where the object was clicked
+  useEffect(trackPlanPresses, []);
 
   // Warn before leaving only when there are unsaved changes
   useEffect(() => {
