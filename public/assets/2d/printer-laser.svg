@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 380 400" width="380" height="400">
+	<title>Office laser printer, top view (front at the bottom)</title>
+	<style>
+		.s0 { fill: #ffffff; stroke: #000000; stroke-width: 6 }
+		.s1 { fill: none; stroke: #000000; stroke-width: 4; stroke-linecap: round }
+		.s2 { fill: #ffffff; stroke: #000000; stroke-width: 4 }
+	</style>
+	<rect class="s0" x="5" y="5" width="370" height="390" rx="14"/>
+	<rect class="s2" x="70" y="40" width="240" height="190" rx="8"/>
+	<path class="s1" d="M95 80 H285 M95 110 H285"/>
+	<path class="s1" d="M5 330 H375"/>
+	<rect class="s2" x="250" y="270" width="95" height="45" rx="5"/>
+	<circle class="s2" cx="272" cy="292" r="8"/>
+	<path class="s1" d="M295 284 H330 M295 300 H330"/>
+	<path class="s1" d="M150 362 H230"/>
+</svg>

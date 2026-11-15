@@ -3,6 +3,17 @@
 Все изменения проекта Arcada Planner, по порядку. Правила ведения — в [CLAUDE.md](CLAUDE.md).
 Отправная точка — исходная версия проекта 2.0.0 (до записи №1).
 
+## № 51 — 2026-11-15
+
+### Добавлено
+- Принтеры в категории «Сеть» (src/catalog.json, спрайты в public/assets/2d):
+  - Kyocera обычный (38×40 см, printer-laser.svg);
+  - Kyocera со сканером (42×44 см, printer-mfp.svg);
+  - Zebra ZD411 и ZD410 (12×22 см, zebra-zd411.svg, zebra-zd410.svg);
+  - Zebra ZT230 (24×43 см, zebra-zt230.svg).
+- Принтеры — сетевые устройства, как ПК и ноутбук: хост-имя, сетевые порты с MAC и IP, кабель в каждом порте. Полей HDMI / DP у них нет (`isPrinter` в src/labels.ts, `DevicePanel` в src/App.tsx).
+- Тест принтеров (src/geometry/netaddr.test.ts).
+
 ## № 50 — 2026-11-15
 
 ### Исправлено

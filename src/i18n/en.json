@@ -356,6 +356,11 @@
   "item.LAN socket double": "LAN socket ×2",
   "item.PC Dell SFF": "PC Dell SFF",
   "item.Laptop closed": "Laptop closed",
+  "item.Printer Kyocera": "Printer Kyocera",
+  "item.Printer Kyocera with scanner": "Printer Kyocera with scanner",
+  "item.Zebra ZD411": "Zebra ZD411",
+  "item.Zebra ZD410": "Zebra ZD410",
+  "item.Zebra ZT230": "Zebra ZT230",
   "item.Socket 230V": "Socket 230V",
   "item.Emergency socket 230V": "Emergency 230V"
 }

@@ -67,8 +67,12 @@ const PORTS_BY_NAME: Record<string, number> = { 'LAN socket': 1, 'LAN socket dou
  */
 export const isPassThrough = (item: FurnitureItem) => ['LAN socket', 'LAN socket double'].includes(item.name ?? nameByPath.get(item.path) ?? '');
 
-/** Computers: they have a host name, video outputs and network ports with MAC / IP */
-const DEVICE_NAMES = new Set(['PC Dell SFF', 'Laptop closed']);
+/** Printers: network devices without video outputs */
+const PRINTER_NAMES = new Set(['Printer Kyocera', 'Printer Kyocera with scanner', 'Zebra ZD411', 'Zebra ZD410', 'Zebra ZT230']);
+export const isPrinter = (item: FurnitureItem) => PRINTER_NAMES.has(item.name ?? nameByPath.get(item.path) ?? '');
+
+/** Computers and printers: they have a host name, video outputs (computers) and network ports with MAC / IP */
+const DEVICE_NAMES = new Set(['PC Dell SFF', 'Laptop closed', ...PRINTER_NAMES]);
 export const isDevice = (item: FurnitureItem) => !!item.device || DEVICE_NAMES.has(item.name ?? nameByPath.get(item.path) ?? '');
 
 /** Network ports of a computer (at least one) */

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { normalizeMac, isMac, isIp } from './netaddr';
 import { parseProject } from '../store';
-import { itemName, portCount, isDevice } from '../labels';
+import { itemName, portCount, isDevice, isPrinter } from '../labels';
 import type { FurnitureItem } from '../types';
 
 describe('network addresses', () => {
@@ -39,5 +39,15 @@ describe('devices', () => {
     const it = { ...pc, device: { hostname: 'PC-01', hdmi: 2, dp: 1, nics: [{ mac: 'AA:BB:CC:DD:EE:FF', ip: '10.0.0.5' }, { ip: 'dhcp' }] } };
     const f = parseProject(JSON.stringify({ floors: [{ nodes: [], walls: [], furniture: [it] }], nextId: 5 })).floors[0];
     expect(f.furniture[0].device).toEqual(it.device);
+  });
+});
+
+describe('printers', () => {
+  it('are network devices without video outputs, with one port by default', () => {
+    const prn: FurnitureItem = { id: 2, path: 'zebra-zd411', name: 'Zebra ZD411', x: 0, y: 0, w: 12, h: 22, rot: 0, zi: 150 };
+    expect(isPrinter(prn)).toBe(true);
+    expect(isDevice(prn)).toBe(true);
+    expect(portCount(prn)).toBe(1);
+    expect(isPrinter({ ...prn, path: 'pc-sff', name: 'PC Dell SFF' })).toBe(false);
   });
 });

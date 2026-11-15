@@ -11,7 +11,7 @@ import { useStore, parseProject, isProjectEmpty } from './store';
 import { onLayer, styleCables, trayLayer, heightCtx } from './layers';
 import { cableHeights, itemElevation, verticalRun } from './geometry/heights';
 import { pathLength, patchLength, PATCH_LENGTHS } from './geometry/cable';
-import { itemNamer, portCount, portTag, isTwoPart, isDevice, deviceNics, isPassThrough } from './labels';
+import { itemNamer, portCount, portTag, isTwoPart, isDevice, isPrinter, deviceNics, isPassThrough } from './labels';
 import { derivedTag, otherEnd } from './geometry/ports';
 import { frameInset, DEFAULT_FRAME_INSET } from './geometry/desk';
 import { translate } from './i18n';
@@ -966,6 +966,7 @@ function DevicePanel({ floor, itemId }: { floor: FloorState; itemId: number }) {
   const st = useStore.getState();
   const item = floor.furniture.find(f => f.id === itemId)!;
   const dev = item.device ?? {};
+  const printer = isPrinter(item);
   const nics = deviceNics(item);
   const ends = itemEnds(floor, itemId, lang);
   const byPort = endsByPort(ends);
@@ -980,12 +981,16 @@ function DevicePanel({ floor, itemId }: { floor: FloorState; itemId: number }) {
     <>
       <div className="sel-break" />
       <label title={t('dev.hostnameTitle')}>{t('dev.hostname')}
-        <TextField key={`dh${itemId}`} value={dev.hostname ?? ''} placeholder="PC-01" onCommit={v => st.updateDevice(itemId, { hostname: v.trim() || undefined })} />
+        <TextField key={`dh${itemId}`} value={dev.hostname ?? ''} placeholder={printer ? 'PRN-01' : 'PC-01'} onCommit={v => st.updateDevice(itemId, { hostname: v.trim() || undefined })} />
       </label>
-      <label title={t('dev.videoTitle')}>{t('dev.hdmi')} <OptNum key={`dhd${itemId}`} value={dev.hdmi} placeholder="0" title={t('dev.videoTitle')}
-        onCommit={v => st.updateDevice(itemId, { hdmi: count(v) })} /></label>
-      <label title={t('dev.videoTitle')}>{t('dev.dp')} <OptNum key={`ddp${itemId}`} value={dev.dp} placeholder="0" title={t('dev.videoTitle')}
-        onCommit={v => st.updateDevice(itemId, { dp: count(v) })} /></label>
+      {!printer && (
+        <>
+          <label title={t('dev.videoTitle')}>{t('dev.hdmi')} <OptNum key={`dhd${itemId}`} value={dev.hdmi} placeholder="0" title={t('dev.videoTitle')}
+            onCommit={v => st.updateDevice(itemId, { hdmi: count(v) })} /></label>
+          <label title={t('dev.videoTitle')}>{t('dev.dp')} <OptNum key={`ddp${itemId}`} value={dev.dp} placeholder="0" title={t('dev.videoTitle')}
+            onCommit={v => st.updateDevice(itemId, { dp: count(v) })} /></label>
+        </>
+      )}
       <div className="sel-break" />
       <span className="sel-title">{t('dev.lan')}</span>
       <button className="sel-btn" title={t('dev.addNic')} disabled={nics.length >= 16}

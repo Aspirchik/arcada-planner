@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 440" width="420" height="440">
+	<title>Office laser printer with scanner (MFP), top view (front at the bottom)</title>
+	<style>
+		.s0 { fill: #ffffff; stroke: #000000; stroke-width: 6 }
+		.s1 { fill: none; stroke: #000000; stroke-width: 4; stroke-linecap: round }
+		.s2 { fill: #ffffff; stroke: #000000; stroke-width: 4 }
+	</style>
+	<rect class="s0" x="5" y="5" width="410" height="430" rx="14"/>
+	<rect class="s2" x="25" y="25" width="370" height="290" rx="8"/>
+	<rect class="s2" x="70" y="45" width="280" height="150" rx="6"/>
+	<path class="s1" d="M100 85 H320 M100 115 H320 M100 145 H320"/>
+	<path class="s1" d="M70 230 H350"/>
+	<rect class="s2" x="40" y="335" width="340" height="70" rx="6"/>
+	<rect class="s2" x="60" y="347" width="110" height="46" rx="3"/>
+	<circle class="s2" cx="200" cy="370" r="9"/>
+	<circle class="s2" cx="230" cy="370" r="9"/>
+	<path class="s1" d="M260 355 H360 M260 370 H360 M260 385 H360"/>
+</svg>

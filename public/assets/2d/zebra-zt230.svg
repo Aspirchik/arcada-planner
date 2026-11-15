@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 430" width="240" height="430">
+	<title>Zebra ZT230 industrial label printer, top view (front at the bottom)</title>
+	<style>
+		.s0 { fill: #ffffff; stroke: #000000; stroke-width: 5 }
+		.s1 { fill: none; stroke: #000000; stroke-width: 4; stroke-linecap: round }
+		.s2 { fill: #ffffff; stroke: #000000; stroke-width: 4 }
+	</style>
+	<rect class="s0" x="5" y="5" width="230" height="420" rx="8"/>
+	<path class="s1" d="M120 5 V340"/>
+	<path class="s1" d="M5 340 H235"/>
+	<path class="s1" d="M30 60 H95 M30 80 H95"/>
+	<rect class="s2" x="135" y="355" width="85" height="55" rx="4"/>
+	<rect class="s2" x="145" y="363" width="45" height="22" rx="2"/>
+	<circle class="s2" cx="205" cy="374" r="7"/>
+	<path class="s1" d="M145 397 H210"/>
+	<rect class="s2" x="20" y="390" width="95" height="10" rx="3"/>
+</svg>
