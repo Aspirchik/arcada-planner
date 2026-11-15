@@ -42,3 +42,22 @@ describe('dragging a straight part of a cable', () => {
     expect(tidyAfterDrag(back)).toEqual([{ x: 0, y: 0 }, { x: 100, y: 0 }]);
   });
 });
+
+describe('neat patch cords from desks (Tidy)', () => {
+  it('cords of one desk leave at one corner and do not go back to their drawn start', async () => {
+    const { tidyCables } = await import('./tidy');
+    const furn: FurnitureItem[] = [{ id: 1, path: 'table', x: 2000, y: 2580, w: 170, h: 60, rot: 0, zi: 100, name: 'Desk' }];
+    const cab = [2030, 2070, 2120].map((x, i) => ({
+      id: 10 + i, color: '#000', kind: 'patch' as const,
+      points: [{ x, y: 2610 }, { x, y: 2690 + i * 8 }, { x: 2520, y: 2690 + i * 8 }, { x: 2520, y: 2030 }],
+    }));
+    const out = tidyCables(cab, [], { desks: deskFrames(furn) });
+    for (const c of cab) {
+      const p = out.get(c.id)!;
+      expect(p).toContainEqual({ x: 2165, y: 2635 });
+      // after the corner the cord never goes left of it (no loop back)
+      const k = p.findIndex(q => q.x === 2165 && q.y === 2635);
+      expect(p.slice(k).every(q => q.x >= 2165)).toBe(true);
+    }
+  });
+});

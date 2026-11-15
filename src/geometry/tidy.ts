@@ -6,7 +6,7 @@
 import type { Cable, Tray } from '../types';
 import type { Pt } from './hit';
 import { projectOnPath, pathLength } from './cable';
-import { routeViaDesk } from './desk';
+import { routeViaDesk, deskAt, firstOff, deskHead, exitCorners, joinAtCorner } from './desk';
 
 export interface TidyOptions {
   /** Parallel runs closer than this (cm) are merged */
@@ -203,6 +203,10 @@ export function tidyCables(cables: Cable[], trays: Tray[], opts: TidyOptions = {
   const out = new Map<number, Pt[]>();
   const free: Cable[] = [];
   const byId = new Map(cables.map(c => [c.id, c]));
+  // Desks: one exit corner each for their patch cords; the desk parts are added back after the layout
+  const frames = opts.desks ?? [];
+  const exits = exitCorners(cables.filter(c => c.kind === 'patch').map(c => c.points), frames);
+  const deskParts = new Map<number, { head: Pt[]; tailEnd: Pt[] }>();
   const done = new Set<number>();
   const visit = (c: Cable) => {
     if (done.has(c.id)) return;
@@ -217,9 +221,30 @@ export function tidyCables(cables: Cable[], trays: Tray[], opts: TidyOptions = {
       const upPath = out.get(up.id)!;
       start = projectOnPath(upPath.length > 2 ? upPath.slice(0, -1) : upPath, end).p;
     }
-    // Patch cords on a desk: fixed to the desk frame, out at its corner
-    const onDesk = c.kind === 'patch' && opts.desks?.length ? routeViaDesk([start, ...c.points.slice(1)], opts.desks) : null;
-    if (onDesk) { out.set(c.id, onDesk); return; }
+    // Patch cords on a desk: fixed to the desk frame, all cords of a desk out at one corner, then laid neatly
+    if (c.kind === 'patch' && frames.length) {
+      const pts = [start, ...c.points.slice(1)];
+      const ds = deskAt(frames, pts[0]), de = deskAt(frames, pts[pts.length - 1]);
+      if (ds >= 0 && ds === de) { const r = routeViaDesk(pts, frames); if (r) { out.set(c.id, r); return; } }
+      if (ds >= 0 || de >= 0) {
+        const head = ds >= 0 ? deskHead(frames[ds], pts[0], exits.get(ds) ?? 0) : [pts[0]];
+        const tailEnd = de >= 0 ? deskHead(frames[de], pts[pts.length - 1], exits.get(de) ?? 0).reverse() : [pts[pts.length - 1]];
+        // the drawn points off the desks
+        const a = ds >= 0 ? Math.max(1, firstOff(pts, frames[ds])) : 1;
+        const rev = [...pts].reverse();
+        const b = de >= 0 ? pts.length - 1 - Math.max(1, firstOff(rev, frames[de])) : pts.length - 2;
+        const t0 = head[head.length - 1], t1 = tailEnd[0];
+        // the drawn path off the desks, met straight from the exit corners (no going back to the first drawn point)
+        let middle = a <= b ? pts.slice(a, b + 1) : [];
+        if (ds >= 0 && middle.length >= 2) middle = joinAtCorner(t0, middle);
+        if (de >= 0 && middle.length >= 2) middle = joinAtCorner(t1, [...middle].reverse()).reverse();
+        const viaTray = trays.length && !c.noTray ? routeViaTrays(t0, t1, trays, opts.trayReach ?? 300) : null;
+        if (viaTray && pathLength(viaTray) > 0) { out.set(c.id, joinPaths(head, viaTray, tailEnd)); return; }
+        deskParts.set(c.id, { head, tailEnd });
+        free.push({ ...c, points: [t0, ...middle, t1] });
+        return;
+      }
+    }
     const routed = trays.length && !c.noTray && c.kind !== 'patch' ? routeViaTrays(start, end, trays, opts.trayReach ?? 300) : null;
     if (routed && pathLength(routed) > 0) out.set(c.id, routed);
     else free.push(start === c.points[0] ? c : { ...c, points: [start, ...c.points.slice(1)] });
@@ -228,7 +253,21 @@ export function tidyCables(cables: Cable[], trays: Tray[], opts: TidyOptions = {
   // Cables outside the trays are laid out on their own, not put onto trays
   for (const [id, p] of tidyFree(free.filter(c => !c.noTray), trays, opts)) out.set(id, p);
   for (const [id, p] of tidyFree(free.filter(c => c.noTray), [], opts)) out.set(id, p);
+  for (const [id, parts] of deskParts) {
+    const mid = out.get(id);
+    if (mid) out.set(id, joinPaths(parts.head, mid, parts.tailEnd));
+  }
   return out;
+}
+
+/** Paths joined end to start (the shared points once) */
+function joinPaths(...paths: Pt[][]): Pt[] {
+  const out: Pt[] = [];
+  for (const p of paths.flat()) {
+    const last = out[out.length - 1];
+    if (!last || Math.hypot(last.x - p.x, last.y - p.y) > 0.5) out.push(p);
+  }
+  return simplify(out);
 }
 
 /** Straight runs at right angles; close parallel runs merged (keyed by cable id) */

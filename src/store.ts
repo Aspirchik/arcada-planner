@@ -6,7 +6,7 @@ import { tidyCables, orthogonal, simplify } from './geometry/tidy';
 import { chainMembers, subtree, projectOnPath } from './geometry/chain';
 import { DEFAULT_WIRING, onLayer, trayLayer } from './layers';
 import { carryHeights } from './geometry/heights';
-import { deskFrames, routeViaDesk } from './geometry/desk';
+import { deskFrames } from './geometry/desk';
 import { isPassThrough } from './labels';
 import { translate, type TKey, type TParams } from './i18n';
 
@@ -667,7 +667,7 @@ export const useStore = create<Store>((set, get) => {
       upFloor(f => {
         const c = f.cables.find(x => x.id === id);
         if (!c || c.points.length < 2) return f;
-        const p = routeViaDesk(c.points, deskFrames(f.furniture));
+        const p = tidyCables([c], [], { desks: deskFrames(f.furniture) }).get(id);
         if (!p) return f;
         const pts = carryHeights(c.points, p);
         return { ...f, cables: f.cables.map(x => (x.id === id ? { ...x, points: pts } : x)) };

@@ -64,7 +64,7 @@ function frameDist(c: Pt[], s1: number, s2: number): number {
   return Math.min(d, total - d);
 }
 
-/** Where a cord from `p` meets the frame on its way to frame position `goal`: the edge that makes the way shortest */
+/** Where a cord from `p` meets the frame: the nearest side (on a tie, the one closer to frame position `goal`) */
 function entry(c: Pt[], p: Pt, goal: number): { p: Pt; s: number } {
   let best: { p: Pt; s: number; cost: number } | null = null, acc = 0;
   for (let i = 0; i < 4; i++) {
@@ -72,7 +72,8 @@ function entry(c: Pt[], p: Pt, goal: number): { p: Pt; s: number } {
     const dx = b.x - a.x, dy = b.y - a.y, len = Math.hypot(dx, dy);
     const t = len === 0 ? 0 : Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / (len * len)));
     const q = { x: a.x + dx * t, y: a.y + dy * t };
-    const cost = Math.hypot(q.x - p.x, q.y - p.y) + frameDist(c, acc + len * t, goal);
+    // the nearest side of the frame (straight down from the device); on a tie the one closer to the goal
+    const cost = Math.hypot(q.x - p.x, q.y - p.y) * 1000 + frameDist(c, acc + len * t, goal);
     if (!best || cost < best.cost - 0.01) best = { p: q, s: acc + len * t, cost };
     acc += len;
   }
@@ -144,4 +145,89 @@ export function routeViaDesk(points: Pt[], frames: { corners: Pt[]; outline: Pt[
   const clean: Pt[] = [];
   for (const p of pts.map(round)) if (!clean.length || Math.hypot(p.x - clean[clean.length - 1].x, p.y - clean[clean.length - 1].y) > 0.5) clean.push(p);
   return clean;
+}
+
+// ── Neat layout: one exit corner per desk ──
+
+export interface Frame { corners: Pt[]; outline: Pt[] }
+
+/** Index of the desk the point lies on, or -1 */
+export function deskAt(frames: Frame[], p: Pt): number {
+  return frames.findIndex(f => inside(f.outline, p));
+}
+
+/** Index of the first point (after the start) that lies off the desk, or -1 */
+export function firstOff(pts: Pt[], f: Frame): number {
+  return pts.findIndex((p, i) => i > 0 && !inside(f.outline, p));
+}
+
+/** From a point on the desk to the frame and along it to frame corner `ci`: [p, on frame, …corners, corner] */
+export function deskHead(f: Frame, p: Pt, ci: number): Pt[] {
+  const c = f.corners;
+  const goal = onFrame(c, c[ci]);
+  const e = entry(c, p, goal.s);
+  const out = [p, e.p, ...alongFrame(c, e.s, goal.s), c[ci]].map(round);
+  const clean: Pt[] = [];
+  for (const q of out) if (!clean.length || Math.hypot(q.x - clean[clean.length - 1].x, q.y - clean[clean.length - 1].y) > 0.5) clean.push(q);
+  return clean;
+}
+
+/** How far along the drawn path past the desk tells where a cord is heading, cm */
+const AHEAD = 100;
+
+function pointAlongPath(pts: Pt[], dist: number): Pt {
+  let left = dist;
+  for (let i = 1; i < pts.length; i++) {
+    const a = pts[i - 1], b = pts[i], l = Math.hypot(b.x - a.x, b.y - a.y);
+    if (l >= left && l > 0) return { x: a.x + (b.x - a.x) * left / l, y: a.y + (b.y - a.y) * left / l };
+    left -= l;
+  }
+  return pts[pts.length - 1];
+}
+
+/**
+ * The exit corner of every desk with patch cords: the frame corner nearest to where its cords are heading
+ * (their drawn paths about a metre past the desk, on average), so all cords of a desk leave together.
+ */
+export function exitCorners(cords: Pt[][], frames: Frame[]): Map<number, number> {
+  const spots = new Map<number, Pt[]>();
+  for (const pts of cords) {
+    for (const path of [pts, [...pts].reverse()]) {
+      const d = deskAt(frames, path[0]);
+      if (d < 0) continue;
+      const k = firstOff(path, frames[d]);
+      if (k < 0) continue;
+      // where the cord is heading: its drawn path about a metre past the desk
+      spots.set(d, [...(spots.get(d) ?? []), pointAlongPath(path.slice(k), AHEAD)]);
+    }
+  }
+  const out = new Map<number, number>();
+  for (const [d, list] of spots) {
+    const m = { x: list.reduce((t, p) => t + p.x, 0) / list.length, y: list.reduce((t, p) => t + p.y, 0) / list.length };
+    const c = frames[d].corners;
+    let ci = 0;
+    for (let i = 1; i < 4; i++) if (Math.hypot(c[i].x - m.x, c[i].y - m.y) < Math.hypot(c[ci].x - m.x, c[ci].y - m.y)) ci = i;
+    out.set(d, ci);
+  }
+  return out;
+}
+
+/**
+ * Joins the drawn path (off the desk) to a desk corner without going back: the drawn line nearest to the corner
+ * (the first one may be extended backwards) is met straight from the corner, and the path goes on from there.
+ */
+export function joinAtCorner(corner: Pt, drawn: Pt[]): Pt[] {
+  if (drawn.length < 2) return drawn;
+  let best = { d: Infinity, p: drawn[0], j: 0 };
+  for (let j = 0; j + 1 < drawn.length; j++) {
+    const a = drawn[j], b = drawn[j + 1];
+    const dx = b.x - a.x, dy = b.y - a.y, l2 = dx * dx + dy * dy;
+    if (l2 < 1e-6) continue;
+    let t = ((corner.x - a.x) * dx + (corner.y - a.y) * dy) / l2;
+    t = Math.min(1, j === 0 ? t : Math.max(0, t));
+    const q = { x: a.x + dx * t, y: a.y + dy * t };
+    const d = Math.hypot(q.x - corner.x, q.y - corner.y);
+    if (d < best.d - 0.01) best = { d, p: round(q), j };
+  }
+  return [best.p, ...drawn.slice(best.j + 1)];
 }
