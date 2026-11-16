@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600" width="600" height="600">
+	<title>Ceiling lamp (LED panel), seen from below</title>
+	<style>
+		.s0 { fill: #ffffff; stroke: #000000; stroke-width: 10 }
+		.s1 { fill: none; stroke: #000000; stroke-width: 7; stroke-linecap: round }
+		.s2 { fill: none; stroke: #000000; stroke-width: 4 }
+	</style>
+	<rect class="s0" x="8" y="8" width="584" height="584" rx="12"/>
+	<rect class="s2" x="40" y="40" width="520" height="520" rx="6"/>
+	<circle class="s1" cx="300" cy="300" r="150"/>
+	<path class="s1" d="M194 194 L406 406 M406 194 L194 406"/>
+</svg>

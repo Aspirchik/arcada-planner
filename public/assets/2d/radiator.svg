@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 120" width="1000" height="120">
+	<title>Panel radiator, top view (wall side at the top)</title>
+	<style>
+		.s0 { fill: #ffffff; stroke: #000000; stroke-width: 6 }
+		.s1 { fill: none; stroke: #000000; stroke-width: 3 }
+		.s2 { fill: #ffffff; stroke: #000000; stroke-width: 4 }
+	</style>
+	<rect class="s0" x="4" y="14" width="992" height="92" rx="10"/>
+	<path class="s1" d="M40 30 V90 M80 30 V90 M120 30 V90 M160 30 V90 M200 30 V90 M240 30 V90 M280 30 V90 M320 30 V90 M360 30 V90 M400 30 V90 M440 30 V90 M480 30 V90 M520 30 V90 M560 30 V90 M600 30 V90 M640 30 V90 M680 30 V90 M720 30 V90 M760 30 V90 M800 30 V90 M840 30 V90 M880 30 V90 M920 30 V90"/>
+	<path class="s1" d="M20 60 H30 M970 60 H980"/>
+	<circle class="s2" cx="958" cy="60" r="14"/>
+	<path class="s1" d="M958 50 V70 M948 60 H968"/>
+</svg>

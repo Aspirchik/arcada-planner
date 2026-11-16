@@ -298,6 +298,7 @@
   "cat.Wall": "Openings",
   "cat.Network": "Network",
   "cat.Electric": "Electric",
+  "cat.Climate": "Climate",
   "item.Double bed": "Double bed",
   "item.Single bed": "Single bed",
   "item.Bedside table": "Bedside table",
@@ -385,5 +386,10 @@
   "item.Zebra ZT410": "Zebra ZT410",
   "item.Zebra ZT230": "Zebra ZT230",
   "item.Socket 230V": "Socket 230V",
-  "item.Emergency socket 230V": "Emergency 230V"
+  "item.Emergency socket 230V": "Emergency 230V",
+  "item.Ceiling lamp": "Ceiling lamp",
+  "item.Breaker box": "Breaker box",
+  "item.Radiator": "Radiator",
+  "item.Ceiling AC": "Ceiling AC",
+  "item.Ceiling vent": "Ceiling vent"
 }

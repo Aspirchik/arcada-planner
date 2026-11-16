@@ -109,7 +109,17 @@
       "name": "Electric",
       "items": [
         { "name": "Socket 230V",           "width": 0.15, "height": 0.15, "imagePath": "socket-230", "zIndex": 200 },
-        { "name": "Emergency socket 230V", "width": 0.15, "height": 0.15, "imagePath": "socket-230-emergency", "zIndex": 200 }
+        { "name": "Emergency socket 230V", "width": 0.15, "height": 0.15, "imagePath": "socket-230-emergency", "zIndex": 200 },
+        { "name": "Ceiling lamp",          "width": 0.6,  "height": 0.6,  "imagePath": "lamp-ceiling", "zIndex": 300 },
+        { "name": "Breaker box",           "width": 0.3,  "height": 0.25, "imagePath": "breaker-box", "zIndex": 200 }
+      ]
+    },
+    {
+      "name": "Climate",
+      "items": [
+        { "name": "Radiator",     "width": 1.0, "height": 0.12, "imagePath": "radiator", "zIndex": 150 },
+        { "name": "Ceiling AC",   "width": 0.6, "height": 0.6,  "imagePath": "ac-ceiling", "zIndex": 300 },
+        { "name": "Ceiling vent", "width": 0.6, "height": 0.6,  "imagePath": "vent-ceiling", "zIndex": 300 }
       ]
     },
     {

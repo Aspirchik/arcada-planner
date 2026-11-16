@@ -298,6 +298,7 @@
   "cat.Wall": "Отвори",
   "cat.Network": "Мережа",
   "cat.Electric": "Електрика",
+  "cat.Climate": "Клімат",
   "item.Double bed": "Двоспальне ліжко",
   "item.Single bed": "Односпальне ліжко",
   "item.Bedside table": "Тумбочка",
@@ -385,5 +386,10 @@
   "item.Zebra ZT410": "Zebra ZT410",
   "item.Zebra ZT230": "Zebra ZT230",
   "item.Socket 230V": "Розетка 230В",
-  "item.Emergency socket 230V": "Розетка авар. 230В"
+  "item.Emergency socket 230V": "Розетка авар. 230В",
+  "item.Ceiling lamp": "Лампа стельова",
+  "item.Breaker box": "Щиток автоматів",
+  "item.Radiator": "Батарея опалення",
+  "item.Ceiling AC": "Кондиціонер стельовий",
+  "item.Ceiling vent": "Вентиляція стельова"
 }

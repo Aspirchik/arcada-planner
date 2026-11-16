@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600" width="600" height="600">
+	<title>Ceiling ventilation diffuser, seen from below</title>
+	<style>
+		.s0 { fill: #ffffff; stroke: #000000; stroke-width: 10 }
+		.s1 { fill: none; stroke: #000000; stroke-width: 6 }
+		.s2 { fill: #ffffff; stroke: #000000; stroke-width: 7 }
+	</style>
+	<rect class="s0" x="8" y="8" width="584" height="584" rx="16"/>
+	<rect class="s1" x="70" y="70" width="460" height="460" rx="8"/>
+	<rect class="s1" x="130" y="130" width="340" height="340" rx="6"/>
+	<rect class="s1" x="190" y="190" width="220" height="220" rx="4"/>
+	<path class="s1" d="M70 70 L230 230 M530 70 L370 230 M70 530 L230 370 M530 530 L370 370"/>
+	<circle class="s2" cx="300" cy="300" r="56"/>
+	<path class="s1" d="M300 252 Q328 300 300 300 Q272 300 300 348 M252 300 Q300 272 300 300 Q300 328 348 300"/>
+</svg>

@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600" width="600" height="600">
+	<title>Ceiling cassette air conditioner, four-way, seen from below</title>
+	<style>
+		.s0 { fill: #ffffff; stroke: #000000; stroke-width: 10 }
+		.s1 { fill: none; stroke: #000000; stroke-width: 6; stroke-linecap: round }
+		.s2 { fill: #ffffff; stroke: #000000; stroke-width: 7 }
+	</style>
+	<rect class="s0" x="8" y="8" width="584" height="584" rx="24"/>
+	<!-- four air outlets -->
+	<rect class="s2" x="130" y="50" width="340" height="44" rx="14"/>
+	<rect class="s2" x="130" y="506" width="340" height="44" rx="14"/>
+	<rect class="s2" x="50" y="130" width="44" height="340" rx="14"/>
+	<rect class="s2" x="506" y="130" width="44" height="340" rx="14"/>
+	<!-- intake grille -->
+	<rect class="s2" x="150" y="150" width="300" height="300" rx="10"/>
+	<path class="s1" d="M150 200 H450 M150 250 H450 M150 300 H450 M150 350 H450 M150 400 H450"/>
+	<!-- snowflake -->
+	<path class="s1" d="M300 255 V345 M261 277 L339 323 M261 323 L339 277"/>
+</svg>
