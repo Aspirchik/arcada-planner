@@ -12,4 +12,6 @@ export enum Tool {
   Text,
   Cable,
   Tray,
+  /** Ceiling panels: draw a grid, click panels to mark lamps, AC units… */
+  Ceiling,
 }

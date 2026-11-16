@@ -24,6 +24,8 @@ interface Prefs {
   sizesPos: SizesPos;
   /** Snap step in cm, 0 = off (off by default; the last choice is remembered) */
   snap: number;
+  /** Show the Ceiling layer (suspended ceiling panels) over the plan */
+  ceiling: boolean;
 }
 
 interface PrefsStore extends Prefs {
@@ -47,6 +49,7 @@ const defaults: Prefs = {
   gapWarn: 60,
   sizesPos: 'off',
   snap: 0,
+  ceiling: false,
 };
 
 function loadPrefs(): Prefs {
@@ -63,6 +66,7 @@ function loadPrefs(): Prefs {
       gapWarn: typeof p.gapWarn === 'number' && p.gapWarn >= 0 ? p.gapWarn : defaults.gapWarn,
       sizesPos: ['off', 'tl', 'tr', 'bl', 'br'].includes(p.sizesPos as string) ? p.sizesPos as SizesPos : defaults.sizesPos,
       snap: typeof p.snap === 'number' && p.snap >= 0 && p.snap <= 100 ? p.snap : defaults.snap,
+      ceiling: typeof p.ceiling === 'boolean' ? p.ceiling : defaults.ceiling,
     };
   } catch {
     return defaults;

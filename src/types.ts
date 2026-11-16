@@ -205,6 +205,25 @@ export interface Tray {
   patch?: boolean;
 }
 
+/** What sits in a ceiling panel */
+export type CeilingMarkKind = 'lamp' | 'ac' | 'vent' | 'cable' | 'hatch';
+
+/**
+ * Suspended ceiling: a rectangle of panels. The first column / row are edge panels of their own size,
+ * then standard panels follow and the last column / row take what is left.
+ */
+export interface CeilingGrid {
+  id: number;
+  /** Top-left corner and size of the ceiling area (cm) */
+  x: number; y: number; w: number; h: number;
+  /** Standard panel (cm), usually 60 × 60 */
+  cellW: number; cellH: number;
+  /** Width of the first column and height of the first row (cm) */
+  firstW: number; firstH: number;
+  /** Panels with a lamp, AC unit, vent… (column, row from the top-left corner) */
+  marks?: { c: number; r: number; kind: CeilingMarkKind }[];
+}
+
 export interface FloorState {
   nodes: WallNode[];
   walls: Wall[];
@@ -217,6 +236,8 @@ export interface FloorState {
   groups: CableGroup[];
   /** Room height of the floor (cm), used for "under the ceiling" */
   height?: number;
+  /** Suspended ceiling grids (the Ceiling layer) */
+  ceilings?: CeilingGrid[];
 }
 
 export interface CatalogItem {

@@ -10,6 +10,8 @@ import { computeWallGeometry, wallThickness } from '../geometry/walls';
 import { obstacleSegments, flushShift } from '../geometry/raycast';
 import { snapTargets, snapToTargets, constrain45 } from '../geometry/snap';
 import { usePrefs } from '../prefs';
+import { hitCeiling, cellAt } from '../geometry/ceiling';
+import { CeilingLayerContent } from './CeilingLayer';
 import { usePalette, type Palette } from '../theme';
 import { useT } from '../i18n';
 import { getSprite } from './images';
@@ -88,6 +90,8 @@ type DragState =
   | { type: 'wall-draw'; startNodeId: number; startPt: { x: number; y: number }; moved: boolean }
   | { type: 'wall-move'; start: Pt; a: PosRef; b: PosRef }
   | { type: 'measure'; start: Pt }
+  /** Ceiling tool: a new ceiling grid drawn corner to corner */
+  | { type: 'ceiling-draw'; start: Pt }
   | { type: 'dim-end'; id: number; end: 1 | 2 }
   | { type: 'dim-move'; start: Pt; base: Dimension }
   | { type: 'cable-pt'; id: number; index: number }
@@ -102,6 +106,7 @@ type DragState =
   | { type: 'marquee'; start: Pt; base: number[] }
   | null;
 
+const NO_CEILINGS: never[] = [];
 const WALL_DRAG_THRESHOLD = 8; // px in world coords — distinguishes tap from drag
 
 // ── EditorStage ───────────────────────────────────────────────
@@ -120,6 +125,9 @@ export function EditorStage() {
   const [measurePreview, setMeasurePreview] = useState<Omit<Dimension, 'id'> | null>(null);
   const [snapMark, setSnapMark] = useState<Pt | null>(null);
   const [marquee, setMarquee] = useState<{ x1: number; y1: number; x2: number; y2: number } | null>(null);
+  /** Ceiling grid being drawn, and the ceiling panel under the pointer (Ceiling tool) */
+  const [ceilDraft, setCeilDraft] = useState<{ x1: number; y1: number; x2: number; y2: number } | null>(null);
+  const [ceilHover, setCeilHover] = useState<{ id: number; c: number; r: number } | null>(null);
   const shiftRef = useRef(false);
   const altRef = useRef(false);
   /** Cable being drawn: points placed so far (state for rendering, ref for event handlers) */
@@ -154,6 +162,7 @@ export function EditorStage() {
   const showGaps      = usePrefs(s => s.gaps);
   const gapWarn       = usePrefs(s => s.gapWarn);
   const sizesPos      = usePrefs(s => s.sizesPos);
+  const showCeiling   = usePrefs(s => s.ceiling);
   const lang          = usePrefs(s => s.lang);
   const textEdit      = useStore(s => s.textEdit);
   const palette       = usePalette();
@@ -548,6 +557,23 @@ export function EditorStage() {
       return;
     }
 
+    // Ceiling — click a panel of the selected grid to put the brush mark there (a grid not selected yet is selected first);
+    // drag elsewhere to draw a new grid
+    if (tool === Tool.Ceiling) {
+      const g = hitCeiling(floor.ceilings ?? [], pt);
+      if (g) {
+        const cell = cellAt(g, pt);
+        if (selectedId === g.id && cell) store.markCeiling(g.id, cell.c, cell.r);
+        else store.select(g.id);
+        return;
+      }
+      const { p } = measurePoint(pt);
+      dragRef.current = { type: 'ceiling-draw', start: p };
+      setCeilDraft({ x1: p.x, y1: p.y, x2: p.x, y2: p.y });
+      setSnapMark(null);
+      return;
+    }
+
     // Ruler — drag an existing end to adjust it, otherwise measure from point to point
     if (tool === Tool.Measure) {
       const end = hitDimEnd(pt.x, pt.y);
@@ -766,6 +792,10 @@ export function EditorStage() {
       let newRot = d.startRot + (currentAngle - d.startAngle) * 180 / Math.PI;
       if (snapSize > 0) newRot = Math.round(newRot / 15) * 15;
       store.updateFurniture(d.id, { rot: newRot });
+    } else if (d.type === 'ceiling-draw') {
+      const { p, snapped } = measurePoint(pt);
+      setCeilDraft({ x1: d.start.x, y1: d.start.y, x2: p.x, y2: p.y });
+      setSnapMark(snapped ? p : null);
     } else if (d.type === 'measure') {
       const { p, snapped } = measurePoint(pt, d.start);
       setMeasurePreview({ x1: d.start.x, y1: d.start.y, x2: p.x, y2: p.y });
@@ -828,6 +858,16 @@ export function EditorStage() {
       return;
     }
 
+    if (d.type === 'ceiling-draw') {
+      setCeilDraft(null);
+      setSnapMark(null);
+      if (!pt) return;
+      const { p } = measurePoint(pt);
+      const x = Math.min(d.start.x, p.x), y = Math.min(d.start.y, p.y);
+      const w = Math.abs(p.x - d.start.x), h = Math.abs(p.y - d.start.y);
+      if (w >= 20 && h >= 20) store.select(store.addCeiling(Math.round(x * 10) / 10, Math.round(y * 10) / 10, Math.round(w * 10) / 10, Math.round(h * 10) / 10));
+      return;
+    }
     if (d.type === 'measure') {
       setMeasurePreview(null);
       setSnapMark(null);
@@ -948,8 +988,17 @@ export function EditorStage() {
       return;
     }
 
+    // Ceiling tool: the panel under the pointer
+    if (tool === Tool.Ceiling) {
+      const pt = getWorld();
+      const g = pt ? hitCeiling(floor.ceilings ?? [], pt) : null;
+      const cell = g && pt ? cellAt(g, pt) : null;
+      const next = g && cell ? { id: g.id, ...cell } : null;
+      if (next?.id !== ceilHover?.id || next?.c !== ceilHover?.c || next?.r !== ceilHover?.r) setCeilHover(next);
+    } else if (ceilHover) setCeilHover(null);
+
     // Ruler / cable hover: show where the next point would snap
-    if (tool === Tool.Measure || tool === Tool.Cable || tool === Tool.Tray) {
+    if (tool === Tool.Measure || tool === Tool.Cable || tool === Tool.Tray || (tool === Tool.Ceiling && !ceilHover)) {
       const pt = getWorld();
       if (pt) {
         const draft = cableDraftRef.current;
@@ -963,7 +1012,7 @@ export function EditorStage() {
     }
 
     // Tray hover (Wiring mode): show which cables run in it
-    if (wiring && !cableDraftRef.current) {
+    if (wiring && !cableDraftRef.current && tool !== Tool.Ceiling) {
       const pt = getWorld();
       const tr = pt ? hitTray(pt.x, pt.y) : null;
       const sp = getScreen();
@@ -1273,6 +1322,17 @@ export function EditorStage() {
         <FurnitureLabels furniture={act.furniture} palette={palette} showNames={showNames} lang={lang} sizesPos={sizesPos} />
         <TextNotes texts={act.texts} palette={palette} hideId={textEdit?.id} />
         {selectedNote && !textEdit && <TextSelection note={selectedNote} palette={palette} px={px} />}
+
+        {/* Ceiling layer: panels over the plan */}
+        {showCeiling && (
+          <CeilingLayerContent grids={floor.ceilings ?? NO_CEILINGS} selectedId={selectedId} px={px} dark={palette.dark} bg={palette.paper}
+            hover={tool === Tool.Ceiling ? ceilHover : null} />
+        )}
+        {ceilDraft && (
+          <Rect x={Math.min(ceilDraft.x1, ceilDraft.x2)} y={Math.min(ceilDraft.y1, ceilDraft.y2)}
+            width={Math.abs(ceilDraft.x2 - ceilDraft.x1)} height={Math.abs(ceilDraft.y2 - ceilDraft.y1)}
+            stroke={palette.accent} strokeWidth={1.5 * px} dash={[6 * px, 3 * px]} />
+        )}
 
         {/* Ruler measurements */}
         <DimensionsLayerContent dims={act.dimensions} palette={palette} unit={t('unit.m')} px={px} />

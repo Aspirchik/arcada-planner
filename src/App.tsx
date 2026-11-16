@@ -1,5 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Trash2, BringToFront, SendToBack, Bold, Pencil, Type, Square, Image as ImageIcon, FlipHorizontal2, FlipVertical2, Ruler, Layers, Palette as PaletteIcon, GitBranchPlus, Link2, Unlink, Cable as CableIcon, MoveVertical, ArrowUpToLine, Plus, Minus, Combine, Plug, X, Eraser, Magnet } from 'lucide-react';
+import { Trash2, BringToFront, SendToBack, Bold, Pencil, Type, Square, Image as ImageIcon, FlipHorizontal2, FlipVertical2, Ruler, Layers, Palette as PaletteIcon, GitBranchPlus, Link2, Unlink, Cable as CableIcon, MoveVertical, ArrowUpToLine, Plus, Minus, Combine, Plug, X, Eraser, Magnet, Lightbulb, Snowflake, Fan, SquareDashed } from 'lucide-react';
+import { ceilingEdges, lastPanel, firstForLast, panelCounts, markCounts, CEILING_MARKS } from './geometry/ceiling';
+import { MARK_COLORS } from './ui/CeilingLayer';
+import { Tool } from './constants';
 import { EditorStage } from './ui/EditorStage';
 import { Toolbar } from './ui/Toolbar';
 import { FurniturePanel } from './ui/FurniturePanel';
@@ -25,7 +28,7 @@ import { setNextCableColor } from './ui/EditorStage';
 import { usePrefs, type Lang } from './prefs';
 import { useT, HTML_LANG, type TKey } from './i18n';
 import { wallThickness } from './geometry/walls';
-import type { LabelPos, Layer, Cable, FloorState, FurnitureItem } from './types';
+import type { LabelPos, Layer, Cable, FloorState, FurnitureItem, CeilingMarkKind } from './types';
 import { useIsDark } from './theme';
 import { projectErrorText } from './ui/Toolbar';
 import { METER, AUTOSAVE_KEY } from './constants';
@@ -297,10 +300,10 @@ function trackPlanPresses() {
  * Anchor of the panel for an object with these points: the spot it was clicked at when that is on or near
  * the object, else under the middle of the object (e.g. selected by a frame or just pasted).
  */
-function panelAnchor(points: { x: number; y: number }[], stageX: number, stageY: number, stageScale: number): PanelAnchor {
+function panelAnchor(points: { x: number; y: number }[], stageX: number, stageY: number, stageScale: number, atClick = true): PanelAnchor {
   const xs = points.map(p => p.x), ys = points.map(p => p.y);
   const near = 40 / stageScale;
-  const p = lastPress;
+  const p = atClick ? lastPress : null;
   if (p && p.x >= Math.min(...xs) - near && p.x <= Math.max(...xs) + near && p.y >= Math.min(...ys) - near && p.y <= Math.max(...ys) + near) {
     const sx = stageX + p.x * stageScale, sy = stageY + p.y * stageScale;
     return { x: sx, below: sy + 18, above: sy - 18 };
@@ -421,6 +424,7 @@ function SelectionPanel() {
   const stageScale   = useStore(s => s.stageScale);
   const textEdit     = useStore(s => s.textEdit);
   useStore(s => s.chainPick); // the connector button shows when picking is on
+  useStore(s => s.ceilingBrush); useStore(s => s.tool); // ceiling mark buttons show the current one
   const lang         = usePrefs(s => s.lang);
   const st           = useStore.getState();
   const t            = useT();
@@ -434,8 +438,9 @@ function SelectionPanel() {
 
   if (textEdit || selection.length === 0) return null;
   const floor = floors[fi];
-  const at = (points: { x: number; y: number }[], _width: number) => {
-    anchorRef.current = panelAnchor(points, stageX, stageY, stageScale);
+  /** `atClick` = false: always beside the whole object (a ceiling grid is clicked inside, the panel must not cover it) */
+  const at = (points: { x: number; y: number }[], _width: number, atClick = true) => {
+    anchorRef.current = panelAnchor(points, stageX, stageY, stageScale, atClick);
     return undefined;
   };
 
@@ -524,6 +529,50 @@ function SelectionPanel() {
         <label>{t('wall.length')} <NumField key={`l${wall.id}`} value={Math.round(len)} min={1}
           onCommit={v => st.setWallLength(wall.id, v)} /> {t('unit.cm')}</label>
         <button className="sel-delete" title={t('sel.delete')} onClick={st.deleteSelected}><Trash2 size={14} /></button>
+      </div>
+    );
+  }
+
+  // ── Ceiling grid ──
+  const ceil = floor.ceilings?.find(g => g.id === selectedId);
+  if (ceil) {
+    const { xs, ys } = ceilingEdges(ceil);
+    const counts = markCounts(ceil);
+    const brush = st.ceilingBrush;
+    // picking a mark also picks the Ceiling tool (the grid stays selected)
+    const pick = (k: CeilingMarkKind | null) => {
+      st.setCeilingBrush(k);
+      if (st.tool !== Tool.Ceiling) { st.setTool(Tool.Ceiling); st.select(ceil.id); }
+    };
+    const up = (changes: Parameters<typeof st.updateCeiling>[1]) => st.updateCeiling(ceil.id, changes);
+    const cm = t('unit.cm');
+    return (
+      <div className="selection-panel" ref={panelRef} style={at([{ x: ceil.x, y: ceil.y }, { x: ceil.x + ceil.w, y: ceil.y + ceil.h }], 520, false)}>
+        <span className="sel-title">{t('ceiling.label')}</span>
+        <label title={t('ceiling.areaTitle')}>{t('ceiling.area')} <NumField key={`cw${ceil.id}`} value={ceil.w} min={1} onCommit={v => up({ w: v })} />
+          × <NumField key={`ch${ceil.id}`} value={ceil.h} min={1} onCommit={v => up({ h: v })} /> {cm}</label>
+        <label>{t('ceiling.panel')} <NumField key={`cx${ceil.id}`} value={ceil.cellW} min={1} onCommit={v => up({ cellW: v })} />
+          × <NumField key={`cy${ceil.id}`} value={ceil.cellH} min={1} onCommit={v => up({ cellH: v })} /> {cm}</label>
+        <div className="sel-break" />
+        <label title={t('ceiling.edgeTitle')}>{t('ceiling.left')} <NumField key={`fl${ceil.id}`} value={ceil.firstW} min={1} onCommit={v => up({ firstW: v })} /></label>
+        <label title={t('ceiling.edgeTitle')}>{t('ceiling.right')} <NumField key={`fr${ceil.id}`} value={lastPanel(xs)} min={1}
+          onCommit={v => up({ firstW: firstForLast(ceil.w, ceil.cellW, v) })} /></label>
+        <label title={t('ceiling.edgeTitle')}>{t('ceiling.top')} <NumField key={`ft${ceil.id}`} value={ceil.firstH} min={1} onCommit={v => up({ firstH: v })} /></label>
+        <label title={t('ceiling.edgeTitle')}>{t('ceiling.bottom')} <NumField key={`fb${ceil.id}`} value={lastPanel(ys)} min={1}
+          onCommit={v => up({ firstH: firstForLast(ceil.h, ceil.cellH, v) })} /> {cm}</label>
+        <button className="sel-delete" title={t('sel.delete')} onClick={st.deleteSelected}><Trash2 size={14} /></button>
+        <div className="sel-break" />
+        {CEILING_MARKS.map(k => {
+          const Icon = { lamp: Lightbulb, ac: Snowflake, vent: Fan, cable: CableIcon, hatch: SquareDashed }[k];
+          return (
+            <button key={k} className={'sel-btn' + (st.tool === Tool.Ceiling && brush === k ? ' active' : '')} title={t(`ceiling.mark.${k}` as TKey) + ' — ' + t('ceiling.markHint')}
+              onClick={() => pick(k)}><Icon size={14} color={MARK_COLORS[k].stroke} />{counts.get(k) ? <b className="sel-count">{counts.get(k)}</b> : null}</button>
+          );
+        })}
+        <button className={'sel-btn' + (st.tool === Tool.Ceiling && brush === null ? ' active' : '')} title={t('ceiling.clear')}
+          onClick={() => pick(null)}><Eraser size={14} /></button>
+        <div className="sel-break" />
+        <span className="sel-note">{t('ceiling.panels')}: {panelCounts(ceil).map(p => `${p.a}×${p.b} — ${p.n}`).join(', ')}</span>
       </div>
     );
   }

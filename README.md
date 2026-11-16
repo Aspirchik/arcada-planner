@@ -75,6 +75,7 @@ Use the arrows in the toolbar to add and navigate floors. Each floor is independ
 | **Ruler** | Drag to measure; the dimension stays on the plan. Drag an existing end to adjust it |
 | **Text** | Click to add a note, click a note to edit it |
 | **Cable** | Click to place points of a cable run; double-click / Enter finishes, Esc cancels, Shift = 45° |
+| **Ceiling** | (with *Ceiling* on) Drag from corner to corner to lay a suspended ceiling grid; click a grid to select it, then click its panels to mark lamps, AC units, vents, cable passes or access hatches |
 | **Erase** | Click any element to delete it |
 
 ## Toolbar options
@@ -86,6 +87,7 @@ Use the arrows in the toolbar to add and navigate floors. Each floor is independ
 | **Names** | Show catalog names on furniture |
 | **Sizes** | Show width × depth (cm) on every item, in the chosen corner |
 | **Gaps** | Show free space around the selected item |
+| **Ceiling** | Show the suspended ceiling layer over the plan. A grid's panel sets the standard panel (60 × 60 by default) and the edge panels (left / top, or right / bottom); edge panels are tinted and their sizes written along the grid; it also counts the panels of each size |
 | **Language** | EN / PL / RU / UA |
 | **Theme** | Auto (system) → Light → Dark |
 

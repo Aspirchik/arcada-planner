@@ -2,7 +2,7 @@ import { useState } from 'react';
 import {
   MousePointer2, Eraser, Minus, Grid3X3,
   Tag, ChevronUp, ChevronDown, Trash2, Printer,
-  Save, FolderOpen, HelpCircle, Languages, Sun, Moon, Monitor, Ruler, Type, CaseSensitive, ArrowLeftRight, Scaling, FileDown, Cable as CableIcon, Network, RectangleHorizontal, SlidersHorizontal, FolderTree, Wand2,
+  Save, FolderOpen, HelpCircle, Languages, Sun, Moon, Monitor, Ruler, Type, CaseSensitive, ArrowLeftRight, Scaling, FileDown, Cable as CableIcon, Network, RectangleHorizontal, SlidersHorizontal, FolderTree, Wand2, Grid2x2, LayoutGrid,
 } from 'lucide-react';
 import { useStore, ProjectError } from '../store';
 import { usePrefs, LANGS, type WallLabelMode, type Lang, type ThemePref, type SizesPos } from '../prefs';
@@ -15,7 +15,7 @@ import { GroupsPanel } from './GroupsPanel';
 /** Theme button cycles: Auto → Light → Dark → Auto */
 const NEXT_THEME: Record<ThemePref, ThemePref> = { system: 'light', light: 'dark', dark: 'system' };
 
-const HELP_KEYS = ['select', 'group', 'wall', 'split', 'exterior', 'walledit', 'lengths', 'measure', 'text', 'cable', 'wiring', 'heights', 'gaps', 'pan', 'snap', 'keys'] as const;
+const HELP_KEYS = ['select', 'group', 'wall', 'split', 'exterior', 'walledit', 'lengths', 'measure', 'text', 'cable', 'wiring', 'heights', 'ceiling', 'gaps', 'pan', 'snap', 'keys'] as const;
 
 function saveToFile(data: string) {
   try { localStorage.setItem(AUTOSAVE_KEY, data); } catch { /* storage unavailable */ }
@@ -43,7 +43,13 @@ export function projectErrorText(err: unknown): string {
 }
 
 export function Toolbar() {
-  const { tool, setTool, snapSize, setSnapSize, fi, changeFloor, removeFloor, save, load, markSaved, mode, setMode } = useStore();
+  // single fields (not the whole store): the toolbar is not redrawn on every pan / zoom frame
+  const tool = useStore(s => s.tool);
+  const snapSize = useStore(s => s.snapSize);
+  const fi = useStore(s => s.fi);
+  const mode = useStore(s => s.mode);
+  const { setTool, setSnapSize, changeFloor, removeFloor, save, load, markSaved, setMode } = useStore.getState();
+  const showCeiling = usePrefs(s => s.ceiling);
   const wallLabels = usePrefs(s => s.wallLabels);
   const lang = usePrefs(s => s.lang);
   const theme = usePrefs(s => s.theme);
@@ -123,6 +129,7 @@ export function Toolbar() {
           {toolBtn(<Type size={20} />,          'tool.text',   Tool.Text)}
           {toolBtn(<CableIcon size={20} />,     'tool.cable',  Tool.Cable)}
           {mode === 'wiring' && toolBtn(<RectangleHorizontal size={20} />, 'tool.tray', Tool.Tray)}
+          {showCeiling && toolBtn(<Grid2x2 size={20} />, 'tool.ceiling', Tool.Ceiling)}
           {toolBtn(<Eraser size={20} />,        'tool.erase',  Tool.Remove)}
         </div>
 
@@ -164,6 +171,11 @@ export function Toolbar() {
               <option value="axis">{t('lengths.axis')}</option>
             </select>
           </div>
+          <button title={t('ceiling.title')} className={'tool-btn' + (showCeiling ? ' active' : '')}
+            onClick={() => { setPref('ceiling', !showCeiling); if (showCeiling && tool === Tool.Ceiling) setTool(Tool.Select); }}>
+            <LayoutGrid size={20} />
+            <span>{t('ceiling.label')}</span>
+          </button>
           <button title={t('names.title')} className={'tool-btn' + (showNames ? ' active' : '')}
             onClick={() => setPref('showNames', !showNames)}>
             <CaseSensitive size={20} />

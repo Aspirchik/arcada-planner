@@ -1,12 +1,13 @@
 import { create } from 'zustand';
 import { Tool, METER } from './constants';
-import type { FurnitureItem, FloorState, CatalogItem, Dimension, TextNote, Wall, LabelPos, Cable, Tray, Layer, WiringSettings, CableGroup, CableLink, DeviceInfo } from './types';
+import type { FurnitureItem, FloorState, CatalogItem, Dimension, TextNote, Wall, LabelPos, Cable, Tray, Layer, WiringSettings, CableGroup, CableLink, DeviceInfo, CeilingGrid, CeilingMarkKind } from './types';
 import { relink, syncLinks } from './geometry/links';
 import { tidyCables, orthogonal, simplify } from './geometry/tidy';
 import { chainMembers, subtree, projectOnPath } from './geometry/chain';
 import { DEFAULT_WIRING, onLayer, trayLayer } from './layers';
 import { carryHeights } from './geometry/heights';
 import { simplifyPath } from './geometry/segdrag';
+import { toggleMark, DEFAULT_CEILING_CELL } from './geometry/ceiling';
 
 /**
  * The floor's cables with `list` laid again by `tidyCables` (through `trays`, desk frames for patch cords);
@@ -276,8 +277,10 @@ export function parseProject(json: string): ParsedProject {
     })).filter(t => t.points.length >= 2);
 
     const groups = groupsOf(f.groups);
-    for (const o of [...nodes, ...walls, ...furniture, ...dimensions, ...texts, ...cables, ...trays, ...groups]) maxId = Math.max(maxId, o.id);
-    return syncLinks({ nodes, walls, furniture, dimensions, texts, cables, trays, groups, ...(isNum(f.height) && f.height > 0 ? { height: f.height } : {}) });
+    const ceilings = ceilingsOf(f.ceilings);
+    for (const o of [...nodes, ...walls, ...furniture, ...dimensions, ...texts, ...cables, ...trays, ...groups, ...ceilings]) maxId = Math.max(maxId, o.id);
+    return syncLinks({ nodes, walls, furniture, dimensions, texts, cables, trays, groups, ...(isNum(f.height) && f.height > 0 ? { height: f.height } : {}),
+      ...(ceilings.length ? { ceilings } : {}) });
   });
 
   const groups = groupsOf(d.cableGroups);
@@ -288,7 +291,29 @@ export function parseProject(json: string): ParsedProject {
 }
 
 export function isProjectEmpty(floors: FloorState[]): boolean {
-  return floors.every(f => f.nodes.length === 0 && f.furniture.length === 0 && f.dimensions.length === 0 && f.texts.length === 0 && f.cables.length === 0 && f.trays.length === 0);
+  return floors.every(f => f.nodes.length === 0 && f.furniture.length === 0 && f.dimensions.length === 0 && f.texts.length === 0 && f.cables.length === 0 && f.trays.length === 0
+    && !f.ceilings?.length);
+}
+
+const CEILING_KINDS: CeilingMarkKind[] = ['lamp', 'ac', 'vent', 'cable', 'hatch'];
+
+/** Ceiling grids of a saved floor (broken ones are left out) */
+function ceilingsOf(v: unknown): CeilingGrid[] {
+  if (!Array.isArray(v)) return [];
+  const pos = (x: unknown, d: number) => (isNum(x) && x > 0 ? x : d);
+  return v.filter((g): g is Record<string, unknown> & { id: number; x: number; y: number; w: number; h: number } =>
+    !!g && isNum(g.id) && isNum(g.x) && isNum(g.y) && isNum(g.w) && isNum(g.h) && g.w > 0 && g.h > 0,
+  ).map((g): CeilingGrid => {
+    const cellW = pos(g.cellW, 60), cellH = pos(g.cellH, 60);
+    const marks = (Array.isArray(g.marks) ? g.marks : []).filter((m): m is { c: number; r: number; kind: CeilingMarkKind } =>
+      !!m && Number.isInteger(m.c) && Number.isInteger(m.r) && m.c >= 0 && m.r >= 0 && CEILING_KINDS.includes(m.kind))
+      .map(m => ({ c: m.c, r: m.r, kind: m.kind }));
+    return {
+      id: g.id, x: g.x, y: g.y, w: g.w, h: g.h, cellW, cellH,
+      firstW: pos(g.firstW, cellW), firstH: pos(g.firstH, cellH),
+      ...(marks.length ? { marks } : {}),
+    };
+  });
 }
 
 // ── Store ──────────────────────────────────────────────────────
@@ -433,6 +458,15 @@ interface Store {
   addTray(points: { x: number; y: number }[], width?: number): number;
   updateTray(id: number, changes: Partial<Omit<Tray, 'id'>>): void;
   deleteTray(id: number): void;
+  /** Ceiling grid over the rectangle (standard 60 × 60 panels, edge panels the same until changed) */
+  addCeiling(x: number, y: number, w: number, h: number): number;
+  updateCeiling(id: number, changes: Partial<Omit<CeilingGrid, 'id'>>): void;
+  deleteCeiling(id: number): void;
+  /** What a click on a ceiling panel puts there (null = clears it); not saved */
+  ceilingBrush: CeilingMarkKind | null;
+  setCeilingBrush(kind: CeilingMarkKind | null): void;
+  /** Puts the brush mark into a panel of the grid (the same mark again clears it) */
+  markCeiling(id: number, c: number, r: number): void;
 
   addText(x: number, y: number, text: string): number;
   updateText(id: number, changes: Partial<Omit<TextNote, 'id'>>): void;
@@ -563,6 +597,8 @@ export const useStore = create<Store>((set, get) => {
     litGroups: [],
     chainPick: null,
     setChainPick: (chainPick) => set({ chainPick }),
+    ceilingBrush: 'lamp',
+    setCeilingBrush: (ceilingBrush) => set({ ceilingBrush }),
 
     setTool: (tool) => set({ tool, wallStartId: null, selectedId: null, selection: [] }),
     setSnapSize: (snapSize) => { set({ snapSize }); usePrefs.getState().set('snap', snapSize); },
@@ -1072,6 +1108,35 @@ export const useStore = create<Store>((set, get) => {
       upFloor(f => ({ ...f, trays: f.trays.filter(t => t.id !== id) }));
     },
 
+    addCeiling(x, y, w, h) {
+      const id = newId();
+      const g: CeilingGrid = { id, x, y, w, h, cellW: DEFAULT_CEILING_CELL, cellH: DEFAULT_CEILING_CELL, firstW: DEFAULT_CEILING_CELL, firstH: DEFAULT_CEILING_CELL };
+      upFloor(f => ({ ...f, ceilings: [...(f.ceilings ?? []), g] }));
+      return id;
+    },
+
+    updateCeiling(id, changes) {
+      upFloor(f => ({ ...f, ceilings: (f.ceilings ?? []).map(g => g.id === id ? { ...g, ...changes } : g) }));
+    },
+
+    deleteCeiling(id) {
+      upFloor(f => {
+        const ceilings = (f.ceilings ?? []).filter(g => g.id !== id);
+        const { ceilings: _, ...rest } = f;
+        return ceilings.length ? { ...f, ceilings } : rest;
+      });
+    },
+
+    markCeiling(id, c, r) {
+      const kind = get().ceilingBrush;
+      upFloor(f => ({ ...f, ceilings: (f.ceilings ?? []).map(g => {
+        if (g.id !== id) return g;
+        const marks = toggleMark(g.marks, c, r, kind);
+        const { marks: _, ...rest } = g;
+        return marks.length ? { ...rest, marks } : rest;
+      }) }));
+    },
+
     addText(x, y, text) {
       const id = newId();
       upFloor(f => ({ ...f, texts: [...f.texts, { id, x, y, text, size: DEFAULT_TEXT_SIZE, rot: 0, bold: false, color: null, ...curLayer() }] }));
@@ -1098,6 +1163,7 @@ export const useStore = create<Store>((set, get) => {
           else if (f.dimensions.some(d => d.id === id)) get().deleteDimension(id);
           else if (f.cables.some(c => c.id === id)) get().deleteCable(id);
           else if (f.trays.some(t => t.id === id)) get().deleteTray(id);
+          else if (f.ceilings?.some(g => g.id === id)) get().deleteCeiling(id);
         }
       });
       set(sel([]));

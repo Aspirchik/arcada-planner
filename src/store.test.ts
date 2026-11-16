@@ -529,3 +529,31 @@ describe('parseProject', () => {
     expect(p.nextId).toBe(8);
   });
 });
+
+describe('ceiling grids', () => {
+  it('reads grids from a file, fills missing sizes and drops broken marks and grids', () => {
+    const p = parseProject(JSON.stringify({ floors: [{ nodes: [], walls: [], furniture: [], ceilings: [
+      { id: 7, x: 0, y: 0, w: 277.5, h: 180, firstW: 50, marks: [{ c: 1, r: 1, kind: 'lamp' }, { c: -1, r: 0, kind: 'lamp' }, { c: 0, r: 0, kind: 'x' }] },
+      { id: 8, x: 0, y: 0, w: 0, h: 10 },
+    ] }] }));
+    expect(p.floors[0].ceilings).toEqual([{ id: 7, x: 0, y: 0, w: 277.5, h: 180, cellW: 60, cellH: 60, firstW: 50, firstH: 60, marks: [{ c: 1, r: 1, kind: 'lamp' }] }]);
+    expect(p.nextId).toBeGreaterThan(7);
+    expect(parseProject(JSON.stringify({ floors: [{ nodes: [], walls: [], furniture: [] }] })).floors[0].ceilings).toBeUndefined();
+  });
+
+  it('marks a panel with the brush, a second click clears it, one undo step each', () => {
+    const st = useStore.getState();
+    const id = st.addCeiling(0, 0, 240, 240);
+    st.setCeilingBrush('ac');
+    useStore.getState().markCeiling(id, 1, 2);
+    const g = () => useStore.getState().floors[useStore.getState().fi].ceilings?.find(c => c.id === id);
+    expect(g()?.marks).toEqual([{ c: 1, r: 2, kind: 'ac' }]);
+    useStore.getState().markCeiling(id, 1, 2);
+    expect(g()?.marks).toBeUndefined();
+    useStore.getState().undo();
+    expect(g()?.marks).toEqual([{ c: 1, r: 2, kind: 'ac' }]);
+    useStore.getState().select(id);
+    useStore.getState().deleteSelected();
+    expect(useStore.getState().floors[useStore.getState().fi].ceilings).toBeUndefined();
+  });
+});
