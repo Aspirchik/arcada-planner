@@ -191,9 +191,15 @@ type DragState =
 
 8 resize handles (corners + midpoints) + 1 rotation handle. Positions are computed using `localToWorld()` to account for item rotation. Resize math uses `worldToLocal()` to convert the cursor back to item-local space, then adjusts width/height/origin based on which anchor is being dragged.
 
+### Performance
+
+- `src/konvaPerf.ts` (imported first in `main.tsx`) turns off Konva's buffer canvas for semi-transparent shapes with a fill and a stroke. Konva otherwise draws each such shape on a screen-sized canvas and copies it back; with the main plan dimmed in Wiring mode that was hundreds of full-screen copies per frame. The plan uses no shadows.
+- `updateStage` stores the view in `viewRef` and commits it (stage props and `setStageTransform`) once per animation frame; the wheel zoom works from `viewRef`.
+- Layer contents (`WallsLayerContent`, `CablesLayerContent`, `TraysLayerContent`, `DimensionsLayerContent`, `FurnitureLabels`, `TextNotes`, `FurnitureVisual`) are `memo` components, so a pan or zoom frame does not rebuild them.
+
 ### Image loading
 
-`ui/images.ts` keeps one cache for the editor and print. `getSprite(path, dark, onLoad)` returns `null` while loading or if loading failed (a placeholder rect is drawn) and calls `onLoad` when the image is ready, which triggers a re-render. Light and dark variants are cached separately.
+`ui/images.ts` keeps one cache for the editor and print. `getSprite(path, dark, onLoad)` returns `null` while loading or if loading failed (a placeholder rect is drawn) and calls `onLoad` when the image is ready, which re-renders that item only (`FurnitureVisual` keeps its own counter). Light and dark variants are cached separately.
 
 ---
 
@@ -205,6 +211,8 @@ The visual grid uses a dynamic interval system — grid lines get coarser as you
 const INTERVALS = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000];
 // Pick the smallest interval where lines are at least N pixels apart
 ```
+
+`GridLines` is one Konva `Shape` whose `sceneFunc` reads the stage position and scale at draw time and strokes the visible minor and major lines in two paths, so panning does not touch React.
 
 **Important:** The snap grid is independent from the visual grid. Snap uses a fixed `snapSize` value chosen by the user (Off / 5cm / 10cm / 25cm / 50cm), while the visual grid adapts to zoom level.
 

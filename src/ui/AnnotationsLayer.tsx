@@ -1,3 +1,4 @@
+import { memo } from 'react';
 /** Furniture labels and free text notes, shared by the editor and the print view */
 import { mixHex } from '../color';
 import { Text, Group, Rect } from 'react-konva';
@@ -35,7 +36,7 @@ const V_ALIGN = (p: LabelPos) => (p === 't' || p === 'tl' || p === 'tr' ? 'top' 
  * Labels and sizes drawn inside each item, in the item's own frame (they turn with it).
  * Items turned upside down get their text flipped back, keeping the chosen visual position.
  */
-export function FurnitureLabels({ furniture, palette, showNames, lang, sizesPos = 'off' }: {
+function FurnitureLabelsImpl({ furniture, palette, showNames, lang, sizesPos = 'off' }: {
   furniture: FurnitureItem[];
   palette: Palette;
   showNames: boolean;
@@ -109,7 +110,7 @@ export function ItemOutline({ x, y, w, h, rot, palette, px }: { x: number; y: nu
   );
 }
 
-export function TextNotes({ texts, palette, hideId }: { texts: TextNote[]; palette: Palette; hideId?: number | null }) {
+function TextNotesImpl({ texts, palette, hideId }: { texts: TextNote[]; palette: Palette; hideId?: number | null }) {
   return (
     <Group>
       {texts.map(n => n.id === hideId ? null : (
@@ -132,3 +133,7 @@ export function TextSelection({ note, palette, px }: { note: TextNote; palette: 
     </Group>
   );
 }
+
+// Redrawn only when their own props change (not on every pan / zoom frame)
+export const FurnitureLabels = memo(FurnitureLabelsImpl);
+export const TextNotes = memo(TextNotesImpl);

@@ -1,5 +1,5 @@
 /** Cable runs: coloured polylines with a label along the middle (editor and print) */
-import { useMemo } from 'react';
+import { useMemo, memo } from 'react';
 import { Line, Group, Circle, Text, Rect } from 'react-konva';
 import type { Cable, Tray } from '../types';
 import type { Palette } from '../theme';
@@ -34,7 +34,7 @@ export function CableLine({ points, color, width = DEFAULT_CABLE_WIDTH, label, l
 }
 
 /** All cables: shared runs drawn side by side, labels placed so they don't cover each other */
-export function CablesLayerContent({ cables, palette, unitM, avoid, highlight, labelSize = LABEL_SIZE, showLabels = true, groupOrder, patchWord }: {
+function CablesLayerContentImpl({ cables, palette, unitM, avoid, highlight, labelSize = LABEL_SIZE, showLabels = true, groupOrder, patchWord }: {
   cables: Cable[]; palette: Palette; unitM: string; avoid?: Box[];
   /** Word for a patch cord in labels ("patch cord 3 m") */
   patchWord?: string;
@@ -112,7 +112,7 @@ export function CableHandles({ cable, shown, palette, px, heights }: {
 }
 
 /** Cable trays: a band with outlined edges, optional label */
-export function TraysLayerContent({ trays, palette, highlightId, textSize = 10 }: { trays: Tray[]; palette: Palette; highlightId?: number; textSize?: number }) {
+function TraysLayerContentImpl({ trays, palette, highlightId, textSize = 10 }: { trays: Tray[]; palette: Palette; highlightId?: number; textSize?: number }) {
   return (
     <Group>
       {trays.map(t => {
@@ -134,3 +134,7 @@ export function TraysLayerContent({ trays, palette, highlightId, textSize = 10 }
     </Group>
   );
 }
+
+// Redrawn only when their own props change (not on every pan / zoom frame)
+export const CablesLayerContent = memo(CablesLayerContentImpl);
+export const TraysLayerContent = memo(TraysLayerContentImpl);

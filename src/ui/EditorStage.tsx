@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState, useMemo } from 'react';
-import { Stage, Layer, Rect, Line, Image as KImage, Circle, Group } from 'react-konva';
+import { useEffect, useRef, useState, useMemo, memo } from 'react';
+import { Stage, Layer, Rect, Line, Image as KImage, Circle, Group, Shape } from 'react-konva';
 import type Konva from 'konva';
 import type { KonvaEventObject } from 'konva/lib/Node';
 import { useStore, DEFAULT_Z, DEFAULT_CABLE_COLOR } from '../store';
@@ -145,7 +145,6 @@ export function EditorStage() {
       st.select(id);
     }
   }
-  const [, forceRender] = useState(0);
 
   const store         = useStore();
   const tool          = useStore(s => s.tool);
@@ -188,11 +187,22 @@ export function EditorStage() {
   const [hoverTray, setHoverTray] = useState<{ id: number; x: number; y: number } | null>(null);
   const cableAvoid    = useMemo(() => labelObstacles(wallGeom, wallLabels, floor.furniture), [wallGeom, wallLabels, floor.furniture]);
 
+  /** Latest view (may be ahead of the rendered one by up to a frame) */
+  const viewRef = useRef({ x: 0, y: 0, s: 1 });
+  const viewRaf = useRef(0);
+  /** Moves / zooms the view: many mouse or wheel events per frame make one render */
   function updateStage(x: number, y: number, s: number) {
-    setPos({ x, y });
-    setScale(s);
-    store.setStageTransform(x, y, s);
+    viewRef.current = { x, y, s };
+    if (viewRaf.current) return;
+    viewRaf.current = requestAnimationFrame(() => {
+      viewRaf.current = 0;
+      const v = viewRef.current;
+      setPos({ x: v.x, y: v.y });
+      setScale(v.s);
+      useStore.getState().setStageTransform(v.x, v.y, v.s);
+    });
   }
+  useEffect(() => () => cancelAnimationFrame(viewRaf.current), []);
 
   useEffect(() => {
     const mobile = window.innerWidth < 768;
@@ -279,26 +289,6 @@ export function EditorStage() {
   }, []);
 
   // Grid
-  const minorIv = getGridInterval(scale, 12);
-  const majorIv = getGridInterval(scale, 80);
-  const viewL = Math.max(0, -pos.x / scale);
-  const viewT = Math.max(0, -pos.y / scale);
-  const viewR = Math.min(WORLD, viewL + size.w / scale);
-  const viewB = Math.min(WORLD, viewT + size.h / scale);
-
-  const mxT = useMemo(() => {
-    const out: number[] = [];
-    for (let v = Math.floor(viewL / minorIv) * minorIv; v <= viewR && v <= WORLD; v += minorIv) if (v >= 0) out.push(v);
-    return out;
-  }, [viewL, viewR, minorIv]);
-  const myT = useMemo(() => {
-    const out: number[] = [];
-    for (let v = Math.floor(viewT / minorIv) * minorIv; v <= viewB && v <= WORLD; v += minorIv) if (v >= 0) out.push(v);
-    return out;
-  }, [viewT, viewB, minorIv]);
-  const MxT = majorIv !== minorIv ? (() => { const out: number[] = []; for (let v = Math.floor(viewL / majorIv) * majorIv; v <= viewR && v <= WORLD; v += majorIv) if (v >= 0) out.push(v); return out; })() : [];
-  const MyT = majorIv !== minorIv ? (() => { const out: number[] = []; for (let v = Math.floor(viewT / majorIv) * majorIv; v <= viewB && v <= WORLD; v += majorIv) if (v >= 0) out.push(v); return out; })() : [];
-  const majSet = new Set([...MxT, ...MyT]);
 
   // ── Manual hit detection ────────────────────────────────────
   function getWorld(): { x: number; y: number } | null {
@@ -907,9 +897,11 @@ export function EditorStage() {
   function onWheel(ev: KonvaEventObject<WheelEvent>) {
     ev.evt.preventDefault();
     const factor = ev.evt.deltaY < 0 ? 1.1 : 0.9;
-    const ns = Math.max(0.1, Math.min(20, scale * factor));
+    // from the latest view: several wheel steps can come within one frame
+    const v = viewRef.current;
+    const ns = Math.max(0.1, Math.min(20, v.s * factor));
     const ptr = stageRef.current!.getPointerPosition()!;
-    updateStage(ptr.x - (ptr.x - pos.x) / scale * ns, ptr.y - (ptr.y - pos.y) / scale * ns, ns);
+    updateStage(ptr.x - (ptr.x - v.x) / v.s * ns, ptr.y - (ptr.y - v.y) / v.s * ns, ns);
   }
 
   function onMouseDown(e: KonvaEventObject<MouseEvent>) {
@@ -1155,11 +1147,12 @@ export function EditorStage() {
   const selectedTray = selectedId !== null ? act.trays.find(t => t.id === selectedId) : null;
   const hoveredTray = hoverTray ? act.trays.find(t => t.id === hoverTray.id) ?? null : null;
   // A chain is listed once (its route through all consumers); all its cables light up
-  const trayHits = hoveredTray ? collapseToChains(cablesInTray(hoveredTray, act.cables.filter(c => ws.trayPatch || c.kind !== 'patch')), act.cables) : null;
+  const trayHits = useMemo(() => (hoveredTray ? collapseToChains(cablesInTray(hoveredTray, act.cables.filter(c => ws.trayPatch || c.kind !== 'patch')), act.cables) : null),
+    [hoveredTray, act.cables, ws.trayPatch]);
+  const frames = useMemo(() => (wiring ? deskFrames(floor.furniture) : []), [wiring, floor.furniture]);
   const trayCables = trayHits?.shown ?? null;
   const chainPick = store.chainPick;
   const multi = selection.length > 1;
-  const onImageLoaded = () => forceRender(c => c + 1);
   const px = 1 / scale;
 
   return (
@@ -1193,8 +1186,7 @@ export function EditorStage() {
       {/* Grid */}
       <Layer listening={false}>
         <Rect x={0} y={0} width={WORLD} height={WORLD} fill={palette.paper} />
-        {mxT.map(t => <Line key={`vx${t}`} points={[t, viewT, t, viewB]} stroke={majSet.has(t) ? palette.gridMajor : palette.gridMinor} strokeWidth={majSet.has(t) ? 0.8 : 0.5} />)}
-        {myT.map(t => <Line key={`hy${t}`} points={[viewL, t, viewR, t]} stroke={majSet.has(t) ? palette.gridMajor : palette.gridMinor} strokeWidth={majSet.has(t) ? 0.8 : 0.5} />)}
+        <GridLines minor={palette.gridMinor} major={palette.gridMajor} />
       </Layer>
 
       {/* All shapes */}
@@ -1223,7 +1215,7 @@ export function EditorStage() {
           <Group>
             <TraysLayerContent trays={base.trays} palette={palette} textSize={ws.trayText} />
             {sortByZ(base.furniture).map(item => (
-              <FurnitureVisual key={item.id} item={item} palette={palette} onImageLoaded={onImageLoaded} />
+              <FurnitureVisual key={item.id} item={item} palette={palette} />
             ))}
             <CablesLayerContent cables={base.cables} palette={palette} unitM={t('unit.m')} avoid={cableAvoid} patchWord={t('cable.patchShort')}
               labelSize={ws.cableText} showLabels={ws.cableLabels} groupOrder={groupOrder} />
@@ -1237,7 +1229,7 @@ export function EditorStage() {
         {/* Cable trays (wiring layer) */}
         <TraysLayerContent trays={act.trays} palette={palette} highlightId={hoveredTray?.id ?? selectedTray?.id} textSize={ws.trayText} />
         {/* Desk frames under the desktops: patch cords are fixed to them */}
-        {wiring && deskFrames(floor.furniture).map(fr => (
+        {frames.map(fr => (
           <Line key={`fr${fr.id}`} points={fr.corners.flatMap(p => [p.x, p.y])} closed stroke={palette.accent} opacity={0.45}
             strokeWidth={1.2 * px} dash={[5 * px, 4 * px]} listening={false} />
         ))}
@@ -1256,7 +1248,7 @@ export function EditorStage() {
 
         {/* Furniture */}
         {sortByZ(act.furniture).map(item => (
-          <FurnitureVisual key={item.id} item={item} palette={palette} onImageLoaded={onImageLoaded} />
+          <FurnitureVisual key={item.id} item={item} palette={palette} />
         ))}
 
         {/* Cables (above furniture) */}
@@ -1326,6 +1318,34 @@ export function EditorStage() {
   );
 }
 
+// ── Grid ──────────────────────────────────────────────────────
+/**
+ * Grid lines of the visible part of the world, drawn as two strokes (minor, major) straight from the stage
+ * transform at draw time: panning and zooming need no React update of hundreds of line nodes.
+ */
+function GridLines({ minor, major }: { minor: string; major: string }) {
+  return (
+    <Shape listening={false} perfectDrawEnabled={false} sceneFunc={(ctx, shape) => {
+      const st = shape.getStage();
+      if (!st) return;
+      const s = st.scaleX();
+      const l = Math.max(0, -st.x() / s), tp = Math.max(0, -st.y() / s);
+      const r = Math.min(WORLD, l + st.width() / s), b = Math.min(WORLD, tp + st.height() / s);
+      const minorIv = getGridInterval(s, 12), majorIv = getGridInterval(s, 80);
+      const lines = (iv: number, skip: number, color: string, width: number) => {
+        ctx.beginPath();
+        for (let v = Math.ceil(l / iv) * iv; v <= r; v += iv) if (!skip || v % skip) { ctx.moveTo(v, tp); ctx.lineTo(v, b); }
+        for (let v = Math.ceil(tp / iv) * iv; v <= b; v += iv) if (!skip || v % skip) { ctx.moveTo(l, v); ctx.lineTo(r, v); }
+        ctx.strokeStyle = color;
+        ctx.lineWidth = width;
+        ctx.stroke();
+      };
+      lines(minorIv, majorIv !== minorIv ? majorIv : 0, minor, 0.5);
+      if (majorIv !== minorIv) lines(majorIv, 0, major, 0.8);
+    }} />
+  );
+}
+
 // ── Live length of the wall being drawn ───────────────────────
 function PreviewLength({ a, b, scale, color, bg, unit }: { a: { x: number; y: number }; b: { x: number; y: number }; scale: number; color: string; bg: string; unit: string }) {
   const len = dist(a.x, a.y, b.x, b.y);
@@ -1371,9 +1391,11 @@ function SelectionHandles({ item, scale, palette }: { item: FurnitureItem; scale
 }
 
 // ── Purely visual furniture ───────────────────────────────────
-function FurnitureVisual({ item, palette, onImageLoaded }: { item: FurnitureItem; palette: Palette; onImageLoaded: () => void }) {
+const FurnitureVisual = memo(function FurnitureVisual({ item, palette }: { item: FurnitureItem; palette: Palette }) {
+  // redrawn by itself when its picture has loaded
+  const [, loaded] = useState(0);
   if (item.simple) return <SimpleFurniture item={item} palette={palette} />;
-  const img = getSprite(item.path, palette.dark, onImageLoaded, spriteColor(item));
+  const img = getSprite(item.path, palette.dark, () => loaded(n => n + 1), spriteColor(item));
 
   return (
     <Group x={item.x} y={item.y} rotation={item.rot}>
@@ -1382,4 +1404,4 @@ function FurnitureVisual({ item, palette, onImageLoaded }: { item: FurnitureItem
       {!img && <Rect width={item.w} height={item.h} fill={palette.placeholderFill} stroke={palette.placeholderStroke} strokeWidth={1} dash={[4, 2]} />}
     </Group>
   );
-}
+});

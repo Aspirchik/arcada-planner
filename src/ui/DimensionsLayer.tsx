@@ -1,3 +1,4 @@
+import { memo } from 'react';
 /** Ruler measurements (dimension lines), shared by the editor and the print view */
 import { Arrow, Line, Group, Circle } from 'react-konva';
 import type { Dimension } from '../types';
@@ -40,7 +41,7 @@ export function DimensionLine({ d, palette, unit, px, preview = false }: {
   );
 }
 
-export function DimensionsLayerContent({ dims, palette, unit, px }: { dims: Dimension[]; palette: Palette; unit: string; px: number }) {
+function DimensionsLayerContentImpl({ dims, palette, unit, px }: { dims: Dimension[]; palette: Palette; unit: string; px: number }) {
   return (
     <Group>
       {dims.map(d => <DimensionLine key={d.id} d={d} palette={palette} unit={unit} px={px} />)}
@@ -52,3 +53,6 @@ export function DimensionsLayerContent({ dims, palette, unit, px }: { dims: Dime
 export function SnapMarker({ x, y, palette, px }: { x: number; y: number; palette: Palette; px: number }) {
   return <Circle x={x} y={y} radius={5 * px} stroke={palette.accent} strokeWidth={1.5 * px} />;
 }
+
+// Redrawn only when their own props change (not on every pan / zoom frame)
+export const DimensionsLayerContent = memo(DimensionsLayerContentImpl);

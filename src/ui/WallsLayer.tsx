@@ -1,3 +1,4 @@
+import { memo } from 'react';
 /** Wall drawing shared by the editor and the print view: mitred outlines + length labels */
 import { Line, Text, Group } from 'react-konva';
 import type { FloorWallGeom, WallGeom } from '../geometry/walls';
@@ -35,7 +36,7 @@ function WallLabels({ g, mode, unit, color }: { g: WallGeom; mode: WallLabelMode
   );
 }
 
-export function WallsLayerContent({ geom, palette, labels, unit }: {
+function WallsLayerContentImpl({ geom, palette, labels, unit }: {
   geom: FloorWallGeom;
   palette: Palette;
   labels: WallLabelMode;
@@ -71,3 +72,6 @@ export function WallsLayerContent({ geom, palette, labels, unit }: {
 }
 
 export { AlongText };
+
+// Redrawn only when their own props change (not on every pan / zoom frame)
+export const WallsLayerContent = memo(WallsLayerContentImpl);
